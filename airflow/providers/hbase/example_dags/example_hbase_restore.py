@@ -36,6 +36,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from airflow import DAG
+from airflow.models.param import Param
 from airflow.operators.python import PythonOperator
 from airflow.providers.hbase.operators.hbase import (
     HBaseDeleteTableOperator,
@@ -59,6 +60,13 @@ dag = DAG(
     schedule_interval=None,
     catchup=False,
     tags=["example", "hbase", "restore"],
+    params={
+        "backup_id": Param(
+            default="",
+            type="string",
+            description="Backup ID to restore (e.g., backup_1770197062556). Required."
+        ),
+    },
 )
 
 
@@ -132,22 +140,20 @@ def verify_restored_data(**context):
 delete_table = HBaseDeleteTableOperator(
     task_id="delete_table",
     table_name="test_table_backup",
-    if_not_exists="ignore",  # Don't fail if table doesn't exist
+    if_not_exists="ignore",
     hbase_conn_id="hbase_thrift2",
     dag=dag,
 )
 
-# Step 2: Restore from backup
-# Get backup ID from the most recent backup consumer DAG run via XCom
-# Will fail if backup consumer DAG hasn't run yet (safer than using wrong backup)
+# Step 2: Restore from backup using backup_id from params
 restore_backup = HBaseRestoreOperator(
     task_id="restore_backup",
-    backup_path="hdfs:///hbase/backup",  # Must match backup_path in consumer DAG
-    backup_id="{{ ti.xcom_pull(dag_id='example_hbase_backup_consumer', task_ids='create_full_backup') }}",
+    backup_path="hdfs:///hbase/backup",
+    backup_id="{{ params.backup_id }}",
     tables=["test_table_backup"],
     overwrite=True,
     hbase_conn_id="hbase_thrift2",
-    do_xcom_push=True,  # Push result to XCom for debugging
+    do_xcom_push=True,
     dag=dag,
 )
 

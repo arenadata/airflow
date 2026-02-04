@@ -191,6 +191,10 @@ class Thrift2Strategy(HBaseStrategy):
             self.log.warning("Thrift2 doesn't support parallel processing (no connection pool). Using single thread.")
             max_workers = 1
         
+        # Debug: check row format
+        if rows:
+            self.log.info(f"First row type: {type(rows[0])}, content: {rows[0]}")
+        
         def process_chunk(chunk):
             """Process chunk using batch API."""
             chunk_size = sum(len(str(row)) for row in chunk)
@@ -199,13 +203,26 @@ class Thrift2Strategy(HBaseStrategy):
             try:
                 puts = []
                 for row in chunk:
-                    if 'row_key' in row:
+                    # Handle both dict and tuple formats
+                    if isinstance(row, tuple) and len(row) == 2:
+                        # Format: (row_key, {col: val, ...})
+                        row_key, row_data = row
+                        puts.append((row_key, row_data))
+                    elif isinstance(row, dict) and 'row_key' in row:
+                        # Format: {"row_key": "key", "col": "val", ...}
                         row_key = row.get('row_key')
                         row_data = {k: v for k, v in row.items() if k != 'row_key'}
                         puts.append((row_key, row_data))
+                    else:
+                        self.log.warning(f"Unknown row format: {type(row)}, {row}")
                 
+                self.log.info(f"Prepared {len(puts)} puts for batch insert")
                 if puts:
+                    self.log.info(f"Sample put: {puts[0] if puts else 'none'}")
                     self.client.put_multiple(table_name, puts)
+                    self.log.info(f"Successfully inserted {len(puts)} rows")
+                else:
+                    self.log.warning("No puts prepared - check row format")
                 
                 time.sleep(0.1)
             except Exception as e:

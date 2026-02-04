@@ -418,7 +418,18 @@ class HBaseCreateBackupOperator(BaseOperator):
             )
         
         self.log.info("Backup command output: %s", output)
-        return output
+        
+        # Extract backup_id from output
+        # Output format: "Backup backup_1234567890123 completed."
+        import re
+        match = re.search(r'backup_(\d+)', output)
+        if match:
+            backup_id = f"backup_{match.group(1)}"
+            self.log.info("Extracted backup_id: %s", backup_id)
+            return backup_id
+        else:
+            self.log.warning("Could not extract backup_id from output")
+            return output
 
 
 class HBaseRestoreOperator(BaseOperator):
@@ -433,7 +444,7 @@ class HBaseRestoreOperator(BaseOperator):
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("backup_path", "backup_set_name", "tables")
+    template_fields: Sequence[str] = ("backup_path", "backup_id", "backup_set_name", "tables")
 
     def __init__(
         self,

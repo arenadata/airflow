@@ -81,19 +81,17 @@ with DAG(
         # No outlets here - only produce dataset after data is inserted
     )
 
-    # Add 10,000 test records using batch put
-    # Generate rows list: [(row_key, {column: value, ...}), ...]
+    # Add 1,000 test records using batch put
+    # Generate rows list as dictionaries (not tuples)
     rows = [
-        (
-            f"row_{i:06d}",
-            {
-                "cf1:name": f"user_{i}",
-                "cf1:email": f"user_{i}@example.com",
-                "cf2:age": str(20 + (i % 50)),
-                "cf2:city": f"City_{i % 100}",
-            }
-        )
-        for i in range(10000)
+        {
+            "row_key": f"row_{i:06d}",
+            "cf1:name": f"user_{i}",
+            "cf1:email": f"user_{i}@example.com",
+            "cf2:age": str(20 + (i % 50)),
+            "cf2:city": f"City_{i % 100}",
+        }
+        for i in range(1000)
     ]
     
     put_data = HBaseBatchPutOperator(
