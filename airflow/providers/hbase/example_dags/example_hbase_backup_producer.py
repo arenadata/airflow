@@ -33,9 +33,9 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.providers.hbase.operators.hbase import (
+    HBaseBatchPutOperator,
     HBaseCreateTableOperator,
     HBaseDeleteTableOperator,
-    HBasePutOperator,
 )
 from airflow.providers.hbase.datasets.hbase import hbase_table_dataset
 
@@ -81,12 +81,25 @@ with DAG(
         # No outlets here - only produce dataset after data is inserted
     )
 
-    # Add test data
-    put_data = HBasePutOperator(
+    # Add 10,000 test records using batch put
+    # Generate rows list: [(row_key, {column: value, ...}), ...]
+    rows = [
+        (
+            f"row_{i:06d}",
+            {
+                "cf1:name": f"user_{i}",
+                "cf1:email": f"user_{i}@example.com",
+                "cf2:age": str(20 + (i % 50)),
+                "cf2:city": f"City_{i % 100}",
+            }
+        )
+        for i in range(10000)
+    ]
+    
+    put_data = HBaseBatchPutOperator(
         task_id="put_data",
         table_name="test_table_backup",
-        row_key="test_row",
-        data={"cf1:col1": "test_value"},
+        rows=rows,
         hbase_conn_id="hbase_thrift2",
         outlets=[backup_table_dataset],  # Produce dataset only after data is ready
     )

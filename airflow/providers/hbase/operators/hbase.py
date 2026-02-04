@@ -339,9 +339,13 @@ class HBaseBackupSetOperator(BaseOperator):
         if self.action == BackupSetAction.ADD:
             if not self.backup_set_name or not self.tables:
                 raise ValueError("backup_set_name and tables are required for 'add' action")
-            return hook.create_backup_set(self.backup_set_name, self.tables)
+            result = hook.create_backup_set(self.backup_set_name, self.tables)
+            self.log.info("Backup set operation result:\n%s", result if result else "(empty)")
+            return result
         elif self.action == BackupSetAction.LIST:
-            return hook.list_backup_sets()
+            result = hook.list_backup_sets()
+            self.log.info("Backup sets:\n%s", result if result else "(empty)")
+            return result
         elif self.action == BackupSetAction.DESCRIBE:
             if not self.backup_set_name:
                 raise ValueError("backup_set_name is required for 'describe' action")
@@ -490,4 +494,12 @@ class HBaseBackupHistoryOperator(BaseOperator):
         """Execute the operator."""
         hook = HBaseAdministrationHook(hbase_conn_id=self.hbase_conn_id)
         
-        return hook.get_backup_history(backup_set_name=self.backup_set_name)
+        history = hook.get_backup_history(backup_set_name=self.backup_set_name)
+        self.log.info("Backup history (with filter -s %s):\n%s", self.backup_set_name or "(none)", history if history else "(empty)")
+        
+        # Also get full history without filter for debugging
+        if self.backup_set_name:
+            full_history = hook.get_backup_history()
+            self.log.info("Full backup history (without filter):\n%s", full_history if full_history else "(empty)")
+        
+        return history

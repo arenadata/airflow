@@ -18,10 +18,10 @@
 """
 HBase backup consumer DAG - automatically triggered by dataset.
 
-This DAG demonstrates data-aware scheduling:
+This DAG demonstrates data-aware scheduling with incremental backups:
 1. Automatically triggered when test_table_backup is updated
 2. Creates backup set
-3. Performs full backup with predefined backup ID
+3. Performs FULL backup on first run, then INCREMENTAL backups
 4. Gets backup history
 
 Prerequisites:
@@ -36,6 +36,7 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import BranchPythonOperator
 from airflow.providers.hbase.operators.hbase import (
     BackupSetAction,
     BackupType,
@@ -44,6 +45,7 @@ from airflow.providers.hbase.operators.hbase import (
     HBaseCreateBackupOperator,
 )
 from airflow.providers.hbase.datasets.hbase import hbase_table_dataset
+from airflow.providers.hbase.hooks.hbase_administration import HBaseAdministrationHook
 
 default_args = {
     "owner": "airflow",
@@ -62,9 +64,41 @@ backup_table_dataset = hbase_table_dataset(
     table_name="test_table_backup"
 )
 
-# Predefined backup ID for use in restore DAG
-# Format: backup_<timestamp> - you can use this ID in restore DAG
-BACKUP_ID = "backup_{{ ds_nodash }}"  # e.g., backup_20240130
+def decide_backup_type(**context) -> str:
+    """
+    Decide whether to create FULL or INCREMENTAL backup.
+    
+    Logic:
+    - If no backups exist for test_table_backup -> FULL
+    - If backups exist for test_table_backup -> INCREMENTAL
+    
+    Returns:
+        Task ID to execute next
+    """
+    hook = HBaseAdministrationHook(hbase_conn_id="hbase_thrift2")
+    
+    # Get ALL backup history (backup set filter doesn't work properly)
+    try:
+        history = hook.get_backup_history()
+        print(f"Full backup history:\n{history}")
+        
+        # Check if any backups exist for test_table_backup
+        if not history or not history.strip():
+            print("No previous backups found. Creating FULL backup.")
+            return "create_full_backup"
+        
+        # Check if test_table_backup is mentioned in history
+        if "test_table_backup" in history:
+            print("Previous backups found for test_table_backup. Creating INCREMENTAL backup.")
+            return "create_incremental_backup"
+        else:
+            print("No backups found for test_table_backup. Creating FULL backup.")
+            return "create_full_backup"
+    except Exception as e:
+        print(f"Error getting backup history: {e}")
+        print("Defaulting to FULL backup.")
+        return "create_full_backup"
+
 
 with DAG(
     "example_hbase_backup_consumer",
@@ -90,14 +124,13 @@ with DAG(
         hbase_conn_id="hbase_thrift2",
     )
 
-    # List backup sets
-    list_backup_sets = HBaseBackupSetOperator(
-        task_id="list_backup_sets",
-        action=BackupSetAction.LIST,
-        hbase_conn_id="hbase_thrift2",
+    # Decide backup type based on history
+    decide_backup = BranchPythonOperator(
+        task_id="decide_backup_type",
+        python_callable=decide_backup_type,
     )
 
-    # Create full backup
+    # Create FULL backup (first time)
     # Note: backup_path must be a valid HDFS path
     # Examples:
     #   - hdfs:///hbase/backup (uses default namenode)
@@ -112,12 +145,27 @@ with DAG(
         do_xcom_push=True,  # Push backup ID to XCom
     )
 
-    # Get backup history
+    # Create INCREMENTAL backup (subsequent runs)
+    # Only saves changes since last backup (FULL or INCREMENTAL)
+    create_incremental_backup = HBaseCreateBackupOperator(
+        task_id="create_incremental_backup",
+        backup_type=BackupType.INCREMENTAL,
+        backup_path="hdfs:///hbase/backup",  # Same path as FULL
+        backup_set_name="test_backup_set",
+        workers=1,
+        hbase_conn_id="hbase_thrift2",
+        do_xcom_push=True,  # Push backup ID to XCom
+    )
+
+    # Get backup history (runs after either backup type)
     get_backup_history = HBaseBackupHistoryOperator(
         task_id="get_backup_history",
         backup_set_name="test_backup_set",
         hbase_conn_id="hbase_thrift2",
+        trigger_rule="none_failed_min_one_success",  # Run if either backup succeeds
     )
 
     # Define task dependencies
-    cleanup_stuck_sessions >> create_backup_set >> list_backup_sets >> create_full_backup >> get_backup_history
+    cleanup_stuck_sessions >> create_backup_set >> decide_backup
+    decide_backup >> [create_full_backup, create_incremental_backup]
+    [create_full_backup, create_incremental_backup] >> get_backup_history
