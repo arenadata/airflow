@@ -16,9 +16,14 @@
 # specific language governing permissions and limitations
 # under the License.
 """
-Simple HBase backup operations example.
+Simple HBase backup operations example (DEPRECATED).
 
-This DAG demonstrates basic HBase backup functionality:
+⚠️ DEPRECATED: This DAG is deprecated in favor of the dataset-based approach.
+Please use:
+- example_hbase_backup_producer.py - for data generation
+- example_hbase_backup_consumer.py - for automatic backup (triggered by dataset)
+
+This DAG demonstrates basic HBase backup functionality in a single DAG:
 1. Creating backup sets
 2. Creating full backup
 3. Getting backup history
@@ -60,10 +65,10 @@ default_args = {
 dag = DAG(
     "example_hbase_backup",
     default_args=default_args,
-    description="Simple HBase backup operations",
+    description="[DEPRECATED] Simple HBase backup operations - use producer/consumer pattern instead",
     schedule_interval=None,
     catchup=False,
-    tags=["example", "hbase", "backup", "simple"],
+    tags=["example", "hbase", "backup", "deprecated"],
 )
 
 # Delete table if exists for idempotency
@@ -115,7 +120,7 @@ list_backup_sets = HBaseBackupSetOperator(
 create_full_backup = HBaseCreateBackupOperator(
     task_id="create_full_backup",
     backup_type=BackupType.FULL,
-    backup_path="/hbase/backup",
+    backup_path="hdfs:///hbase/backup",  # HDFS URI
     backup_set_name="test_backup_set",
     workers=1,
     hbase_conn_id="hbase_thrift2",

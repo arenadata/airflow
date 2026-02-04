@@ -59,27 +59,27 @@ class HBaseHook(BaseHook):
             host = conn.host or "localhost"
             port = conn.port or 9090
             timeout = conn.extra_dejson.get("timeout", 30000) if conn.extra_dejson else 30000
-            
+
             # Get retry configuration
             retry_config = self._get_retry_config(conn.extra_dejson or {})
-            
+
             # Setup SSL if configured
             ssl_context = None
             if conn.extra_dejson and conn.extra_dejson.get("use_ssl", False):
                 ssl_context, temp_files = create_thrift2_ssl_context(conn.extra_dejson)
                 self._temp_cert_files.extend(temp_files)
                 self.log.info("SSL/TLS enabled for Thrift2 connection")
-            
+
             pool_config = self._get_pool_config(conn.extra_dejson or {})
-            
+
             if pool_config.get('enabled', False):
                 # Use connection pool for parallel processing
                 pool_size = pool_config.get('size', 10)
                 pool = get_or_create_thrift2_pool(
-                    self.hbase_conn_id, 
-                    pool_size, 
-                    host, 
-                    port, 
+                    self.hbase_conn_id,
+                    pool_size,
+                    host,
+                    port,
                     timeout,
                     ssl_context,
                     **retry_config
@@ -88,9 +88,9 @@ class HBaseHook(BaseHook):
             else:
                 # Use single connection
                 client = HBaseThrift2Client(
-                    host=host, 
-                    port=port, 
-                    timeout=timeout, 
+                    host=host,
+                    port=port,
+                    timeout=timeout,
                     ssl_context=ssl_context,
                     **retry_config
                 )
@@ -152,13 +152,13 @@ class HBaseHook(BaseHook):
     def batch_put_rows(self, table_name: str, rows: list[dict[str, Any]], batch_size: int = 200, max_workers: int = 1) -> None:
         """Insert multiple rows in batch."""
         self._get_strategy().batch_put_rows(table_name, rows, batch_size, max_workers)
-        self.log.info("Batch put %d rows into table %s (batch_size=%d, workers=%d)", 
+        self.log.info("Batch put %d rows into table %s (batch_size=%d, workers=%d)",
                      len(rows), table_name, batch_size, max_workers)
 
     def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
         """Delete multiple rows in batch."""
         self._get_strategy().batch_delete_rows(table_name, row_keys, batch_size)
-        self.log.info("Batch deleted %d rows from table %s (batch_size=%d)", 
+        self.log.info("Batch deleted %d rows from table %s (batch_size=%d)",
                      len(row_keys), table_name, batch_size)
 
     def batch_get_rows(self, table_name: str, row_keys: list[str], columns: list[str] | None = None) -> list[dict[str, Any]]:

@@ -19,11 +19,16 @@
 HBase restore operations example.
 
 This DAG demonstrates HBase restore functionality with data verification.
+It uses the backup ID from the backup consumer DAG via XCom or manual specification.
 
 Workflow:
 1. Delete table (to simulate data loss)
-2. Restore from backup
+2. Restore from backup using backup ID
 3. Verify data was restored correctly
+
+To get backup ID from previous DAG run:
+- Use XCom: {{ ti.xcom_pull(dag_id='example_hbase_backup_consumer', task_ids='create_full_backup') }}
+- Or specify manually in backup_id parameter
 """
 
 from __future__ import annotations
@@ -133,10 +138,12 @@ delete_table = HBaseDeleteTableOperator(
 )
 
 # Step 2: Restore from backup
+# Get backup ID from the most recent backup consumer DAG run via XCom
+# Will fail if backup consumer DAG hasn't run yet (safer than using wrong backup)
 restore_backup = HBaseRestoreOperator(
     task_id="restore_backup",
-    backup_path="/hbase/backup",
-    backup_id="backup_1769686282917",  # Substitute with a real backup id
+    backup_path="hdfs:///hbase/backup",  # Must match backup_path in consumer DAG
+    backup_id="{{ ti.xcom_pull(dag_id='example_hbase_backup_consumer', task_ids='create_full_backup') }}",
     tables=["test_table_backup"],
     overwrite=True,
     hbase_conn_id="hbase_thrift2",
