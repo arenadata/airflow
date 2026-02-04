@@ -16,3 +16,9 @@
 # specific language governing permissions and limitations
 # under the License.
 """HBase datasets."""
+
+from __future__ import annotations
+
+__all__ = ["hbase_table_dataset"]
+
+from airflow.providers.hbase.datasets.hbase import hbase_table_dataset

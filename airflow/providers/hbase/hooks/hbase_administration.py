@@ -35,10 +35,10 @@ logger = logging.getLogger(__name__)
 class HBaseAdministrationHook(BaseHook):
     """
     Hook for HBase administrative operations (backup/restore).
-    
+
     This hook will use HBase Admin client API for backup/restore operations.
     Currently not implemented - placeholder for future implementation.
-    
+
     :param hbase_conn_id: Connection ID for HBase.
     """
 
@@ -61,12 +61,12 @@ class HBaseAdministrationHook(BaseHook):
 
     def _execute_hbase_command(self, command: str) -> str:
         """Execute HBase CLI command.
-        
+
         :param command: HBase command to execute (e.g., "backup create full /backup -t table1")
         :return: Command output
         """
         conn = self.get_conn()
-        
+
         # Get JAVA_HOME from connection extra if provided
         java_home = None
         if conn.extra_dejson:
@@ -74,17 +74,17 @@ class HBaseAdministrationHook(BaseHook):
             hbase_home = conn.extra_dejson.get('hbase_home')
             if hbase_home:
                 self.hbase_cmd = f"{hbase_home}/bin/hbase"
-        
+
         full_command = f"{self.hbase_cmd} {command}"
-        
+
         env = None
         if java_home:
             import os
             env = os.environ.copy()
             env['JAVA_HOME'] = java_home
-        
+
         logger.info(f"Executing HBase command: {self._mask_sensitive(full_command)}")
-        
+
         try:
             result = subprocess.run(
                 full_command,
@@ -95,11 +95,32 @@ class HBaseAdministrationHook(BaseHook):
                 env=env
             )
             logger.info(f"Command completed successfully")
-            return result.stdout
+            # Filter out SLF4J warnings from output
+            output = self._filter_slf4j_warnings(result.stdout)
+            return output
         except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed with exit code {e.returncode}: {e.stderr}")
-            raise RuntimeError(f"HBase command failed: {e.stderr}") from e
-    
+            # Filter SLF4J warnings from stderr to show real error
+            stderr_filtered = self._filter_slf4j_warnings(e.stderr)
+            stdout_filtered = self._filter_slf4j_warnings(e.stdout)
+            
+            error_msg = stderr_filtered or stdout_filtered or "Unknown error"
+            logger.error(f"Command failed with exit code {e.returncode}")
+            logger.error(f"Error output: {error_msg}")
+            
+            raise RuntimeError(f"HBase command failed (exit code {e.returncode}): {error_msg}") from e
+
+    def _filter_slf4j_warnings(self, text: str) -> str:
+        """Filter out SLF4J warnings from output."""
+        if not text:
+            return text
+        
+        lines = text.split('\n')
+        filtered_lines = [
+            line for line in lines
+            if not line.startswith('SLF4J:')
+        ]
+        return '\n'.join(filtered_lines).strip()
+
     def _mask_sensitive(self, text: str) -> str:
         """Mask sensitive information in logs."""
         # Mask potential paths that might contain sensitive info
@@ -109,7 +130,7 @@ class HBaseAdministrationHook(BaseHook):
     def create_backup_set(self, backup_set_name: str, tables: list[str]) -> str:
         """
         Create backup set.
-        
+
         :param backup_set_name: Name of the backup set.
         :param tables: List of tables to include in backup set.
         :return: Result message.
@@ -121,7 +142,7 @@ class HBaseAdministrationHook(BaseHook):
     def list_backup_sets(self) -> str:
         """
         List all backup sets.
-        
+
         :return: List of backup sets.
         """
         command = "backup set list"
@@ -136,7 +157,7 @@ class HBaseAdministrationHook(BaseHook):
     ) -> str:
         """
         Create full backup.
-        
+
         :param backup_root: Root directory for backup.
         :param backup_set_name: Name of backup set to backup.
         :param tables: List of tables to backup (alternative to backup_set_name).
@@ -144,7 +165,7 @@ class HBaseAdministrationHook(BaseHook):
         :return: Backup ID.
         """
         command = f"backup create full {backup_root}"
-        
+
         if backup_set_name:
             command += f" -s {backup_set_name}"
         elif tables:
@@ -152,10 +173,10 @@ class HBaseAdministrationHook(BaseHook):
             command += f" -t {tables_str}"
         else:
             raise ValueError("Either backup_set_name or tables must be provided")
-        
+
         if workers:
             command += f" -w {workers}"
-        
+
         return self._execute_hbase_command(command)
 
     def create_incremental_backup(
@@ -167,7 +188,7 @@ class HBaseAdministrationHook(BaseHook):
     ) -> str:
         """
         Create incremental backup.
-        
+
         :param backup_root: Root directory for backup.
         :param backup_set_name: Name of backup set to backup.
         :param tables: List of tables to backup (alternative to backup_set_name).
@@ -175,7 +196,7 @@ class HBaseAdministrationHook(BaseHook):
         :return: Backup ID.
         """
         command = f"backup create incremental {backup_root}"
-        
+
         if backup_set_name:
             command += f" -s {backup_set_name}"
         elif tables:
@@ -183,16 +204,16 @@ class HBaseAdministrationHook(BaseHook):
             command += f" -t {tables_str}"
         else:
             raise ValueError("Either backup_set_name or tables must be provided")
-        
+
         if workers:
             command += f" -w {workers}"
-        
+
         return self._execute_hbase_command(command)
 
     def get_backup_history(self, backup_set_name: str | None = None) -> str:
         """
         Get backup history.
-        
+
         :param backup_set_name: Name of backup set (optional).
         :return: Backup history.
         """
@@ -204,7 +225,7 @@ class HBaseAdministrationHook(BaseHook):
     def describe_backup(self, backup_id: str) -> str:
         """
         Describe backup.
-        
+
         :param backup_id: Backup ID.
         :return: Backup description.
         """
@@ -220,7 +241,7 @@ class HBaseAdministrationHook(BaseHook):
     ) -> str:
         """
         Restore backup.
-        
+
         :param backup_root: Root directory where backup is stored.
         :param backup_id: Backup ID to restore.
         :param tables: List of tables to restore (optional).
@@ -228,12 +249,12 @@ class HBaseAdministrationHook(BaseHook):
         :return: Result message.
         """
         command = f"restore {backup_root} {backup_id}"
-        
+
         if tables:
             tables_str = ",".join(tables)
             command += f" -t {tables_str}"
-        
+
         if overwrite:
             command += " -o"
-        
+
         return self._execute_hbase_command(command)

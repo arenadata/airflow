@@ -47,12 +47,12 @@ default_args = {
 }
 
 dag = DAG(
-    "example_hbase_hook_thrift2",
+    "example_hbase_hook",
     default_args=default_args,
     description="Example HBase DAG using Hook with Thrift2",
     schedule_interval=None,
     catchup=False,
-    tags=["example", "hbase", "thrift2", "hook"],
+    tags=["example", "hbase", "hook"],
 )
 
 # Delete table if exists for idempotency
