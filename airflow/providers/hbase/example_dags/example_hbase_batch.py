@@ -110,11 +110,11 @@ def cleanup_table():
 
 
 with DAG(
-    dag_id="example_hbase_thrift2_batch",
+    dag_id="example_hbase_batch",
     start_date=datetime(2024, 1, 1),
     schedule=None,
     catchup=False,
-    tags=["example", "hbase", "thrift2", "batch"],
+    tags=["example", "hbase", "batch"],
     doc_md=__doc__,
 ) as dag:
 

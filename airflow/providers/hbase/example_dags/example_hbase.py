@@ -49,12 +49,12 @@ default_args = {
 }
 
 dag = DAG(
-    "example_hbase_thrift2",
+    "example_hbase",
     default_args=default_args,
     description="Example HBase Thrift2 DAG",
     schedule_interval=None,
     catchup=False,
-    tags=["example", "hbase", "thrift2"],
+    tags=["example", "hbase"],
 )
 
 
