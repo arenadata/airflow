@@ -110,7 +110,8 @@ class TestHBaseCreateBackupOperator:
             tables=None,
             workers=2
         )
-        assert result == "Backup created: backup_123"
+        # Operator extracts backup_id from output
+        assert result == "backup_123"
 
     @patch("airflow.providers.hbase.operators.hbase.HBaseAdministrationHook")
     def test_create_incremental_backup_with_tables(self, mock_hook_class):
@@ -234,7 +235,10 @@ class TestHBaseBackupHistoryOperator:
 
         result = operator.execute({})
 
-        mock_hook.get_backup_history.assert_called_once_with(backup_set_name="test_set")
+        # Operator calls get_backup_history twice: once with filter, once without
+        assert mock_hook.get_backup_history.call_count == 2
+        mock_hook.get_backup_history.assert_any_call(backup_set_name="test_set")
+        mock_hook.get_backup_history.assert_any_call()
         assert result == "backup_123 COMPLETE"
 
     @patch("airflow.providers.hbase.operators.hbase.HBaseAdministrationHook")

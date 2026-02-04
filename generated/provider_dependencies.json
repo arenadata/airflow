@@ -718,16 +718,13 @@
   },
   "hbase": {
     "deps": [
-      "apache-airflow-providers-ssh",
       "apache-airflow>=2.7.0",
-      "happybase>=1.2.0",
-      "paramiko>=3.5.0"
+      "thrift>=0.13.0"
     ],
     "devel-deps": [],
     "plugins": [],
     "cross-providers-deps": [
-      "openlineage",
-      "ssh"
+      "openlineage"
     ],
     "excluded-python-versions": [],
     "state": "ready"
