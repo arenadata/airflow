@@ -248,8 +248,24 @@ class Thrift2Strategy(HBaseStrategy):
         return [(r['row'], {col: data['value'] for col, data in r['columns'].items()}) for r in results]
 
     def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
-        """Delete multiple rows in batch - not yet implemented."""
-        raise NotImplementedError("batch_delete_rows not yet implemented for Thrift2Strategy")
+        """Delete multiple rows in batch via Thrift2."""
+        def process_chunk(chunk):
+            """Process chunk using batch delete API."""
+            self.log.info(f"Deleting chunk: {len(chunk)} rows")
+            try:
+                # Convert row_keys to (row_key, None) tuples for delete_multiple
+                deletes = [(row_key, None) for row_key in chunk]
+                self.client.delete_multiple(table_name, deletes)
+                time.sleep(0.1)
+            except Exception as e:
+                self.log.error(f"Chunk deletion failed: {e}")
+                raise
+
+        chunks = self._create_chunks(row_keys, batch_size)
+        self.log.info(f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})")
+        
+        for chunk in chunks:
+            process_chunk(chunk)
 
     def create_backup_set(self, backup_set_name: str, tables: list[str]) -> str:
         """Create backup set - not supported in Thrift2 mode."""
@@ -389,8 +405,25 @@ class PooledThrift2Strategy(HBaseStrategy):
             return [(r['row'], {col: data['value'] for col, data in r['columns'].items()}) for r in results]
 
     def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
-        """Delete multiple rows in batch - not yet implemented."""
-        raise NotImplementedError("batch_delete_rows not yet implemented for PooledThrift2Strategy")
+        """Delete multiple rows in batch via pooled Thrift2."""
+        def process_chunk(chunk):
+            """Process chunk using pooled connection."""
+            self.log.info(f"Deleting chunk: {len(chunk)} rows")
+            try:
+                with self.pool.connection() as client:
+                    # Convert row_keys to (row_key, None) tuples for delete_multiple
+                    deletes = [(row_key, None) for row_key in chunk]
+                    client.delete_multiple(table_name, deletes)
+                time.sleep(0.1)
+            except Exception as e:
+                self.log.error(f"Chunk deletion failed: {e}")
+                raise
+
+        chunks = self._create_chunks(row_keys, batch_size)
+        self.log.info(f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})")
+        
+        for chunk in chunks:
+            process_chunk(chunk)
 
     def create_backup_set(self, backup_set_name: str, tables: list[str]) -> str:
         """Create backup set - not supported in Thrift2 mode."""

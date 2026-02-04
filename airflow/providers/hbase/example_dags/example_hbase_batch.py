@@ -98,12 +98,8 @@ def batch_delete_rows():
 
     # Delete rows 50-99
     row_keys = [f"row_{i:03d}" for i in range(50, 100)]
-
-    try:
-        hook.batch_delete_rows(TABLE_NAME, row_keys, batch_size=20)
-        print(f"Batch deleted {len(row_keys)} rows")
-    except NotImplementedError as e:
-        print(f"Batch delete not yet implemented: {e}")
+    hook.batch_delete_rows(TABLE_NAME, row_keys, batch_size=20)
+    print(f"Batch deleted {len(row_keys)} rows")
 
 
 def cleanup_table():
