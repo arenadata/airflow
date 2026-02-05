@@ -29,7 +29,7 @@ from airflow.providers.arenadata.hbase.sensors.hbase import (
 class TestHBaseTableSensor:
     """Test HBaseTableSensor."""
 
-    @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseThriftHook")
     def test_poke_table_exists(self, mock_hook_class):
         """Test poke method when table exists."""
         mock_hook = MagicMock()
@@ -46,7 +46,7 @@ class TestHBaseTableSensor:
         assert result is True
         mock_hook.table_exists.assert_called_once_with("test_table")
 
-    @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseThriftHook")
     def test_poke_table_not_exists(self, mock_hook_class):
         """Test poke method when table doesn't exist."""
         mock_hook = MagicMock()
@@ -66,7 +66,7 @@ class TestHBaseTableSensor:
 class TestHBaseRowSensor:
     """Test HBaseRowSensor."""
 
-    @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseThriftHook")
     def test_poke_row_exists(self, mock_hook_class):
         """Test poke method when row exists."""
         mock_hook = MagicMock()
@@ -84,7 +84,7 @@ class TestHBaseRowSensor:
         assert result is True
         mock_hook.get_row.assert_called_once_with("test_table", "row1")
 
-    @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseThriftHook")
     def test_poke_row_not_exists(self, mock_hook_class):
         """Test poke method when row doesn't exist."""
         mock_hook = MagicMock()
@@ -101,7 +101,7 @@ class TestHBaseRowSensor:
         
         assert result is False
 
-    @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseThriftHook")
     def test_poke_exception(self, mock_hook_class):
         """Test poke method when exception occurs."""
         mock_hook = MagicMock()

@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class HBaseAdministrationHook(BaseHook):
+class HBaseCLIHook(BaseHook):
     """
     Hook for HBase administrative operations (backup/restore).
 
@@ -102,18 +102,18 @@ class HBaseAdministrationHook(BaseHook):
             # Filter SLF4J warnings from stderr to show real error
             stderr_filtered = self._filter_slf4j_warnings(e.stderr)
             stdout_filtered = self._filter_slf4j_warnings(e.stdout)
-            
+
             error_msg = stderr_filtered or stdout_filtered or "Unknown error"
             logger.error(f"Command failed with exit code {e.returncode}")
             logger.error(f"Error output: {error_msg}")
-            
+
             raise RuntimeError(f"HBase command failed (exit code {e.returncode}): {error_msg}") from e
 
     def _filter_slf4j_warnings(self, text: str) -> str:
         """Filter out SLF4J warnings from output."""
         if not text:
             return text
-        
+
         lines = text.split('\n')
         filtered_lines = [
             line for line in lines

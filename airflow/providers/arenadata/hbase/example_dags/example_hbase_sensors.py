@@ -59,9 +59,9 @@ CONTROL_ROW = "data_ready"  # Marker row indicating data is complete
 
 def simulate_external_system():
     """Simulate external system creating table and writing data."""
-    from airflow.providers.arenadata.hbase.hooks.hbase import HBaseHook
+    from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
     
-    hook = HBaseHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=HBASE_CONN_ID)
     
     # Create table (simulating external ETL)
     if not hook.table_exists(TABLE_NAME):
@@ -94,9 +94,9 @@ def simulate_external_system():
 
 def process_data():
     """Process data once it's available."""
-    from airflow.providers.arenadata.hbase.hooks.hbase import HBaseHook
+    from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
     
-    hook = HBaseHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=HBASE_CONN_ID)
     
     # Read control row to get metadata
     control_data = hook.get_row(TABLE_NAME, CONTROL_ROW)

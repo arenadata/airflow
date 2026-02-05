@@ -17,7 +17,7 @@
 # under the License.
 """HBase hooks."""
 
-from airflow.providers.arenadata.hbase.hooks.hbase import HBaseHook
-from airflow.providers.arenadata.hbase.hooks.hbase_administration import HBaseAdministrationHook
+from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
+from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 
-__all__ = ["HBaseHook", "HBaseAdministrationHook"]
+__all__ = ["HBaseThriftHook", "HBaseCLIHook"]

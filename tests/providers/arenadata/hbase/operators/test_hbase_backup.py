@@ -37,7 +37,7 @@ from airflow.providers.arenadata.hbase.operators.hbase import (
 class TestHBaseBackupSetOperator:
     """Test HBaseBackupSetOperator."""
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseAdministrationHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_backup_set_add(self, mock_hook_class):
         """Test backup set add operation."""
         mock_hook = MagicMock()
@@ -56,7 +56,7 @@ class TestHBaseBackupSetOperator:
         mock_hook.create_backup_set.assert_called_once_with("test_set", ["table1", "table2"])
         assert result == "Backup set created"
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseAdministrationHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_backup_set_list(self, mock_hook_class):
         """Test backup set list operation."""
         mock_hook = MagicMock()
@@ -87,7 +87,7 @@ class TestHBaseBackupSetOperator:
 class TestHBaseCreateBackupOperator:
     """Test HBaseCreateBackupOperator."""
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseAdministrationHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_create_full_backup_with_set(self, mock_hook_class):
         """Test creating full backup with backup set."""
         mock_hook = MagicMock()
@@ -113,7 +113,7 @@ class TestHBaseCreateBackupOperator:
         # Operator extracts backup_id from output
         assert result == "backup_123"
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseAdministrationHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_create_incremental_backup_with_tables(self, mock_hook_class):
         """Test creating incremental backup with table list."""
         mock_hook = MagicMock()
@@ -149,7 +149,7 @@ class TestHBaseCreateBackupOperator:
         with pytest.raises(ValueError, match="backup_type must be 'full' or 'incremental'"):
             operator.execute({})
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseAdministrationHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_create_backup_no_tables_or_set(self, mock_hook_class):
         """Test creating backup without tables or backup set."""
         mock_hook = MagicMock()
@@ -168,7 +168,7 @@ class TestHBaseCreateBackupOperator:
 class TestHBaseRestoreOperator:
     """Test HBaseRestoreOperator."""
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseAdministrationHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_restore_with_backup_set(self, mock_hook_class):
         """Test restore with backup set."""
         mock_hook = MagicMock()
@@ -193,7 +193,7 @@ class TestHBaseRestoreOperator:
         )
         assert result == "Restore completed"
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseAdministrationHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_restore_with_tables(self, mock_hook_class):
         """Test restore with table list."""
         mock_hook = MagicMock()
@@ -221,7 +221,7 @@ class TestHBaseRestoreOperator:
 class TestHBaseBackupHistoryOperator:
     """Test HBaseBackupHistoryOperator."""
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseAdministrationHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_backup_history_with_set(self, mock_hook_class):
         """Test backup history with backup set."""
         mock_hook = MagicMock()
@@ -241,7 +241,7 @@ class TestHBaseBackupHistoryOperator:
         mock_hook.get_backup_history.assert_any_call()
         assert result == "backup_123 COMPLETE"
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseAdministrationHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_backup_history_with_path(self, mock_hook_class):
         """Test backup history with backup path."""
         mock_hook = MagicMock()
@@ -258,7 +258,7 @@ class TestHBaseBackupHistoryOperator:
         mock_hook.get_backup_history.assert_called_once_with(backup_set_name=None)
         assert result == "backup_456 COMPLETE"
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseAdministrationHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_backup_history_no_params(self, mock_hook_class):
         """Test backup history without parameters."""
         mock_hook = MagicMock()

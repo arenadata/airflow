@@ -35,7 +35,7 @@ from airflow.providers.arenadata.hbase.operators.hbase import (
 class TestHBasePutOperator:
     """Test HBasePutOperator."""
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute(self, mock_hook_class):
         """Test execute method."""
         mock_hook = MagicMock()
@@ -56,7 +56,7 @@ class TestHBasePutOperator:
 class TestHBaseCreateTableOperator:
     """Test HBaseCreateTableOperator."""
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_create_new_table(self, mock_hook_class):
         """Test execute method for creating new table."""
         mock_hook = MagicMock()
@@ -74,7 +74,7 @@ class TestHBaseCreateTableOperator:
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_called_once_with("test_table", {"cf1": {}, "cf2": {}})
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_table_exists(self, mock_hook_class):
         """Test execute method when table already exists."""
         mock_hook = MagicMock()
@@ -92,7 +92,7 @@ class TestHBaseCreateTableOperator:
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_not_called()
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_table_exists_error(self, mock_hook_class):
         """Test execute method when table exists and if_exists=ERROR."""
         mock_hook = MagicMock()
@@ -116,7 +116,7 @@ class TestHBaseCreateTableOperator:
 class TestHBaseDeleteTableOperator:
     """Test HBaseDeleteTableOperator."""
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_delete_existing_table(self, mock_hook_class):
         """Test execute method for deleting existing table."""
         mock_hook = MagicMock()
@@ -133,7 +133,7 @@ class TestHBaseDeleteTableOperator:
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.delete_table.assert_called_once_with("test_table", True)
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_table_not_exists(self, mock_hook_class):
         """Test execute method when table doesn't exist."""
         mock_hook = MagicMock()
@@ -150,7 +150,7 @@ class TestHBaseDeleteTableOperator:
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.delete_table.assert_not_called()
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_table_not_exists_error(self, mock_hook_class):
         """Test execute method when table doesn't exist and if_not_exists=ERROR."""
         mock_hook = MagicMock()
@@ -173,7 +173,7 @@ class TestHBaseDeleteTableOperator:
 class TestHBaseScanOperator:
     """Test HBaseScanOperator."""
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute(self, mock_hook_class):
         """Test execute method."""
         mock_hook = MagicMock()
@@ -200,7 +200,7 @@ class TestHBaseScanOperator:
             limit=10
         )
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_with_custom_encoding(self, mock_hook_class):
         """Test execute method with custom encoding."""
         mock_hook = MagicMock()
@@ -227,7 +227,7 @@ class TestHBaseScanOperator:
 class TestHBaseBatchPutOperator:
     """Test HBaseBatchPutOperator."""
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute(self, mock_hook_class):
         """Test execute method."""
         mock_hook = MagicMock()
@@ -250,7 +250,7 @@ class TestHBaseBatchPutOperator:
         
         mock_hook.batch_put_rows.assert_called_once_with("test_table", rows, 500, 2)
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_default_params(self, mock_hook_class):
         """Test execute method with default parameters."""
         mock_hook = MagicMock()
@@ -275,7 +275,7 @@ class TestHBaseBatchPutOperator:
 class TestHBaseBatchGetOperator:
     """Test HBaseBatchGetOperator."""
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute(self, mock_hook_class):
         """Test execute method."""
         mock_hook = MagicMock()
@@ -301,7 +301,7 @@ class TestHBaseBatchGetOperator:
             ["cf1:col1"]
         )
 
-    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseHook")
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_with_custom_encoding(self, mock_hook_class):
         """Test execute method with custom encoding."""
         mock_hook = MagicMock()

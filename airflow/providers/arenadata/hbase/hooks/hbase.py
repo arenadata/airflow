@@ -29,7 +29,7 @@ from airflow.providers.arenadata.hbase.thrift2_pool import get_or_create_thrift2
 from airflow.providers.arenadata.hbase.thrift2_ssl import create_ssl_context as create_thrift2_ssl_context
 
 
-class HBaseHook(BaseHook):
+class HBaseThriftHook(BaseHook):
     """
     Wrapper for connection to interact with HBase via Thrift2 protocol.
 

@@ -45,7 +45,7 @@ from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseCreateBackupOperator,
 )
 from airflow.providers.arenadata.hbase.datasets.hbase import hbase_table_dataset
-from airflow.providers.arenadata.hbase.hooks.hbase_administration import HBaseAdministrationHook
+from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 
 default_args = {
     "owner": "airflow",
@@ -67,26 +67,26 @@ backup_table_dataset = hbase_table_dataset(
 def decide_backup_type(**context) -> str:
     """
     Decide whether to create FULL or INCREMENTAL backup.
-    
+
     Logic:
     - If no backups exist for test_table_backup -> FULL
     - If backups exist for test_table_backup -> INCREMENTAL
-    
+
     Returns:
         Task ID to execute next
     """
-    hook = HBaseAdministrationHook(hbase_conn_id="hbase_thrift2")
-    
+    hook = HBaseCLIHook(hbase_conn_id="hbase_thrift2")
+
     # Get ALL backup history (backup set filter doesn't work properly)
     try:
         history = hook.get_backup_history()
         print(f"Full backup history:\n{history}")
-        
+
         # Check if any backups exist for test_table_backup
         if not history or not history.strip():
             print("No previous backups found. Creating FULL backup.")
             return "create_full_backup"
-        
+
         # Check if test_table_backup is mentioned in history
         if "test_table_backup" in history:
             print("Previous backups found for test_table_backup. Creating INCREMENTAL backup.")

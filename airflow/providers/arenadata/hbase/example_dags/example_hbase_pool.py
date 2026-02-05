@@ -28,7 +28,7 @@ import time
 from datetime import datetime
 
 from airflow import DAG
-from airflow.providers.arenadata.hbase.hooks.hbase import HBaseHook
+from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.operators.python import PythonOperator
 
 # Connection IDs
@@ -41,7 +41,7 @@ TABLE_NAME = "perf_test_table"
 
 def setup_table(conn_id: str):
     """Create test table."""
-    hook = HBaseHook(hbase_conn_id=conn_id)
+    hook = HBaseThriftHook(hbase_conn_id=conn_id)
 
     # Delete if exists
     if hook.table_exists(TABLE_NAME):
@@ -55,7 +55,7 @@ def setup_table(conn_id: str):
 
 def benchmark_single_connection():
     """Benchmark with single Thrift2 connection."""
-    hook = HBaseHook(hbase_conn_id=SINGLE_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=SINGLE_CONN_ID)
 
     try:
         # Generate 10,000 rows
@@ -82,7 +82,7 @@ def benchmark_single_connection():
 
 def benchmark_pooled_connection():
     """Benchmark with Thrift2 connection pool."""
-    hook = HBaseHook(hbase_conn_id=POOLED_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=POOLED_CONN_ID)
 
     # Generate 10,000 rows
     rows = []
@@ -107,7 +107,7 @@ def benchmark_pooled_connection():
 
 def benchmark_large_dataset():
     """Benchmark with very large dataset using pool."""
-    hook = HBaseHook(hbase_conn_id=POOLED_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=POOLED_CONN_ID)
 
     # Generate 50,000 rows
     rows = []
@@ -132,7 +132,7 @@ def benchmark_large_dataset():
 
 def verify_data():
     """Verify inserted data."""
-    hook = HBaseHook(hbase_conn_id=POOLED_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=POOLED_CONN_ID)
 
     # Scan samples from each benchmark
     results = hook.scan_table(TABLE_NAME, row_start="single_000000", row_stop="single_000010")
@@ -147,7 +147,7 @@ def verify_data():
 
 def cleanup_table():
     """Delete test table."""
-    hook = HBaseHook(hbase_conn_id=POOLED_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=POOLED_CONN_ID)
     hook.delete_table(TABLE_NAME)
     print(f"Deleted table: {TABLE_NAME}")
 

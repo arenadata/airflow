@@ -27,7 +27,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from airflow import DAG
-from airflow.providers.arenadata.hbase.hooks.hbase import HBaseHook
+from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseBatchGetOperator,
     HBaseBatchPutOperator,
@@ -44,7 +44,7 @@ TABLE_NAME = "test_batch_table"
 
 def delete_table_if_exists():
     """Delete table if it exists for idempotency."""
-    hook = HBaseHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=HBASE_CONN_ID)
     if hook.table_exists(TABLE_NAME):
         hook.delete_table(TABLE_NAME)
         print(f"Deleted existing table: {TABLE_NAME}")
@@ -54,7 +54,7 @@ def delete_table_if_exists():
 
 def create_table():
     """Create test table."""
-    hook = HBaseHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=HBASE_CONN_ID)
     families = {"cf1": {}, "cf2": {}}
     hook.create_table(TABLE_NAME, families)
     print(f"Created table: {TABLE_NAME}")
@@ -62,7 +62,7 @@ def create_table():
 
 def batch_put_rows():
     """Batch insert rows using Thrift2."""
-    hook = HBaseHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=HBASE_CONN_ID)
 
     # Prepare 100 rows
     rows = []
@@ -81,7 +81,7 @@ def batch_put_rows():
 
 def batch_get_rows():
     """Batch get rows using Thrift2."""
-    hook = HBaseHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=HBASE_CONN_ID)
 
     # Get first 10 rows
     row_keys = [f"row_{i:03d}" for i in range(10)]
@@ -94,7 +94,7 @@ def batch_get_rows():
 
 def batch_delete_rows():
     """Batch delete rows using Thrift2."""
-    hook = HBaseHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=HBASE_CONN_ID)
 
     # Delete rows 50-99
     row_keys = [f"row_{i:03d}" for i in range(50, 100)]
@@ -104,7 +104,7 @@ def batch_delete_rows():
 
 def cleanup_table():
     """Delete table at the end."""
-    hook = HBaseHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseThriftHook(hbase_conn_id=HBASE_CONN_ID)
     hook.delete_table(TABLE_NAME)
     print(f"Deleted table: {TABLE_NAME}")
 

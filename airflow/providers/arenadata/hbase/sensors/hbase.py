@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Sequence
 
 from airflow.sensors.base import BaseSensorOperator
-from airflow.providers.arenadata.hbase.hooks.hbase import HBaseHook
+from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
 if TYPE_CHECKING:
     from airflow.utils.context import Context
@@ -41,7 +41,7 @@ class HBaseTableSensor(BaseSensorOperator):
     def __init__(
         self,
         table_name: str,
-        hbase_conn_id: str = HBaseHook.default_conn_name,
+        hbase_conn_id: str = HBaseThriftHook.default_conn_name,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -50,7 +50,7 @@ class HBaseTableSensor(BaseSensorOperator):
 
     def poke(self, context: Context) -> bool:
         """Check if table exists."""
-        hook = HBaseHook(hbase_conn_id=self.hbase_conn_id)
+        hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         exists = hook.table_exists(self.table_name)
         self.log.info("Table %s exists: %s", self.table_name, exists)
         return exists
@@ -71,7 +71,7 @@ class HBaseRowSensor(BaseSensorOperator):
         self,
         table_name: str,
         row_key: str,
-        hbase_conn_id: str = HBaseHook.default_conn_name,
+        hbase_conn_id: str = HBaseThriftHook.default_conn_name,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -81,7 +81,7 @@ class HBaseRowSensor(BaseSensorOperator):
 
     def poke(self, context: Context) -> bool:
         """Check if row exists."""
-        hook = HBaseHook(hbase_conn_id=self.hbase_conn_id)
+        hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         row_data = hook.get_row(self.table_name, self.row_key)
         exists = bool(row_data)
         self.log.info("Row %s in table %s exists: %s", self.row_key, self.table_name, exists)

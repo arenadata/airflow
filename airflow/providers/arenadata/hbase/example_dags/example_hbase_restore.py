@@ -72,9 +72,9 @@ dag = DAG(
 
 def verify_restored_data(**context):
     """Verify that data was restored correctly."""
-    from airflow.providers.arenadata.hbase.hooks.hbase import HBaseHook
+    from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
-    hook = HBaseHook(hbase_conn_id="hbase_thrift2")
+    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
     table_name = "test_table_backup"
 
     # Get restore output from previous task
