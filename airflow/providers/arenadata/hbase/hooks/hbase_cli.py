@@ -258,3 +258,15 @@ class HBaseCLIHook(BaseHook):
             command += " -o"
 
         return self._execute_hbase_command(command)
+
+    def execute_command(self, command: str) -> str:
+        """
+        Execute arbitrary HBase CLI command.
+
+        This method allows executing any HBase CLI command that is not wrapped
+        in a specialized method.
+
+        :param command: HBase command to execute (e.g., "backup create full /backup -t table1")
+        :return: Command output
+        """
+        return self._execute_hbase_command(command)

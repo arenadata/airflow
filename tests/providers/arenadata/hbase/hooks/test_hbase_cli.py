@@ -236,3 +236,31 @@ class TestHBaseCLIHook:
 
         call_args = mock_run.call_args[0][0]
         assert "/opt/hbase/bin/hbase" in call_args
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_execute_command(self, mock_run, mock_get_conn):
+        """Test execute arbitrary command."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.return_value = MagicMock(returncode=0, stdout="Command executed successfully")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        result = hook.execute_command("backup set list")
+
+        assert "successfully" in result
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "backup set list" in call_args
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_execute_command_with_custom_hbase_cmd(self, mock_run, mock_get_conn):
+        """Test execute arbitrary command with custom hbase path."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.return_value = MagicMock(returncode=0, stdout="Output")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default", hbase_cmd="/custom/hbase")
+        hook.execute_command("version")
+
+        call_args = mock_run.call_args[0][0]
+        assert "/custom/hbase version" in call_args
