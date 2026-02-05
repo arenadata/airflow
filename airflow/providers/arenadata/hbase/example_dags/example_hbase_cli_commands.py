@@ -38,7 +38,11 @@ def describe_backup_set(**context):
     params = context["params"]
     backup_set_name = params.get("backup_set_name", "test_cli_set")
 
-    hook = HBaseCLIHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseCLIHook(
+        hbase_conn_id=HBASE_CONN_ID,
+        java_home="/usr/lib/jvm/java-arenadata-openjdk-8",
+        hbase_home="/usr/lib/hbase",
+    )
     
     command = f"backup set describe {backup_set_name}"
     
@@ -54,7 +58,11 @@ def get_backup_history(**context):
     params = context["params"]
     backup_set_name = params.get("backup_set_name", "test_cli_set")
 
-    hook = HBaseCLIHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseCLIHook(
+        hbase_conn_id=HBASE_CONN_ID,
+        java_home="/usr/lib/jvm/java-arenadata-openjdk-8",
+        hbase_home="/usr/lib/hbase",
+    )
     
     command = f"backup history -s {backup_set_name}"
     
@@ -70,7 +78,11 @@ def delete_backup_set(**context):
     params = context["params"]
     backup_set_name = params.get("backup_set_name", "test_cli_set")
 
-    hook = HBaseCLIHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseCLIHook(
+        hbase_conn_id=HBASE_CONN_ID,
+        java_home="/usr/lib/jvm/java-arenadata-openjdk-8",
+        hbase_home="/usr/lib/hbase",
+    )
     
     command = f"backup set delete {backup_set_name}"
     
@@ -86,7 +98,11 @@ def verify_deletion(**context):
     params = context["params"]
     backup_set_name = params.get("backup_set_name", "test_cli_set")
 
-    hook = HBaseCLIHook(hbase_conn_id=HBASE_CONN_ID)
+    hook = HBaseCLIHook(
+        hbase_conn_id=HBASE_CONN_ID,
+        java_home="/usr/lib/jvm/java-arenadata-openjdk-8",
+        hbase_home="/usr/lib/hbase",
+    )
     
     command = "backup set list"
     

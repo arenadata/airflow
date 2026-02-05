@@ -75,7 +75,11 @@ def decide_backup_type(**context) -> str:
     Returns:
         Task ID to execute next
     """
-    hook = HBaseCLIHook(hbase_conn_id="hbase_thrift2")
+    hook = HBaseCLIHook(
+        hbase_conn_id="hbase_thrift2",
+        java_home="/usr/lib/jvm/java-arenadata-openjdk-8",
+        hbase_home="/usr/lib/hbase",
+    )
 
     # Get ALL backup history (backup set filter doesn't work properly)
     try:

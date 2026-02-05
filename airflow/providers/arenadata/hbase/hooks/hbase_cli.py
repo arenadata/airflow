@@ -47,10 +47,18 @@ class HBaseCLIHook(BaseHook):
     conn_type = "hbase"
     hook_name = "HBase Administration"
 
-    def __init__(self, hbase_conn_id: str = default_conn_name, hbase_cmd: str = "hbase") -> None:
+    def __init__(
+        self,
+        hbase_conn_id: str = default_conn_name,
+        hbase_cmd: str = "hbase",
+        java_home: str = "/usr/lib/jvm/java-arenadata-openjdk-8",
+        hbase_home: str = "/usr/lib/hbase",
+    ) -> None:
         super().__init__()
         self.hbase_conn_id = hbase_conn_id
         self.hbase_cmd = hbase_cmd
+        self.java_home = java_home
+        self.hbase_home = hbase_home
         self._connection: Connection | None = None
 
     def get_conn(self) -> Connection:
@@ -65,25 +73,17 @@ class HBaseCLIHook(BaseHook):
         :param command: HBase command to execute (e.g., "backup create full /backup -t table1")
         :return: Command output
         """
-        conn = self.get_conn()
+        # Use hbase_home to construct full command path
+        full_command = f"{self.hbase_home}/bin/{self.hbase_cmd} {command}"
 
-        # Get JAVA_HOME from connection extra if provided
-        java_home = None
-        if conn.extra_dejson:
-            java_home = conn.extra_dejson.get('java_home')
-            hbase_home = conn.extra_dejson.get('hbase_home')
-            if hbase_home:
-                self.hbase_cmd = f"{hbase_home}/bin/hbase"
-
-        full_command = f"{self.hbase_cmd} {command}"
-
-        env = None
-        if java_home:
-            import os
-            env = os.environ.copy()
-            env['JAVA_HOME'] = java_home
+        # Set JAVA_HOME environment variable
+        import os
+        env = os.environ.copy()
+        env['JAVA_HOME'] = self.java_home
 
         logger.info(f"Executing HBase command: {self._mask_sensitive(full_command)}")
+        logger.info(f"Using JAVA_HOME: {self.java_home}")
+        logger.info(f"Using HBASE_HOME: {self.hbase_home}")
 
         try:
             result = subprocess.run(
