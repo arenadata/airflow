@@ -31,19 +31,19 @@ class TestHBaseThrift2Client:
         assert client.host == "localhost"
         assert client.port == 9090
         assert client.timeout == 30000
-        assert client.ssl_context is None
+        assert client.ssl_options is None
         assert client.retry_max_attempts == 3
         assert client.retry_delay == 1.0
         assert client.retry_backoff_factor == 2.0
 
     def test_client_initialization_with_custom_params(self):
         """Test client initialization with custom parameters."""
-        ssl_context = MagicMock()
+        ssl_options = {"ca_certs": "/path/to/ca.crt", "validate": True}
         client = HBaseThrift2Client(
             host="hbase.example.com",
             port=9091,
             timeout=60000,
-            ssl_context=ssl_context,
+            ssl_options=ssl_options,
             retry_max_attempts=5,
             retry_delay=2.0,
             retry_backoff_factor=3.0
@@ -52,7 +52,7 @@ class TestHBaseThrift2Client:
         assert client.host == "hbase.example.com"
         assert client.port == 9091
         assert client.timeout == 60000
-        assert client.ssl_context == ssl_context
+        assert client.ssl_options == ssl_options
         assert client.retry_max_attempts == 5
         assert client.retry_delay == 2.0
         assert client.retry_backoff_factor == 3.0

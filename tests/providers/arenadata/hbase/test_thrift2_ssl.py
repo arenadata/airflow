@@ -16,42 +16,114 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import ssl
 from unittest.mock import MagicMock, patch
 
-from airflow.providers.arenadata.hbase.thrift2_ssl import create_ssl_context
+from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
 
 
 class TestThrift2SSL:
-    """Test Thrift2 SSL context creation."""
+    """Test Thrift2 SSL connection."""
 
-    def test_create_ssl_context_verify_modes(self):
-        """Test different SSL verify modes."""
-        config_none = {"ssl_verify_mode": "CERT_NONE"}
-        ssl_context, _ = create_ssl_context(config_none)
-        assert ssl_context.check_hostname is False
-        assert ssl_context.verify_mode == ssl.CERT_NONE
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TSSLSocket.TSSLSocket")
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TTransport.TBufferedTransport")
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TBinaryProtocol.TBinaryProtocol")
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.THBaseService.Client")
+    def test_ssl_connection_with_options(self, mock_client, mock_protocol, mock_transport, mock_ssl_socket):
+        """Test SSL connection is created with ssl_options."""
+        mock_socket = MagicMock()
+        mock_ssl_socket.return_value = mock_socket
+        mock_socket.setTimeout = MagicMock()
         
-        config_optional = {"ssl_verify_mode": "CERT_OPTIONAL"}
-        ssl_context, _ = create_ssl_context(config_optional)
-        assert ssl_context.verify_mode == ssl.CERT_OPTIONAL
+        mock_transport_instance = MagicMock()
+        mock_transport.return_value = mock_transport_instance
         
-        config_required = {"ssl_verify_mode": "CERT_REQUIRED"}
-        ssl_context, _ = create_ssl_context(config_required)
-        assert ssl_context.verify_mode == ssl.CERT_REQUIRED
+        ssl_options = {
+            "ca_certs": "/path/to/ca.crt",
+            "cert_file": "/path/to/client.crt",
+            "key_file": "/path/to/client.key",
+            "validate": True
+        }
+        
+        client = HBaseThrift2Client(
+            host="localhost",
+            port=9090,
+            ssl_options=ssl_options
+        )
+        client.open()
+        
+        # Verify TSSLSocket was created with correct parameters
+        mock_ssl_socket.assert_called_once_with(
+            host="localhost",
+            port=9090,
+            ca_certs="/path/to/ca.crt",
+            cert_file="/path/to/client.crt",
+            key_file="/path/to/client.key",
+            validate=True
+        )
+        
+        # Verify transport was opened
+        mock_transport_instance.open.assert_called_once()
 
-    def test_create_ssl_context_default_verify_mode(self):
-        """Test default SSL verify mode."""
-        config = {}
-        ssl_context, _ = create_ssl_context(config)
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TSocket.TSocket")
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TTransport.TBufferedTransport")
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TBinaryProtocol.TBinaryProtocol")
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.THBaseService.Client")
+    def test_connection_without_ssl(self, mock_client, mock_protocol, mock_transport, mock_socket):
+        """Test regular connection is created without ssl_options."""
+        mock_socket_instance = MagicMock()
+        mock_socket.return_value = mock_socket_instance
+        mock_socket_instance.setTimeout = MagicMock()
         
-        assert ssl_context.verify_mode == ssl.CERT_REQUIRED
+        mock_transport_instance = MagicMock()
+        mock_transport.return_value = mock_transport_instance
+        
+        client = HBaseThrift2Client(
+            host="localhost",
+            port=9090,
+            ssl_options=None
+        )
+        client.open()
+        
+        # Verify regular TSocket was created
+        mock_socket.assert_called_once_with("localhost", 9090)
+        
+        # Verify TSSLSocket was NOT used
+        with patch("airflow.providers.arenadata.hbase.client.thrift2_client.TSSLSocket.TSSLSocket") as mock_ssl:
+            mock_ssl.assert_not_called()
+        
+        # Verify transport was opened
+        mock_transport_instance.open.assert_called_once()
 
-    def test_create_ssl_context_without_secrets(self):
-        """Test SSL context creation without secrets."""
-        config = {"ssl_verify_mode": "CERT_NONE"}
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TSSLSocket.TSSLSocket")
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TTransport.TBufferedTransport")
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TBinaryProtocol.TBinaryProtocol")
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.THBaseService.Client")
+    def test_ssl_with_minimal_options(self, mock_client, mock_protocol, mock_transport, mock_ssl_socket):
+        """Test SSL connection with minimal options (only ca_certs)."""
+        mock_socket = MagicMock()
+        mock_ssl_socket.return_value = mock_socket
+        mock_socket.setTimeout = MagicMock()
         
-        ssl_context, temp_files = create_ssl_context(config)
+        mock_transport_instance = MagicMock()
+        mock_transport.return_value = mock_transport_instance
         
-        assert ssl_context is not None
-        assert len(temp_files) == 0  # No temp files created
+        ssl_options = {
+            "ca_certs": "/path/to/ca.crt"
+        }
+        
+        client = HBaseThrift2Client(
+            host="localhost",
+            port=9090,
+            ssl_options=ssl_options
+        )
+        client.open()
+        
+        # Verify TSSLSocket was created with ca_certs and defaults
+        mock_ssl_socket.assert_called_once_with(
+            host="localhost",
+            port=9090,
+            ca_certs="/path/to/ca.crt",
+            cert_file=None,
+            key_file=None,
+            validate=True  # Default value
+        )

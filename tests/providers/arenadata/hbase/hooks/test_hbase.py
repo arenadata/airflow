@@ -308,25 +308,25 @@ class TestHBaseThriftHookMethods:
 class TestSSLConfiguration:
     """Test SSL/TLS configuration."""
 
-    @patch("airflow.providers.arenadata.hbase.hooks.hbase.create_thrift2_ssl_context")
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.HBaseThrift2Client.open")
     @patch.object(HBaseThriftHook, "get_connection")
-    def test_ssl_enabled(self, mock_get_connection, mock_open, mock_ssl_context):
+    def test_ssl_enabled(self, mock_get_connection, mock_open):
         """Test SSL is enabled when configured."""
         mock_conn = Connection(
             conn_id="hbase_ssl",
             conn_type="hbase",
             host="localhost",
             port=9090,
-            extra='{"use_ssl": true, "ssl_verify_mode": "CERT_REQUIRED"}'
+            extra='{"ssl_options": {"ca_certs": "/path/to/ca.crt", "validate": true}}'
         )
         mock_get_connection.return_value = mock_conn
-        mock_ssl_context.return_value = (MagicMock(), [])
 
         hook = HBaseThriftHook()
-        hook._get_strategy()
+        strategy = hook._get_strategy()
         
-        mock_ssl_context.assert_called_once()
+        # Verify client was created with SSL options
+        assert strategy.client.ssl_options is not None
+        assert strategy.client.ssl_options["ca_certs"] == "/path/to/ca.crt"
 
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.HBaseThrift2Client.open")
     @patch.object(HBaseThriftHook, "get_connection")
@@ -344,7 +344,7 @@ class TestSSLConfiguration:
         strategy = hook._get_strategy()
         
         # Verify client was created without SSL
-        assert strategy.client.ssl_context is None
+        assert strategy.client.ssl_options is None
 
 
 class TestPoolConfiguration:
