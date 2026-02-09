@@ -20,12 +20,11 @@
 from __future__ import annotations
 
 import logging
-import ssl
 import time
 from typing import Any
 
 from thrift.protocol import TBinaryProtocol
-from thrift.transport import TSocket, TTransport
+from thrift.transport import TSocket, TTransport, TSSLSocket
 
 from airflow.providers.arenadata.hbase.hbase_thrift2_generated import THBaseService, ttypes
 
@@ -36,7 +35,7 @@ class HBaseThrift2Client:
     """Lightweight HBase Thrift2 client."""
 
     def __init__(self, host: str, port: int = 9090, timeout: int = 30000, 
-                 ssl_context: ssl.SSLContext | None = None,
+                 ssl_options: dict[str, Any] | None = None,
                  retry_max_attempts: int = 3,
                  retry_delay: float = 1.0,
                  retry_backoff_factor: float = 2.0):
@@ -46,7 +45,7 @@ class HBaseThrift2Client:
             host: HBase Thrift2 server host
             port: HBase Thrift2 server port (default 9090 for Arenadata/Apache HBase)
             timeout: Connection timeout in milliseconds
-            ssl_context: SSL context for secure connections (optional)
+            ssl_options: SSL options dict with keys: ca_certs, cert_file, key_file, validate (optional)
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
@@ -54,11 +53,13 @@ class HBaseThrift2Client:
         self.host = host
         self.port = port
         self.timeout = timeout
-        self.ssl_context = ssl_context
+        self.ssl_options = ssl_options
         self.retry_max_attempts = retry_max_attempts
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
         self._client = None
+        
+        logger.debug("HBaseThrift2Client initialized with ssl_options: %s", ssl_options)
 
     def __enter__(self):
         self.open()
@@ -73,20 +74,31 @@ class HBaseThrift2Client:
         
         for attempt in range(self.retry_max_attempts):
             try:
-                # Create socket
-                socket = TSocket.TSocket(self.host, self.port)
+                # Create socket (SSL or regular)
+                if self.ssl_options:
+                    import ssl as ssl_module
+                    # Map our options to TSSLSocket parameters
+                    ssl_params = {
+                        'host': self.host,
+                        'port': self.port,
+                    }
+                    if 'ca_certs' in self.ssl_options:
+                        ssl_params['ca_certs'] = self.ssl_options['ca_certs']
+                    if 'cert_file' in self.ssl_options:
+                        ssl_params['certfile'] = self.ssl_options['cert_file']
+                    if 'key_file' in self.ssl_options:
+                        ssl_params['keyfile'] = self.ssl_options['key_file']
+                    if 'validate' in self.ssl_options:
+                        # Map validate to cert_reqs
+                        ssl_params['cert_reqs'] = ssl_module.CERT_REQUIRED if self.ssl_options['validate'] else ssl_module.CERT_NONE
+                    
+                    socket = TSSLSocket.TSSLSocket(**ssl_params)
+                else:
+                    socket = TSocket.TSocket(self.host, self.port)
+                
                 socket.setTimeout(self.timeout)
                 
-                # Create transport (buffered or SSL)
-                if self.ssl_context:
-                    # Wrap socket with SSL
-                    import ssl as ssl_module
-                    ssl_socket = self.ssl_context.wrap_socket(
-                        socket.handle,
-                        server_hostname=self.host
-                    )
-                    socket.handle = ssl_socket
-                
+                # Create transport
                 self._transport = TTransport.TBufferedTransport(socket)
                 
                 # Create protocol
@@ -98,7 +110,8 @@ class HBaseThrift2Client:
                 # Open transport
                 self._transport.open()
                 
-                logger.info("Successfully connected to HBase Thrift2 at %s:%s", self.host, self.port)
+                logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s)", 
+                           self.host, self.port, bool(self.ssl_options) if self.ssl_options else False)
                 return
                 
             except (ConnectionError, TimeoutError, OSError, Exception) as e:

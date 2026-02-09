@@ -26,7 +26,6 @@ from airflow.hooks.base import BaseHook
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
 from airflow.providers.arenadata.hbase.hooks.hbase_strategy import HBaseStrategy, Thrift2Strategy, PooledThrift2Strategy
 from airflow.providers.arenadata.hbase.thrift2_pool import get_or_create_thrift2_pool
-from airflow.providers.arenadata.hbase.thrift2_ssl import create_ssl_context as create_thrift2_ssl_context
 
 
 class HBaseThriftHook(BaseHook):
@@ -50,7 +49,6 @@ class HBaseThriftHook(BaseHook):
         super().__init__()
         self.hbase_conn_id = hbase_conn_id
         self._strategy = None
-        self._temp_cert_files: list[str] = []
 
     def _get_strategy(self) -> HBaseStrategy:
         """Get Thrift2 strategy (single or pooled)."""
@@ -63,12 +61,24 @@ class HBaseThriftHook(BaseHook):
             # Get retry configuration
             retry_config = self._get_retry_config(conn.extra_dejson or {})
 
-            # Setup SSL if configured
-            ssl_context = None
-            if conn.extra_dejson and conn.extra_dejson.get("use_ssl", False):
-                ssl_context, temp_files = create_thrift2_ssl_context(conn.extra_dejson)
-                self._temp_cert_files.extend(temp_files)
-                self.log.info("SSL/TLS enabled for Thrift2 connection")
+            # Get SSL options if configured
+            ssl_options = None
+            if conn.extra_dejson:
+                # Support two formats:
+                # 1. Nested: {"ssl_options": {"ca_certs": "...", ...}}
+                # 2. Flat: {"ca_certs": "...", "cert_file": "...", ...}
+                if "ssl_options" in conn.extra_dejson:
+                    ssl_options = conn.extra_dejson["ssl_options"]
+                elif any(key in conn.extra_dejson for key in ["ca_certs", "cert_file", "key_file"]):
+                    # Build ssl_options from flat structure
+                    ssl_options = {}
+                    for key in ["ca_certs", "cert_file", "key_file", "validate"]:
+                        if key in conn.extra_dejson:
+                            ssl_options[key] = conn.extra_dejson[key]
+            
+            if ssl_options:
+                self.log.info("SSL/TLS enabled for Thrift2 connection with options: %s", 
+                             {k: v for k, v in ssl_options.items() if k != 'key_file'})
 
             pool_config = self._get_pool_config(conn.extra_dejson or {})
 
@@ -81,7 +91,7 @@ class HBaseThriftHook(BaseHook):
                     host,
                     port,
                     timeout,
-                    ssl_context,
+                    ssl_options,
                     **retry_config
                 )
                 self._strategy = PooledThrift2Strategy(pool, self.log)
@@ -91,7 +101,7 @@ class HBaseThriftHook(BaseHook):
                     host=host,
                     port=port,
                     timeout=timeout,
-                    ssl_context=ssl_context,
+                    ssl_options=ssl_options,
                     **retry_config
                 )
                 client.open()
@@ -199,11 +209,12 @@ class HBaseThriftHook(BaseHook):
                 "host": "localhost",
                 "port": "9090",
                 "extra": '''{
-  "use_ssl": false,
-  "ssl_verify_mode": "CERT_REQUIRED",
-  "ssl_ca_secret": "hbase/ca-cert",
-  "ssl_cert_secret": "hbase/client-cert",
-  "ssl_key_secret": "hbase/client-key",
+  "ssl_options": {
+    "ca_certs": "/path/to/ca.crt",
+    "cert_file": "/path/to/client.crt",
+    "key_file": "/path/to/client.key",
+    "validate": true
+  },
   "timeout": 30000,
   "retry_max_attempts": 3,
   "retry_delay": 1.0,
@@ -218,21 +229,9 @@ class HBaseThriftHook(BaseHook):
         }
 
     def close(self) -> None:
-        """Close HBase connection and cleanup temporary files."""
+        """Close HBase connection."""
         if self._strategy:
             # Don't close pooled strategies - they manage their own lifecycle
             if not isinstance(self._strategy, PooledThrift2Strategy):
                 if hasattr(self._strategy, 'client') and self._strategy.client:
                     self._strategy.client.close()
-        self._cleanup_temp_files()
-
-    def _cleanup_temp_files(self) -> None:
-        """Clean up temporary certificate files."""
-        for temp_file in self._temp_cert_files:
-            try:
-                if os.path.exists(temp_file):
-                    os.unlink(temp_file)
-                    self.log.debug("Cleaned up temporary file: %s", temp_file)
-            except Exception as e:
-                self.log.warning("Failed to cleanup temporary file %s: %s", temp_file, e)
-        self._temp_cert_files.clear()

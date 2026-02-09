@@ -55,8 +55,8 @@ class TestThrift2ConnectionPool:
 
     @patch("airflow.providers.arenadata.hbase.thrift2_pool.HBaseThrift2Client")
     def test_pool_with_ssl(self, mock_client_class):
-        """Test pool with SSL context."""
-        ssl_context = MagicMock()
+        """Test pool with SSL options."""
+        ssl_options = {"ca_certs": "/path/to/ca.crt", "validate": True}
         mock_client = MagicMock()
         mock_client._client = MagicMock()
         mock_client_class.return_value = mock_client
@@ -65,16 +65,16 @@ class TestThrift2ConnectionPool:
             size=2,
             host="localhost",
             port=9090,
-            ssl_context=ssl_context
+            ssl_options=ssl_options
         )
         
         with pool.connection():
-            # Verify SSL context was passed to client
+            # Verify SSL options were passed to client
             mock_client_class.assert_called_with(
                 host="localhost",
                 port=9090,
                 timeout=30000,
-                ssl_context=ssl_context,
+                ssl_options=ssl_options,
                 retry_max_attempts=3,
                 retry_delay=1.0,
                 retry_backoff_factor=2.0
@@ -102,7 +102,7 @@ class TestThrift2ConnectionPool:
                 host="localhost",
                 port=9090,
                 timeout=30000,
-                ssl_context=None,
+                ssl_options=None,
                 retry_max_attempts=5,
                 retry_delay=2.0,
                 retry_backoff_factor=3.0
