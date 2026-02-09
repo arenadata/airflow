@@ -98,21 +98,34 @@ class HBaseThrift2Client:
                 
                 socket.setTimeout(self.timeout)
                 
-                # Create transport
-                self._transport = TTransport.TBufferedTransport(socket)
-                
-                # Create protocol
-                protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
-                
-                # Create client
-                self._client = THBaseService.Client(protocol)
-                
-                # Open transport
-                self._transport.open()
-                
-                logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s)", 
-                           self.host, self.port, bool(self.ssl_options) if self.ssl_options else False)
-                return
+                # Try TBufferedTransport first, then TFramedTransport
+                for transport_type in ['buffered', 'framed']:
+                    try:
+                        if transport_type == 'buffered':
+                            self._transport = TTransport.TBufferedTransport(socket)
+                        else:
+                            self._transport = TTransport.TFramedTransport(socket)
+                        
+                        protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
+                        self._client = THBaseService.Client(protocol)
+                        self._transport.open()
+                        
+                        # Test connection with a simple operation
+                        self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
+                        
+                        logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)", 
+                                   self.host, self.port, bool(self.ssl_options) if self.ssl_options else False, transport_type)
+                        return
+                    except Exception as transport_error:
+                        logger.debug("Transport %s failed: %s", transport_type, transport_error)
+                        if hasattr(self, '_transport') and self._transport:
+                            try:
+                                self._transport.close()
+                            except:
+                                pass
+                        if transport_type == 'framed':
+                            # Both transports failed, raise the last error
+                            raise transport_error
                 
             except (ConnectionError, TimeoutError, OSError, Exception) as e:
                 last_exception = e
