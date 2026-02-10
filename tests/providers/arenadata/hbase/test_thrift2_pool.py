@@ -75,6 +75,8 @@ class TestThrift2ConnectionPool:
                 port=9090,
                 timeout=30000,
                 ssl_options=ssl_options,
+                auth_method=None,
+                kerberos_service_name="hbase",
                 retry_max_attempts=3,
                 retry_delay=1.0,
                 retry_backoff_factor=2.0
@@ -103,6 +105,8 @@ class TestThrift2ConnectionPool:
                 port=9090,
                 timeout=30000,
                 ssl_options=None,
+                auth_method=None,
+                kerberos_service_name="hbase",
                 retry_max_attempts=5,
                 retry_delay=2.0,
                 retry_backoff_factor=3.0

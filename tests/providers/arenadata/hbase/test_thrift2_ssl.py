@@ -51,14 +51,15 @@ class TestThrift2SSL:
         )
         client.open()
         
-        # Verify TSSLSocket was created with correct parameters
+        # Verify TSSLSocket was created with correct parameters (mapped to TSSLSocket names)
+        import ssl as ssl_module
         mock_ssl_socket.assert_called_once_with(
             host="localhost",
             port=9090,
             ca_certs="/path/to/ca.crt",
-            cert_file="/path/to/client.crt",
-            key_file="/path/to/client.key",
-            validate=True
+            certfile="/path/to/client.crt",
+            keyfile="/path/to/client.key",
+            cert_reqs=ssl_module.CERT_REQUIRED
         )
         
         # Verify transport was opened
@@ -118,12 +119,9 @@ class TestThrift2SSL:
         )
         client.open()
         
-        # Verify TSSLSocket was created with ca_certs and defaults
+        # Verify TSSLSocket was created with ca_certs only
         mock_ssl_socket.assert_called_once_with(
             host="localhost",
             port=9090,
-            ca_certs="/path/to/ca.crt",
-            cert_file=None,
-            key_file=None,
-            validate=True  # Default value
+            ca_certs="/path/to/ca.crt"
         )
