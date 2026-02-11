@@ -34,6 +34,7 @@ class Thrift2ConnectionPool:
                  ssl_options: dict[str, Any] | None = None, 
                  auth_method: str | None = None,
                  kerberos_service_name: str = 'hbase',
+                 kerberos_principal: str | None = None,
                  retry_max_attempts: int = 3, 
                  retry_delay: float = 1.0, 
                  retry_backoff_factor: float = 2.0):
@@ -47,6 +48,7 @@ class Thrift2ConnectionPool:
             ssl_options: SSL options dict (optional)
             auth_method: Authentication method ('GSSAPI' for Kerberos, None for no auth)
             kerberos_service_name: Kerberos service name (default 'hbase')
+            kerberos_principal: Kerberos principal username (e.g. 'airflow@REALM')
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
@@ -58,6 +60,7 @@ class Thrift2ConnectionPool:
         self.ssl_options = ssl_options
         self.auth_method = auth_method
         self.kerberos_service_name = kerberos_service_name
+        self.kerberos_principal = kerberos_principal
         self.retry_max_attempts = retry_max_attempts
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
@@ -74,6 +77,7 @@ class Thrift2ConnectionPool:
             ssl_options=self.ssl_options,
             auth_method=self.auth_method,
             kerberos_service_name=self.kerberos_service_name,
+            kerberos_principal=self.kerberos_principal,
             retry_max_attempts=self.retry_max_attempts,
             retry_delay=self.retry_delay,
             retry_backoff_factor=self.retry_backoff_factor
@@ -173,6 +177,7 @@ def get_or_create_thrift2_pool(
     ssl_options: dict[str, Any] | None = None,
     auth_method: str | None = None,
     kerberos_service_name: str = 'hbase',
+    kerberos_principal: str | None = None,
     retry_max_attempts: int = 3,
     retry_delay: float = 1.0,
     retry_backoff_factor: float = 2.0
@@ -188,6 +193,7 @@ def get_or_create_thrift2_pool(
         ssl_options: SSL options dict (optional)
         auth_method: Authentication method ('GSSAPI' for Kerberos, None for no auth)
         kerberos_service_name: Kerberos service name (default 'hbase')
+        kerberos_principal: Kerberos principal username (e.g. 'airflow@REALM')
         retry_max_attempts: Maximum number of connection attempts
         retry_delay: Initial delay between retry attempts in seconds
         retry_backoff_factor: Multiplier for delay after each failed attempt
@@ -205,6 +211,7 @@ def get_or_create_thrift2_pool(
                 ssl_options=ssl_options,
                 auth_method=auth_method,
                 kerberos_service_name=kerberos_service_name,
+                kerberos_principal=kerberos_principal,
                 retry_max_attempts=retry_max_attempts,
                 retry_delay=retry_delay,
                 retry_backoff_factor=retry_backoff_factor
