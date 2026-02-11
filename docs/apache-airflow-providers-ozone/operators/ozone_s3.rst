@@ -18,8 +18,8 @@
 S3 Gateway operators
 ====================
 
-S3 Gateway operators interact with Ozone via the S3-compatible API.
-They use the **Amazon provider** under the hood and an **AWS connection** (for example ``ozone_s3_default``).
+S3 Gateway operators interact with Ozone via the S3-compatible API, using the provider's own
+``OzoneS3Hook`` (boto3-based) and an ``ozone_s3`` connection (for example ``ozone_s3_default``).
 
 Operators
 ---------
@@ -30,7 +30,7 @@ Operators
 Connection notes
 ----------------
 
-Configure the AWS connection Extra with:
+Configure the ``ozone_s3`` connection Extra with:
 
 * ``endpoint_url``: e.g. ``http://s3g:9878`` or ``https://s3g:9879``
 * ``verify``: ``false`` (development only) or a path to a CA bundle

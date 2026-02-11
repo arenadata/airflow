@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 
+from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.hooks.ozone import (  # Import the base hook
     OzoneCliTransientError,
     OzoneHook,
@@ -64,12 +65,14 @@ class OzoneFsHook(OzoneHook):  # Inherit from OzoneHook
             remote_path,
         )
 
-        # Check local file before upload
-        if os.path.exists(local_path):
-            file_size = os.path.getsize(local_path)
-            self.log.debug("Local file exists, size: %d bytes", file_size)
-        else:
-            self.log.warning("Local file does not exist: %s", local_path)
+        # Fail fast if the local file does not exist, instead of relying on the CLI
+        # to raise a less clear error.
+        if not os.path.exists(local_path):
+            self.log.error("Local file does not exist: %s", local_path)
+            raise AirflowException(f"Local file does not exist: {local_path}")
+
+        file_size = os.path.getsize(local_path)
+        self.log.debug("Local file exists, size: %d bytes", file_size)
 
         cmd = ["ozone", "fs", "-put", "-f", local_path, remote_path]
         self.run_cli(cmd)

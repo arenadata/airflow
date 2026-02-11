@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -57,7 +58,7 @@ from airflow.providers.arenadata.ozone.transfers.ozone_to_hive import OzoneToHiv
 from airflow.utils.task_group import TaskGroup
 
 with DAG(
-    dag_id="ozone_data_lifecycle",
+    dag_id="example_ozone_data_lifecycle",
     start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,

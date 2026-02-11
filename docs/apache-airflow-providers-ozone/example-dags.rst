@@ -18,23 +18,24 @@
 Example DAGs
 ============
 
-The provider ships example DAGs in the Airflow source tree:
+The provider ships example DAGs in the Airflow source tree (all Ozone examples follow
+the ``example_ozone_*`` naming convention):
 
-* ``airflow/providers/arenadata/ozone/example_dags/ozone_usage_example.py``
-* ``airflow/providers/arenadata/ozone/example_dags/ozone_usage_ssl_example.py``
-* ``airflow/providers/arenadata/ozone/example_dags/ozone_usage_ssl_kerberos_example.py``
-* ``airflow/providers/arenadata/ozone/example_dags/ozone_data_pipeline.py``
-* ``airflow/providers/arenadata/ozone/example_dags/ozone_multi_tenant_management.py``
-* ``airflow/providers/arenadata/ozone/example_dags/ozone_cross_region_replication.py``
-* ``airflow/providers/arenadata/ozone/example_dags/ozone_data_lifecycle.py``
+* ``airflow/providers/arenadata/ozone/example_dags/example_ozone_usage.py``
+* ``airflow/providers/arenadata/ozone/example_dags/example_ozone_usage_ssl.py``
+* ``airflow/providers/arenadata/ozone/example_dags/example_ozone_usage_ssl_kerberos.py``
+* ``airflow/providers/arenadata/ozone/example_dags/example_ozone_data_pipeline.py``
+* ``airflow/providers/arenadata/ozone/example_dags/example_ozone_multi_tenant_management.py``
+* ``airflow/providers/arenadata/ozone/example_dags/example_ozone_cross_region_replication.py``
+* ``airflow/providers/arenadata/ozone/example_dags/example_ozone_data_lifecycle.py``
 
 What they demonstrate
 ---------------------
 
-* ``ozone_usage_example``: basic native + S3 operations and sensors.
-* ``ozone_usage_ssl_example``: native + S3 operations with SSL/TLS.
-* ``ozone_usage_ssl_kerberos_example``: native operations with SSL/TLS + Kerberos.
-* ``ozone_data_pipeline``: simple ETL with trigger sensor + quota + DistCp migration.
-* ``ozone_multi_tenant_management``: provisioning a project volume/buckets + quotas + directory layout.
-* ``ozone_cross_region_replication``: distcp-style replication between clusters.
-* ``ozone_data_lifecycle``: end-to-end lifecycle (list → process → archive → hive partition → snapshot → cleanup).
+* ``example_ozone_usage``: basic native + S3 operations and sensors.
+* ``example_ozone_usage_ssl``: native + S3 operations with SSL/TLS.
+* ``example_ozone_usage_ssl_kerberos``: native operations with SSL/TLS + Kerberos.
+* ``example_ozone_data_pipeline``: simple ETL with trigger sensor + quota + DistCp migration.
+* ``example_ozone_multi_tenant_management``: provisioning a project volume/buckets + quotas + directory layout.
+* ``example_ozone_cross_region_replication``: distcp-style replication between clusters.
+* ``example_ozone_data_lifecycle``: end-to-end lifecycle (list → process → archive → hive partition → snapshot → cleanup).

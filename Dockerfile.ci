@@ -1440,14 +1440,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
     && npm install -g yarn@1.22.19 \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
-# Ozone CLI for Native CLI provider (volume/bucket/fs). Placed high so this layer is cacheable when only sources change.
-ARG OZONE_VERSION=2.1.0
-RUN apt-get update && apt-get install -y --no-install-recommends default-jre-headless curl \
-    && curl -sL "https://dlcdn.apache.org/ozone/${OZONE_VERSION}/ozone-${OZONE_VERSION}.tar.gz" | tar xz -C /opt \
-    && mv "/opt/ozone-${OZONE_VERSION}" /opt/ozone \
-    && apt-get purge -y curl && apt-get autoremove -y --purge \
-    && rm -rf /var/lib/apt/lists/*
-
 # We can copy everything here. The Context is filtered by dockerignore. This makes sure we are not
 # copying over stuff that is accidentally generated or that we do not need (such as egg-info)
 # if you want to add something that is missing and you expect to see it in the image you can
@@ -1467,8 +1459,7 @@ ARG BUILD_ID
 ARG COMMIT_SHA
 ARG AIRFLOW_IMAGE_DATE_CREATED
 
-ENV PATH="/opt/ozone/bin:/files/bin/:/opt/airflow/scripts/in_container/bin/:${PATH}" \
-    JAVA_HOME="/usr/lib/jvm/default-java" \
+ENV PATH="/files/bin/:/opt/airflow/scripts/in_container/bin/:${PATH}" \
     GUNICORN_CMD_ARGS="--worker-tmp-dir /dev/shm/" \
     BUILD_ID=${BUILD_ID} \
     COMMIT_SHA=${COMMIT_SHA}

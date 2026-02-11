@@ -43,9 +43,10 @@ class OzoneCreateVolumeOperator(BaseOperator):
             raise ValueError("quota parameter cannot be an empty string (use None for unlimited)")
         if not ozone_conn_id or not ozone_conn_id.strip():
             raise ValueError("ozone_conn_id parameter cannot be empty")
-        self.volume_name = volume_name.strip()
+        # Template fields must be assigned directly from __init__ args
+        self.volume_name = volume_name
         self.quota = quota.strip() if quota and isinstance(quota, str) else quota
-        self.ozone_conn_id = ozone_conn_id.strip()
+        self.ozone_conn_id = ozone_conn_id
 
         self.log.debug(
             "Initializing OzoneCreateVolumeOperator - volume: %s, quota: %s, connection: %s",
@@ -90,10 +91,11 @@ class OzoneCreateBucketOperator(BaseOperator):
             raise ValueError("quota parameter cannot be an empty string (use None for unlimited)")
         if not ozone_conn_id or not ozone_conn_id.strip():
             raise ValueError("ozone_conn_id parameter cannot be empty")
-        self.volume_name = volume_name.strip()
-        self.bucket_name = bucket_name.strip()
+        # Template fields must be assigned directly from __init__ args
+        self.volume_name = volume_name
+        self.bucket_name = bucket_name
         self.quota = quota.strip() if quota and isinstance(quota, str) else quota
-        self.ozone_conn_id = ozone_conn_id.strip()
+        self.ozone_conn_id = ozone_conn_id
 
         self.log.debug(
             "Initializing OzoneCreateBucketOperator - volume: %s, bucket: %s, quota: %s, connection: %s",
@@ -141,10 +143,11 @@ class OzoneSetQuotaOperator(BaseOperator):
             raise ValueError("bucket parameter cannot be an empty string (use None for volume quota)")
         if not ozone_conn_id or not ozone_conn_id.strip():
             raise ValueError("ozone_conn_id parameter cannot be empty")
-        self.volume = volume.strip()
+        # Template fields must be assigned directly from __init__ args
+        self.volume = volume
         self.bucket = bucket.strip() if bucket and isinstance(bucket, str) else bucket
         self.quota = quota.strip()
-        self.ozone_conn_id = ozone_conn_id.strip()
+        self.ozone_conn_id = ozone_conn_id
 
         target_type = "bucket" if self.bucket else "volume"
         target_name = f"{self.volume}/{self.bucket}" if self.bucket else self.volume
@@ -189,10 +192,11 @@ class OzoneDeleteVolumeOperator(BaseOperator):
             raise ValueError("ozone_conn_id parameter cannot be empty")
         if force and not recursive:
             raise ValueError("force=True requires recursive=True")
-        self.volume_name = volume_name.strip()
+        # Template fields must be assigned directly from __init__ args
+        self.volume_name = volume_name
         self.recursive = recursive
         self.force = force
-        self.ozone_conn_id = ozone_conn_id.strip()
+        self.ozone_conn_id = ozone_conn_id
 
         self.log.debug(
             "Initializing OzoneDeleteVolumeOperator - volume: %s, recursive: %s, force: %s, connection: %s",
@@ -235,11 +239,12 @@ class OzoneDeleteBucketOperator(BaseOperator):
             raise ValueError("ozone_conn_id parameter cannot be empty")
         if force and not recursive:
             raise ValueError("force=True requires recursive=True")
-        self.volume_name = volume_name.strip()
-        self.bucket_name = bucket_name.strip()
+        # Template fields must be assigned directly from __init__ args
+        self.volume_name = volume_name
+        self.bucket_name = bucket_name
         self.recursive = recursive
         self.force = force
-        self.ozone_conn_id = ozone_conn_id.strip()
+        self.ozone_conn_id = ozone_conn_id
 
         self.log.debug(
             "Initializing OzoneDeleteBucketOperator - volume: %s, bucket: %s, recursive: %s, force: %s, connection: %s",

@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+from airflow.configuration import conf
 from airflow.providers.arenadata.ozone.hooks.ozone import OzoneCliTransientError
 from airflow.providers.arenadata.ozone.hooks.ozone_fs import OzoneFsHook
 from airflow.sensors.base import BaseSensorOperator
@@ -30,9 +31,15 @@ class OzoneKeySensor(BaseSensorOperator):
     Uses OzoneFsHook; transient CLI errors are treated as "not yet" and trigger retry.
     """
 
-    template_fields = ("path",)
+    template_fields = ("path", "ozone_conn_id")
 
-    def __init__(self, path: str, ozone_conn_id: str = OzoneFsHook.default_conn_name, **kwargs):
+    def __init__(
+        self,
+        path: str,
+        ozone_conn_id: str = OzoneFsHook.default_conn_name,
+        deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         if not path or not path.strip():
             raise ValueError("path parameter cannot be empty")
@@ -40,6 +47,7 @@ class OzoneKeySensor(BaseSensorOperator):
             raise ValueError("ozone_conn_id parameter cannot be empty")
         self.path = path.strip()
         self.ozone_conn_id = ozone_conn_id.strip()
+        self.deferrable = deferrable
         self.log.debug("OzoneKeySensor initialized (path=%s, conn_id=%s)", self.path, self.ozone_conn_id)
 
     def poke(self, context):

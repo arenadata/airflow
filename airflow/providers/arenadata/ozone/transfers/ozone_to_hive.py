@@ -26,7 +26,7 @@ from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_afte
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
-from airflow.providers.arenadata.ozone.utils.ozone_utils import (
+from airflow.providers.arenadata.ozone.utils.security import (
     apply_ssl_env_vars,
     get_ssl_env_vars,
 )
@@ -168,7 +168,8 @@ class OzoneToHiveOperator(BaseOperator):
         super().__init__(**kwargs)
         self.ozone_path = ozone_path
         self.table_name = table_name
-        self.partition_spec = partition_spec
+        # Allow partition_spec to be provided later and validate in execute()
+        self.partition_spec = partition_spec or {}
         self.hive_cli_conn_id = hive_cli_conn_id
         self._hive_ssl_env = None
         self._load_hive_ssl_config()
@@ -234,10 +235,19 @@ class OzoneToHiveOperator(BaseOperator):
             self.log.error("Partition specification is required but not provided")
             raise ValueError("Parameter 'partition_spec' is required for partitioning.")
 
-        partition_clause = ", ".join([f"{k}='{v}'" for k, v in self.partition_spec.items()])
+        def _escape_hive_string(value: str) -> str:
+            # Basic escaping for Hive string literals: escape backslashes and single quotes.
+            # This mirrors the common pattern in other providers where user input is interpolated
+            # into SQL strings.
+            return value.replace("\\", "\\\\").replace("'", "''")
+
+        partition_clause = ", ".join(
+            [f"{k}='{_escape_hive_string(str(v))}'" for k, v in self.partition_spec.items()]
+        )
+        escaped_location = _escape_hive_string(str(self.ozone_path))
         hql = (
             f"ALTER TABLE {self.table_name} ADD IF NOT EXISTS PARTITION ({partition_clause}) "
-            f"LOCATION '{self.ozone_path}';"
+            f"LOCATION '{escaped_location}';"
         )
 
         self.log.info("Executing HQL to register partition")

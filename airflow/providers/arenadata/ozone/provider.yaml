@@ -24,7 +24,7 @@ description: |
   Provider package for interacting with Apache Ozone via:
 
   - Native CLI (``ozone``) for ``ofs://`` / ``o3fs://`` paths
-  - S3 Gateway (S3-compatible API) via the Amazon provider
+  - S3 Gateway (S3-compatible API) via a boto3-based hook
 
 state: ready
 source-date-epoch: 1769773234
@@ -34,7 +34,7 @@ versions:
 
 dependencies:
   - apache-airflow>=2.10.3
-  - apache-airflow-providers-amazon>=8.27.0
+  - boto3>=1.35.0
 
 integrations:
   - integration-name: Apache Ozone
@@ -80,3 +80,5 @@ transfers:
 connection-types:
   - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone.OzoneHook
     connection-type: ozone
+  - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone_s3.OzoneS3Hook
+    connection-type: ozone_s3

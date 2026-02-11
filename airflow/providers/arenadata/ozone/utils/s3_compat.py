@@ -17,21 +17,32 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from botocore.exceptions import ClientError
 
 
+class S3ErrorCode(str, Enum):
+    """Known S3 error codes used by the Ozone provider."""
+
+    NO_SUCH_BUCKET = "NoSuchBucket"
+    NO_SUCH_KEY = "NoSuchKey"
+    ACCESS_DENIED = "AccessDenied"
+    BUCKET_ALREADY_EXISTS = "BucketAlreadyExists"
+    BUCKET_ALREADY_OWNED_BY_YOU = "BucketAlreadyOwnedByYou"
+
+
 def map_s3_error_to_ozone(error: ClientError) -> str:
     """Translate a boto3 ClientError into an Ozone-specific, readable message."""
     error_code = error.response.get("Error", {}).get("Code", "Unknown")
 
-    if error_code == "NoSuchBucket":
+    if error_code == S3ErrorCode.NO_SUCH_BUCKET:
         return "Ozone S3 Gateway Error: The specified bucket does not exist."
-    if error_code == "NoSuchKey":
+    if error_code == S3ErrorCode.NO_SUCH_KEY:
         return "Ozone S3 Gateway Error: The specified key does not exist."
-    if error_code == "AccessDenied":
+    if error_code == S3ErrorCode.ACCESS_DENIED:
         return "Ozone S3 Gateway Error: Access Denied. Check Ozone ACLs or Ranger policies."
 
     return f"Ozone S3 Gateway reported an unhandled error: {error_code}"

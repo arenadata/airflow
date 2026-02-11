@@ -18,12 +18,13 @@
 S3 Gateway usage
 ================
 
-S3 Gateway functionality in this provider uses the **Amazon provider** and AWS connections.
+S3 Gateway functionality in this provider uses its own internal S3-compatible client based on ``boto3``
+and the ``ozone_s3`` connection type. It does **not** depend on the Amazon S3 hook/provider.
 
 Connection
 ----------
 
-Create an AWS connection (for example ``ozone_s3_default``) and set:
+Create an ``ozone_s3`` connection (for example ``ozone_s3_default``) and set:
 
 * Extra ``endpoint_url`` (S3 Gateway URL), for example ``http://s3g:9878`` or ``https://s3g:9879``
 * Extra ``verify`` (optional): ``false`` (development only) or a CA bundle path

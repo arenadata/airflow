@@ -26,16 +26,30 @@ Operators
 * ``airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneFsMkdirOperator`` (mkdir -p)
 * ``airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneFsPutOperator`` (write string to a file)
 * ``airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneDeleteKeyOperator`` (delete a key/path; supports wildcards)
-* ``airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneListOperator`` (list paths; returns list via XCom)
+* ``airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneListOperator`` (list paths; returns list via XCom; supports wildcards)
 
 Notes
 -----
 
-Wildcard delete
-^^^^^^^^^^^^^^^
+Wildcard patterns
+^^^^^^^^^^^^^^^^^^
 
-``OzoneDeleteKeyOperator`` supports wildcard patterns like ``ofs://om/vol/bucket/path/*``.
-If nothing matches, the operator succeeds (idempotent cleanup).
+Both ``OzoneDeleteKeyOperator`` and ``OzoneListOperator`` support wildcard patterns in the **last path segment**:
+
+* ``ofs://om/landing/raw/*.csv`` - matches all CSV files
+* ``ofs://vol1/bucket1/data/file_??.parquet`` - matches files with two characters (e.g., ``file_01.parquet``, ``file_ab.parquet``)
+* ``ofs://vol1/bucket1/data/[ab]*.txt`` - matches files starting with 'a' or 'b' (e.g., ``a_data.txt``, ``b_report.txt``)
+
+**Limitations:**
+
+* Wildcard patterns are only supported in the last path segment (filename part).
+* Patterns in the middle of the path (e.g., ``ofs://vol1/bucket1/*/part-*.parquet``) are **not supported**.
+* For such cases, you would need recursive glob traversal, which is not implemented.
+
+**Behavior:**
+
+* ``OzoneDeleteKeyOperator``: Deletes only files matching the pattern. If nothing matches, the operator succeeds (idempotent cleanup). If listing the parent directory fails, falls back to CLI delete with the pattern.
+* ``OzoneListOperator``: Returns only paths matching the pattern. If listing the parent directory fails, falls back to direct listing of the pattern path.
 
 Example
 -------
@@ -65,6 +79,11 @@ Example
        list_files = OzoneListOperator(
            task_id="list_files",
            path="ofs://om/landing/raw/data_dir",
+       )
+
+       list_csv_files = OzoneListOperator(
+           task_id="list_csv_files",
+           path="ofs://om/landing/raw/data_dir/*.csv",
        )
 
        cleanup = OzoneDeleteKeyOperator(

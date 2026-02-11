@@ -17,12 +17,19 @@
 
 from __future__ import annotations
 
+import fnmatch
 import os
+import posixpath
 from typing import TYPE_CHECKING
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.hooks.ozone_fs import OzoneFsHook
+from airflow.providers.arenadata.ozone.utils.ozone_path import (
+    build_ozone_uri,
+    contains_wildcards,
+    parse_ozone_uri,
+)
 
 if TYPE_CHECKING:
     from airflow.utils.context import Context
@@ -35,7 +42,7 @@ class LocalFilesystemToOzoneOperator(BaseOperator):
     Wraps 'ozone fs -put'.
     """
 
-    template_fields = ("local_path", "remote_path")
+    template_fields = ("local_path", "remote_path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -46,15 +53,10 @@ class LocalFilesystemToOzoneOperator(BaseOperator):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        if not local_path or not local_path.strip():
-            raise ValueError("local_path parameter cannot be empty")
-        if not remote_path or not remote_path.strip():
-            raise ValueError("remote_path parameter cannot be empty")
-        if not ozone_conn_id or not ozone_conn_id.strip():
-            raise ValueError("ozone_conn_id parameter cannot be empty")
+        # Template fields must be assigned directly from __init__ args
         self.local_path = local_path
         self.remote_path = remote_path
-        self.ozone_conn_id = ozone_conn_id.strip()
+        self.ozone_conn_id = ozone_conn_id
         self.overwrite = overwrite
 
     def execute(self, context: Context):
@@ -99,7 +101,7 @@ class OzoneToOzoneOperator(BaseOperator):
     This is a metadata-only operation on the Ozone side, making it extremely fast.
     """
 
-    template_fields = ("source_path", "dest_path")
+    template_fields = ("source_path", "dest_path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -110,15 +112,10 @@ class OzoneToOzoneOperator(BaseOperator):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        if not source_path or not source_path.strip():
-            raise ValueError("source_path parameter cannot be empty")
-        if not dest_path or not dest_path.strip():
-            raise ValueError("dest_path parameter cannot be empty")
-        if not ozone_conn_id or not ozone_conn_id.strip():
-            raise ValueError("ozone_conn_id parameter cannot be empty")
+        # Template fields must be assigned directly from __init__ args
         self.source_path = source_path
         self.dest_path = dest_path
-        self.ozone_conn_id = ozone_conn_id.strip()
+        self.ozone_conn_id = ozone_conn_id
 
     def execute(self, context):
         source_use = self.source_path.strip() if self.source_path else self.source_path
@@ -130,41 +127,65 @@ class OzoneToOzoneOperator(BaseOperator):
 
         hook = OzoneFsHook(ozone_conn_id=self.ozone_conn_id)
 
-        # Create destination directory if it doesn't exist (for directory moves)
-        if "/" in dest_use.rstrip("/"):
-            dest_dir = "/".join(dest_use.rstrip("/").split("/")[:-1])
+        # Handle wildcard patterns in a URI-safe way and filter matches.
+        if contains_wildcards(source_use):
+            src_scheme, src_netloc, src_path = parse_ozone_uri(source_use)
+            pattern = posixpath.basename(src_path)
+            src_dir_path = posixpath.dirname(src_path) or ("/" if src_scheme else "")
+            src_dir = build_ozone_uri(src_scheme, src_netloc, src_dir_path or "/")
+
+            self.log.debug("Wildcard pattern detected, listing files in: %s (pattern: %s)", src_dir, pattern)
+            try:
+                files = hook.list_paths(src_dir)
+            except Exception as e:
+                # Fallback to CLI mv (ozone may handle wildcard expansion itself)
+                self.log.warning("Could not list files in %s: %s", src_dir, str(e))
+                dest_dir = dest_use.rstrip("/")
+                if dest_dir and not hook.exists(dest_dir):
+                    self.log.info("Creating destination directory: %s", dest_dir)
+                    hook.mkdir(dest_dir)
+                hook.run_cli(["ozone", "fs", "-mv", source_use, dest_use])
+                self.log.info("Successfully completed move operation (wildcard fallback)")
+                return
+
+            if not files:
+                self.log.info("No files found to move in %s, skipping move operation", src_dir)
+                return
+
+            matched = [p for p in files if fnmatch.fnmatch(posixpath.basename(p), pattern)]
+            if not matched:
+                self.log.info("No files matching pattern %s in %s, skipping move operation", pattern, src_dir)
+                return
+
+            # In wildcard mode treat destination as directory and ensure it exists
+            dest_dir = dest_use.rstrip("/")
             if dest_dir and not hook.exists(dest_dir):
                 self.log.info("Creating destination directory: %s", dest_dir)
                 hook.mkdir(dest_dir)
 
-        # Handle wildcard patterns in source_path
-        if "*" in source_use:
-            # List files matching the pattern
-            source_dir = source_use.rsplit("*", 1)[0].rstrip("/")
-            if not source_dir:
-                source_dir = "/"
+            dst_scheme, dst_netloc, dst_path = parse_ozone_uri(dest_dir.rstrip("/"))
+            dst_base = dst_path.rstrip("/") or ("/" if dst_scheme else "")
 
-            self.log.debug("Wildcard pattern detected, listing files in: %s", source_dir)
-            try:
-                files = hook.list_paths(source_dir)
-                if not files:
-                    self.log.info("No files found to move in %s, skipping move operation", source_dir)
-                    return
+            self.log.info("Found %d file(s) matching %s to move", len(matched), pattern)
+            for file_path in matched:
+                filename = posixpath.basename(file_path.rstrip("/"))
+                dest_file_path = build_ozone_uri(dst_scheme, dst_netloc, posixpath.join(dst_base, filename))
+                self.log.debug("Moving: %s -> %s", file_path, dest_file_path)
+                hook.run_cli(["ozone", "fs", "-mv", file_path, dest_file_path])
 
-                self.log.info("Found %d file(s) to move", len(files))
-                # Move each file individually
-                for file_path in files:
-                    # Extract filename from full path
-                    filename = file_path.split("/")[-1]
-                    dest_file_path = f"{dest_use.rstrip('/')}/{filename}"
-                    self.log.debug("Moving: %s -> %s", file_path, dest_file_path)
-                    hook.run_cli(["ozone", "fs", "-mv", file_path, dest_file_path])
+            self.log.info("Successfully moved %d file(s) to %s", len(matched), dest_use)
+            return
 
-                self.log.info("Successfully moved %d file(s) to %s", len(files), dest_use)
-                return
-            except Exception as e:
-                self.log.warning("Could not list files in %s: %s", source_dir, str(e))
-                # Fall through to single file move
+        # Create destination parent directory if it doesn't exist (URI-safe).
+        dst_scheme, dst_netloc, dst_path = parse_ozone_uri(dest_use.rstrip("/"))
+        dst_parent_path = posixpath.dirname(dst_path) if dst_path else ""
+        if dst_scheme and dst_parent_path in ("", "/"):
+            dst_parent_path = ""  # do not mkdir root
+        dst_parent = build_ozone_uri(dst_scheme, dst_netloc, dst_parent_path) if dst_parent_path else ""
+
+        if dst_parent and not hook.exists(dst_parent):
+            self.log.info("Creating destination directory: %s", dst_parent)
+            hook.mkdir(dst_parent)
 
         # Single file/directory move (no wildcard)
         # Check if source exists before moving

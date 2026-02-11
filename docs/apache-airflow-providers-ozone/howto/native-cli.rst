@@ -18,23 +18,28 @@
 Native CLI prerequisites
 ========================
 
-Native CLI operations (Admin/Filesystem/Snapshot) execute the ``ozone`` binary on the worker.
+Native CLI operations (Admin/Filesystem/Snapshot) execute the ``ozone`` binary **on the worker
+where the task runs**.
 
 Checklist
 ---------
 
-* Java (JDK 11+)
-* ``ozone`` CLI available in ``PATH``
+* Java (JDK 11+) installed in the worker (or Airflow image).
+* ``ozone`` CLI available in ``PATH`` on every worker that will run Ozone tasks.
 * Ozone/Hadoop client configuration available to the CLI:
 
-  * ``OZONE_CONF_DIR`` or ``HADOOP_CONF_DIR`` points to a directory containing at least:
-    ``core-site.xml`` and ``ozone-site.xml``.
-  * Alternatively, set connection Extra ``ozone_scm_address`` (and optionally
-    ``ozone_recon_address``); the hook then builds a minimal config and sets
-    ``OZONE_CONF_DIR`` automatically (see :ref:`howto/connection:ozone`).
+  * ``OZONE_CONF_DIR`` or ``HADOOP_CONF_DIR`` points to a directory containing at least
+    ``core-site.xml`` and ``ozone-site.xml``; **or**
+  * you pass addresses via the Ozone connection Extra (see :ref:`howto/connection:ozone`)
+    and the provider configures the environment variables for the CLI.
+
+The provider package itself **does not install** Ozone CLI. It is the responsibility of the
+operator to ensure that the ``ozone`` binary and client configs are present on all Airflow
+workers. In this repository, the helper script ``files/run_af.sh`` is provided to build a CI
+image and install Ozone CLI into the Airflow container for local development only.
 
 Kerberos note
 -------------
 
-When Kerberos is enabled, the provider adds ``--config <conf_dir>`` to ``ozone`` commands (best-effort),
-because config discovery can be fragile in some environments.
+When Kerberos is enabled, the provider configures all necessary environment variables
+(``KRB5_CONFIG``, ``HADOOP_SECURITY_AUTHENTICATION``, etc.) before executing CLI commands.

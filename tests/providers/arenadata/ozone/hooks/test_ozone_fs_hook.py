@@ -116,3 +116,16 @@ class TestOzoneFsHook:
         ozone_fs_hook.set_key_property(path=test_path, replication_factor=3)
 
         mock_run_cli.assert_called_once_with(["ozone", "fs", "-setrep", "3", test_path])
+
+    @patch(MOCK_CLI_PATH)
+    def test_copy_from_local_raises_when_file_missing(
+        self, mock_run_cli: MagicMock, ozone_fs_hook: OzoneFsHook, tmp_path
+    ):
+        """copy_from_local should raise AirflowException when local file does not exist."""
+
+        missing_path = tmp_path / "missing.txt"
+
+        with pytest.raises(AirflowException):
+            ozone_fs_hook.copy_from_local(str(missing_path), "ofs://vol1/bucket1/file.txt")
+
+        mock_run_cli.assert_not_called()

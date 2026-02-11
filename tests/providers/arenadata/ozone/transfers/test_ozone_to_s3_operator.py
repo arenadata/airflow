@@ -29,13 +29,16 @@ from airflow.providers.arenadata.ozone.transfers.ozone_to_s3 import OzoneToS3Ope
 class TestOzoneToS3Operator:
     """Unit tests for OzoneToS3Operator."""
 
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.S3Hook")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.load_file_obj")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
-    def test_execute_single_key(self, mock_ozone_hook: MagicMock, mock_s3_hook: MagicMock):
+    def test_execute_single_key(
+        self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock, mock_load_file_obj: MagicMock
+    ):
         """Test that OzoneToS3Operator transfers a single key."""
-
         mock_ozone_instance = mock_ozone_hook.return_value
-        mock_s3_instance = mock_s3_hook.return_value
+        mock_dest_client = MagicMock()
+        mock_get_s3_client.return_value = mock_dest_client
 
         mock_ozone_instance.list_keys_with_retry.return_value = ["data/file1.txt"]
 
@@ -45,8 +48,6 @@ class TestOzoneToS3Operator:
         mock_key_obj.get.return_value = {"Body": mock_body}
         mock_ozone_instance.get_key_with_retry.return_value = mock_key_obj
 
-        mock_s3_instance.load_file_obj = MagicMock()
-
         operator = OzoneToS3Operator(
             task_id="test_transfer",
             ozone_bucket="ozone_bucket",
@@ -55,28 +56,26 @@ class TestOzoneToS3Operator:
             s3_prefix="backup/",
             max_workers=1,
         )
-        operator.execute(context={})
+        result = operator.execute(context={})
 
         mock_ozone_hook.assert_called_once_with(ozone_conn_id="ozone_s3_default")
-        mock_s3_hook.assert_called_once_with(aws_conn_id="aws_default")
-
         mock_ozone_instance.list_keys_with_retry.assert_called_once_with("ozone_bucket", prefix="data/")
-
         mock_ozone_instance.get_key_with_retry.assert_called_once_with("data/file1.txt", "ozone_bucket")
 
-        mock_s3_instance.load_file_obj.assert_called_once()
-        call_args = mock_s3_instance.load_file_obj.call_args[0]
-        call_kwargs = mock_s3_instance.load_file_obj.call_args[1]
-        assert call_args[0] == mock_body
-        assert call_args[1] == "backup/file1.txt"
-        assert call_args[2] == "s3_bucket"
+        mock_load_file_obj.assert_called_once()
+        call_args = mock_load_file_obj.call_args[0]
+        call_kwargs = mock_load_file_obj.call_args[1]
+        assert call_args[0] == mock_dest_client
+        assert call_args[1] == mock_body
+        assert call_args[2] == "backup/file1.txt"
+        assert call_args[3] == "s3_bucket"
         assert call_kwargs.get("replace") is True
+        assert result == {"transferred": 1, "failed": 0, "total": 1}
 
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.S3Hook")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
-    def test_execute_no_keys(self, mock_ozone_hook: MagicMock, mock_s3_hook: MagicMock):
+    def test_execute_no_keys(self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock):
         """Test that OzoneToS3Operator handles empty key list."""
-
         mock_ozone_instance = mock_ozone_hook.return_value
         mock_ozone_instance.list_keys_with_retry.return_value = []
 
@@ -87,11 +86,10 @@ class TestOzoneToS3Operator:
 
         mock_ozone_instance.list_keys_with_retry.assert_called_once()
 
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.S3Hook")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
-    def test_execute_all_keys_fail(self, mock_ozone_hook: MagicMock, mock_s3_hook: MagicMock):
+    def test_execute_all_keys_fail(self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock):
         """Test that OzoneToS3Operator raises exception when all keys fail."""
-
         mock_ozone_instance = mock_ozone_hook.return_value
         mock_ozone_instance.list_keys_with_retry.return_value = ["data/file1.txt"]
         mock_ozone_instance.get_key_with_retry.side_effect = ClientError(
@@ -105,13 +103,15 @@ class TestOzoneToS3Operator:
         with pytest.raises(AirflowException, match=r"All .* key\(s\) failed to transfer"):
             operator.execute(context={})
 
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.S3Hook")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.load_file_obj")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
-    def test_execute_multiple_keys_parallel(self, mock_ozone_hook: MagicMock, mock_s3_hook: MagicMock):
+    def test_execute_multiple_keys_parallel(
+        self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock, mock_load_file_obj: MagicMock
+    ):
         """Test that OzoneToS3Operator handles multiple keys with parallel execution."""
-
         mock_ozone_instance = mock_ozone_hook.return_value
-        mock_s3_instance = mock_s3_hook.return_value
+        mock_get_s3_client.return_value = MagicMock()
 
         keys = [f"data/file{i}.txt" for i in range(5)]
         mock_ozone_instance.list_keys_with_retry.return_value = keys
@@ -122,12 +122,10 @@ class TestOzoneToS3Operator:
         mock_key_obj.get.return_value = {"Body": mock_body}
         mock_ozone_instance.get_key_with_retry.return_value = mock_key_obj
 
-        mock_s3_instance.load_file_obj = MagicMock()
-
         operator = OzoneToS3Operator(
             task_id="test_transfer", ozone_bucket="ozone_bucket", s3_bucket="s3_bucket", max_workers=3
         )
         operator.execute(context={})
 
         assert mock_ozone_instance.get_key_with_retry.call_count == 5
-        assert mock_s3_instance.load_file_obj.call_count == 5
+        assert mock_load_file_obj.call_count == 5

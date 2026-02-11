@@ -78,7 +78,7 @@ All classes for this package are included in the ``airflow.providers.arenadata.o
 The provider supports both:
 
 * Native CLI operations via the ``ozone`` binary (for ``ofs://`` / ``o3fs://`` paths).
-* S3 Gateway operations via the Amazon provider (S3-compatible API).
+* S3 Gateway operations via the provider's own boto3-based S3 client and ``ozone_s3`` connection type.
 
 Key features
 ------------
@@ -109,7 +109,6 @@ The minimum Apache Airflow version supported by this provider package is ``2.10.
 PIP package                     Version required
 ==============================  ==================
 ``apache-airflow``              ``>=2.10.3``
-``apache-airflow-providers-amazon``  ``>=8.27.0``
 ==============================  ==================
 
 Optional dependencies

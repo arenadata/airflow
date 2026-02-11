@@ -31,5 +31,3 @@ Changelog
 .....
 
 Initial release of the Apache Ozone provider.
-
-* Removed ``OzoneRpcHook`` (``ozone_rpc.py``). It was not implemented and is no longer part of the provider.

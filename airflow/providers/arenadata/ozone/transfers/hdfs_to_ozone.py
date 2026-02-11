@@ -25,7 +25,7 @@ from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_afte
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
-from airflow.providers.arenadata.ozone.utils.ozone_utils import (
+from airflow.providers.arenadata.ozone.utils.security import (
     apply_ssl_env_vars,
     get_ssl_env_vars,
 )

@@ -29,7 +29,7 @@ Operator
 Connections
 -----------
 
-* Source (Ozone S3 Gateway): AWS connection id (default ``ozone_s3_default``) with ``endpoint_url`` pointing to S3G.
+* Source (Ozone S3 Gateway): ``ozone_s3`` connection id (default ``ozone_s3_default``) with ``endpoint_url`` pointing to S3G.
 * Target (external S3): AWS connection id (default ``aws_default``).
 
 Example

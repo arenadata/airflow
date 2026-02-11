@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -52,7 +53,7 @@ PROJECT_QUOTA = "10GB"  # Reduced for test environment
 BUCKET_QUOTA = "1GB"
 
 with DAG(
-    dag_id="ozone_multi_tenant_management",
+    dag_id="example_ozone_multi_tenant_management",
     start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,

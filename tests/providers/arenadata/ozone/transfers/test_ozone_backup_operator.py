@@ -41,16 +41,15 @@ class TestOzoneBackupOperator:
         operator.execute(context={})
 
         mock_admin_hook.assert_called_once_with(ozone_conn_id="ozone_admin_default")
-        calls = [
-            call
-            for call in mock_subprocess_run.call_args_list
-            if call[0][0]
-            == ["ozone", "sh", "snapshot", "create", "/test_vol/test_bucket", "snapshot_20240101"]
-        ]
-        assert len(calls) == 1, f"Expected exactly one call with snapshot create command, got {len(calls)}"
-        call_args = calls[0]
-        assert call_args[1]["check"] is True
-        assert call_args[1]["timeout"] == 300
+        # Ensure that subprocess.run was called with a snapshot create command that includes
+        # the expected arguments (the OzoneAdminHook may prepend extra flags such as --config).
+        assert mock_subprocess_run.call_count == 1
+        cmd_args, cmd_kwargs = mock_subprocess_run.call_args
+        cmd_list = cmd_args[0]
+        assert "ozone" in cmd_list[0], "Expected ozone CLI as the first element of the command"
+        assert ["sh", "snapshot", "create", "/test_vol/test_bucket", "snapshot_20240101"] == cmd_list[-5:]
+        assert cmd_kwargs["check"] is True
+        assert cmd_kwargs["timeout"] == 300
 
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_backup.subprocess.run")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_backup.OzoneAdminHook")

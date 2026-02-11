@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -41,7 +42,7 @@ from airflow.models.dag import DAG
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
 
 with DAG(
-    dag_id="ozone_cross_region_replication",
+    dag_id="example_ozone_cross_region_replication",
     start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
     catchup=False,
     schedule="0 1 * * *",  # Daily at 1 AM

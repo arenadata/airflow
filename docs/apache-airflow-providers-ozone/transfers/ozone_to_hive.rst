@@ -51,3 +51,21 @@ Example
            partition_spec={"ds": "{{ ds }}"},
            hive_cli_conn_id="hive_cli_default",
        )
+
+SSL/TLS for Hive CLI
+--------------------
+
+If your Hive Metastore / HiveServer2 is secured with SSL/TLS, you can configure the Hive connection
+used by ``OzoneToHiveOperator`` (``hive_cli_conn_id``) with SSL fields in ``Extra``. The operator
+reads these fields and exports them as environment variables before invoking the Hive CLI:
+
+* ``hive_ssl_enabled`` / ``hive.ssl.enabled`` – when set to ``\"true\"``, SSL/TLS is enabled.
+* ``hive_ssl_keystore_path`` / ``hive.ssl.keystore.path`` – path to the client keystore.
+* ``hive_ssl_keystore_password`` / ``hive.ssl.keystore.password`` – keystore password.
+* ``hive_ssl_truststore_path`` / ``hive.ssl.truststore.path`` – path to the truststore.
+* ``hive_ssl_truststore_password`` / ``hive.ssl.truststore.password`` – truststore password.
+
+These values are mapped to environment variables (for example ``HIVE_SSL_KEYSTORE_PATH``) and picked
+up by the Hive CLI runtime in the container/worker where the task executes. Refer to your Hive
+distribution's documentation for the exact semantics of these variables and how they are consumed
+by the CLI/JVM.

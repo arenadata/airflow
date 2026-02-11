@@ -22,9 +22,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
 from airflow.exceptions import AirflowException
+from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
-from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
+from airflow.providers.arenadata.ozone.utils import s3_client
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +38,14 @@ class OzoneToS3Operator(BaseOperator):
     for bulk operations to optimize performance.
     """
 
-    template_fields = ("ozone_bucket", "ozone_prefix", "s3_bucket", "s3_prefix")
+    template_fields = (
+        "ozone_bucket",
+        "ozone_prefix",
+        "s3_bucket",
+        "s3_prefix",
+        "ozone_conn_id",
+        "s3_conn_id",
+    )
 
     def __init__(
         self,
@@ -67,12 +75,15 @@ class OzoneToS3Operator(BaseOperator):
         if not isinstance(max_workers, int) or max_workers <= 0:
             raise ValueError("max_workers parameter must be a positive integer")
 
+        # NOTE: validate-operators-init requires template fields to be assigned
+        # directly from __init__ arguments after super().__init__(**kwargs).
         self.ozone_bucket = ozone_bucket
         self.s3_bucket = s3_bucket
         self.ozone_prefix = ozone_prefix
         self.s3_prefix = s3_prefix
-        self.ozone_conn_id = ozone_conn_id.strip()
-        self.s3_conn_id = s3_conn_id.strip()
+        self.ozone_conn_id = ozone_conn_id
+        self.s3_conn_id = s3_conn_id
+
         self.max_workers = max_workers
 
         self.log.debug(
@@ -91,14 +102,15 @@ class OzoneToS3Operator(BaseOperator):
         self.log.debug("Ozone connection: %s, S3 connection: %s", self.ozone_conn_id, self.s3_conn_id)
         self.log.info("Using parallel transfer with %d worker(s) for bulk operations", self.max_workers)
 
-        # Create hooks once and reuse them (boto3 clients are thread-safe and use connection pooling)
-        self.log.debug("Initializing connection pools for Ozone and S3 hooks")
+        # Create hooks/clients once and reuse (boto3 clients are thread-safe and use connection pooling)
+        self.log.debug("Initializing connection pools for Ozone and destination S3")
         ozone_hook = OzoneS3Hook(ozone_conn_id=self.ozone_conn_id)
-        s3_hook = S3Hook(aws_conn_id=self.s3_conn_id)
+        # Destination S3 may be a completely separate AWS/MinIO endpoint; resolve
+        # its connection explicitly via BaseHook for clarity.
+        dest_conn = BaseHook().get_connection(self.s3_conn_id)
+        dest_client = s3_client.get_s3_client(dest_conn)
 
-        # Pre-initialize connections to establish connection pools early
         ozone_hook.get_conn()
-        s3_hook.get_conn()
         self.log.debug("Connection pools initialized and ready for parallel operations")
 
         self.log.info("Listing keys in Ozone bucket: %s (prefix: %s)", self.ozone_bucket, self.ozone_prefix)
@@ -129,7 +141,9 @@ class OzoneToS3Operator(BaseOperator):
             try:
                 self.log.debug("Copying key: %s -> %s", source_path, dest_path)
                 source_obj = ozone_hook.get_key_with_retry(key, self.ozone_bucket)
-                s3_hook.load_file_obj(source_obj.get()["Body"], dest_key, self.s3_bucket, replace=True)
+                s3_client.load_file_obj(
+                    dest_client, source_obj.get()["Body"], dest_key, self.s3_bucket, replace=True
+                )
                 self.log.debug("Successfully copied key: %s", key)
                 return (key, True, "")
             except Exception as e:
@@ -173,13 +187,20 @@ class OzoneToS3Operator(BaseOperator):
                             len(keys_to_copy),
                         )
 
-        self.log.info("Transfer operation completed")
-        self.log.info(
-            "Successfully transferred: %d key(s), Failed: %d key(s)", transferred_count, failed_count
-        )
+            self.log.info("Transfer operation completed")
+            self.log.info(
+                "Successfully transferred: %d key(s), Failed: %d key(s)", transferred_count, failed_count
+            )
 
         if failed_count > 0:
             self.log.warning("Some keys failed to transfer. Check logs above for details.")
 
         if failed_count > 0 and transferred_count == 0:
             raise AirflowException(f"All {failed_count} key(s) failed to transfer. Check logs for details.")
+
+        # Return structured result so downstream tasks can branch/alert on partial success.
+        return {
+            "transferred": transferred_count,
+            "failed": failed_count,
+            "total": len(keys_to_copy),
+        }

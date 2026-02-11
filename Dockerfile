@@ -1571,14 +1571,6 @@ ENV RUNTIME_APT_DEPS=${RUNTIME_APT_DEPS} \
 COPY --from=scripts install_os_dependencies.sh /scripts/docker/
 RUN bash /scripts/docker/install_os_dependencies.sh runtime
 
-# Ozone CLI for Native CLI provider (volume/bucket/fs). Placed high so this layer is cacheable.
-ARG OZONE_VERSION=2.1.0
-RUN apt-get update && apt-get install -y --no-install-recommends default-jre-headless curl \
-    && curl -sL "https://dlcdn.apache.org/ozone/${OZONE_VERSION}/ozone-${OZONE_VERSION}.tar.gz" | tar xz -C /opt \
-    && mv "/opt/ozone-${OZONE_VERSION}" /opt/ozone \
-    && apt-get purge -y curl && apt-get autoremove -y --purge \
-    && rm -rf /var/lib/apt/lists/*
-
 # Having the variable in final image allows to disable providers manager warnings when
 # production image is prepared from sources rather than from package
 ARG AIRFLOW_INSTALLATION_METHOD="apache-airflow"
@@ -1588,8 +1580,7 @@ ARG AIRFLOW_USER_HOME_DIR
 ARG AIRFLOW_HOME
 
 # By default PIP installs everything to ~/.local
-ENV PATH="/opt/ozone/bin:${AIRFLOW_USER_HOME_DIR}/.local/bin:${PATH}" \
-    JAVA_HOME="/usr/lib/jvm/default-java" \
+ENV PATH="${AIRFLOW_USER_HOME_DIR}/.local/bin:${PATH}" \
     VIRTUAL_ENV="${AIRFLOW_USER_HOME_DIR}/.local" \
     AIRFLOW_UID=${AIRFLOW_UID} \
     AIRFLOW_USER_HOME_DIR=${AIRFLOW_USER_HOME_DIR} \

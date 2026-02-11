@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -37,7 +38,7 @@ from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
 
 with DAG(
-    "ozone_data_pipeline",
+    "example_ozone_data_pipeline",
     start_date=datetime(2025, 1, 1),
     schedule=None,
     tags=["ozone", "example"],

@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import time
 from typing import Any
@@ -43,19 +42,11 @@ class OzoneBackupOperator(BaseOperator):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        if not volume or not volume.strip():
-            raise ValueError("volume parameter cannot be empty")
-        if not bucket or not bucket.strip():
-            raise ValueError("bucket parameter cannot be empty")
-        if not snapshot_name or not snapshot_name.strip():
-            raise ValueError("snapshot_name parameter cannot be empty")
-        if not ozone_conn_id or not ozone_conn_id.strip():
-            raise ValueError("ozone_conn_id parameter cannot be empty")
-
+        # Template fields must be assigned directly from __init__ args
         self.volume = volume
         self.bucket = bucket
         self.snapshot_name = snapshot_name
-        self.ozone_conn_id = ozone_conn_id.strip()
+        self.ozone_conn_id = ozone_conn_id
 
     def execute(self, context: Any):
         """
@@ -63,10 +54,8 @@ class OzoneBackupOperator(BaseOperator):
 
         Idempotent operation: if snapshot already exists, treats it as success.
         """
-        vol = (self.volume or "").strip() or self.volume
-        buck = (self.bucket or "").strip() or self.bucket
-        path = f"/{vol}/{buck}"
-        snapshot_name_use = (self.snapshot_name or "").strip() or self.snapshot_name
+        path = f"/{self.volume}/{self.bucket}"
+        snapshot_name_use = self.snapshot_name
 
         self.log.info("Starting Ozone snapshot creation operation")
         self.log.info(
@@ -82,14 +71,8 @@ class OzoneBackupOperator(BaseOperator):
         # gracefully without triggering retry logic. The run_cli() method has retry decorator
         # that would retry on AirflowException, but "FILE_ALREADY_EXISTS" is expected and
         # should be treated as success (idempotent operation).
-        # Get merged environment variables (SSL + Kerberos) if available
-        if hasattr(hook, "_get_merged_env"):
-            try:
-                env = hook._get_merged_env()
-            except Exception:
-                env = os.environ.copy()
-        else:
-            env = os.environ.copy()
+        # Get environment variables (SSL + Kerberos) from base hook
+        env = hook._build_env()
         start_time = time.time()
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True, env=env, timeout=300)
