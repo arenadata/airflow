@@ -133,8 +133,8 @@ def scan_table_task():
     # Scan all rows
     results = hook.scan_table("test_table_thrift2")
     print(f"Scanned {len(results)} rows")
-    for result in results:
-        print(f"  Row: {result['row']}, Columns: {len(result['columns'])}")
+    for row_key, columns in results:
+        print(f"  Row: {row_key}, Columns: {len(columns)}")
 
     # Scan with limit
     results = hook.scan_table("test_table_thrift2", limit=3)
@@ -152,14 +152,6 @@ def delete_row_task():
     # Delete entire row
     hook.delete_row("test_table_thrift2", "row3")
     print("Deleted row3")
-
-
-def list_tables_task():
-    """List all tables using Thrift2."""
-    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
-    
-    tables = hook.list_tables()
-    print(f"Tables: {tables}")
 
 
 def cleanup_task():
@@ -202,12 +194,6 @@ delete_row = PythonOperator(
     dag=dag,
 )
 
-list_tables = PythonOperator(
-    task_id="list_tables",
-    python_callable=list_tables_task,
-    dag=dag,
-)
-
 cleanup = PythonOperator(
     task_id="cleanup",
     python_callable=cleanup_task,
@@ -215,4 +201,4 @@ cleanup = PythonOperator(
 )
 
 # Set dependencies
-create_table >> put_data >> get_data >> scan_table >> delete_row >> list_tables >> cleanup
+create_table >> put_data >> get_data >> scan_table >> delete_row >> cleanup
