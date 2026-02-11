@@ -22,21 +22,23 @@ Before running this DAG, create an Airflow Connection:
 
 Connection ID: hbase_thrift2
 Connection Type: Generic
-Host: your-hbase-host (e.g., localhost or hbase-master.example.com)
-Port: 9091 (Thrift2 default port)
+Host: your-hbase-host
+Port: 9090
 
-You can create it via:
-1. Airflow UI: Admin -> Connections -> Add
-2. CLI: airflow connections add hbase_thrift2 --conn-type generic --conn-host localhost --conn-port 9091
-3. Environment variable: AIRFLOW_CONN_HBASE_THRIFT2='generic://localhost:9091'
+For Kerberos, add to Extra:
+{
+  "auth_method": "GSSAPI",
+  "kerberos_service_name": "hbase",
+  "use_framed_transport": false,
+  "kerberos_keytab": "/etc/security/keytabs/airflow.service.keytab"
+}
 """
 
 from datetime import datetime, timedelta
 
 from airflow import DAG
-from airflow.hooks.base import BaseHook
 from airflow.operators.python import PythonOperator
-from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
+from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
 default_args = {
     "owner": "airflow",
@@ -60,135 +62,113 @@ dag = DAG(
 
 def create_table_task():
     """Create HBase table using Thrift2."""
-    # Get connection details from Airflow Connection
-    conn = BaseHook.get_connection("hbase_thrift2")
-    host = conn.host or "localhost"
-    port = conn.port or 9091
+    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
+    
+    # Delete table if exists
+    if hook.table_exists("test_table_thrift2"):
+        hook.delete_table("test_table_thrift2")
+        print("Deleted existing table")
 
-    with HBaseThrift2Client(host=host, port=port) as client:
-        # Delete table if exists
-        if client.table_exists("test_table_thrift2"):
-            client.delete_table("test_table_thrift2")
-            print("Deleted existing table")
-
-        # Create table
-        client.create_table(
-            "test_table_thrift2",
-            families={
-                "cf1": {},
-                "cf2": {},
-            }
-        )
-        print("Created table: test_table_thrift2")
+    # Create table
+    hook.create_table(
+        "test_table_thrift2",
+        families={
+            "cf1": {},
+            "cf2": {},
+        }
+    )
+    print("Created table: test_table_thrift2")
 
 
 def put_data_task():
     """Put data into HBase table using Thrift2."""
-    conn = BaseHook.get_connection("hbase_thrift2")
-    host = conn.host or "localhost"
-    port = conn.port or 9091
+    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
+    
+    # Put single row
+    hook.put_row(
+        "test_table_thrift2",
+        "row1",
+        {
+            "cf1:col1": "value1",
+            "cf1:col2": "value2",
+            "cf2:col1": "value3",
+        }
+    )
+    print("Put data for row1")
 
-    with HBaseThrift2Client(host=host, port=port) as client:
-        # Put single row
-        client.put(
+    # Put more rows
+    for i in range(2, 6):
+        hook.put_row(
             "test_table_thrift2",
-            "row1",
+            f"row{i}",
             {
-                "cf1:col1": "value1",
-                "cf1:col2": "value2",
-                "cf2:col1": "value3",
+                "cf1:col1": f"value{i}_1",
+                "cf2:col1": f"value{i}_2",
             }
         )
-        print("Put data for row1")
-
-        # Put more rows
-        for i in range(2, 6):
-            client.put(
-                "test_table_thrift2",
-                f"row{i}",
-                {
-                    "cf1:col1": f"value{i}_1",
-                    "cf2:col1": f"value{i}_2",
-                }
-            )
-        print("Put data for rows 2-5")
+    print("Put data for rows 2-5")
 
 
 def get_data_task():
     """Get data from HBase table using Thrift2."""
-    conn = BaseHook.get_connection("hbase_thrift2")
-    host = conn.host or "localhost"
-    port = conn.port or 9091
+    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
+    
+    # Get single row
+    result = hook.get_row("test_table_thrift2", "row1")
+    print(f"Got row1: {result}")
 
-    with HBaseThrift2Client(host=host, port=port) as client:
-        # Get single row
-        result = client.get("test_table_thrift2", "row1")
-        print(f"Got row1: {result}")
-
-        # Get specific columns
-        result = client.get(
-            "test_table_thrift2",
-            "row1",
-            columns=["cf1:col1", "cf2:col1"]
-        )
-        print(f"Got row1 (specific columns): {result}")
+    # Get specific columns
+    result = hook.get_row(
+        "test_table_thrift2",
+        "row1",
+        columns=["cf1:col1", "cf2:col1"]
+    )
+    print(f"Got row1 (specific columns): {result}")
 
 
 def scan_table_task():
     """Scan HBase table using Thrift2."""
-    conn = BaseHook.get_connection("hbase_thrift2")
-    host = conn.host or "localhost"
-    port = conn.port or 9091
+    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
+    
+    # Scan all rows
+    results = hook.scan_table("test_table_thrift2")
+    print(f"Scanned {len(results)} rows")
+    for result in results:
+        print(f"  Row: {result['row']}, Columns: {len(result['columns'])}")
 
-    with HBaseThrift2Client(host=host, port=port) as client:
-        # Scan all rows
-        results = client.scan("test_table_thrift2")
-        print(f"Scanned {len(results)} rows")
-        for result in results:
-            print(f"  Row: {result['row']}, Columns: {len(result['columns'])}")
-
-        # Scan with limit
-        results = client.scan("test_table_thrift2", limit=3)
-        print(f"Scanned with limit=3: {len(results)} rows")
+    # Scan with limit
+    results = hook.scan_table("test_table_thrift2", limit=3)
+    print(f"Scanned with limit=3: {len(results)} rows")
 
 
 def delete_row_task():
     """Delete row from HBase table using Thrift2."""
-    conn = BaseHook.get_connection("hbase_thrift2")
-    host = conn.host or "localhost"
-    port = conn.port or 9091
+    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
+    
+    # Delete specific columns
+    hook.delete_row("test_table_thrift2", "row2", columns=["cf1:col1"])
+    print("Deleted cf1:col1 from row2")
 
-    with HBaseThrift2Client(host=host, port=port) as client:
-        # Delete specific columns
-        client.delete("test_table_thrift2", "row2", columns=["cf1:col1"])
-        print("Deleted cf1:col1 from row2")
-
-        # Delete entire row
-        client.delete("test_table_thrift2", "row3")
-        print("Deleted row3")
+    # Delete entire row
+    hook.delete_row("test_table_thrift2", "row3")
+    print("Deleted row3")
 
 
 def list_tables_task():
     """List all tables using Thrift2."""
-    conn = BaseHook.get_connection("hbase_thrift2")
-    host = conn.host or "localhost"
-    port = conn.port or 9091
-
-    with HBaseThrift2Client(host=host, port=port) as client:
-        tables = client.list_tables()
-        print(f"Tables: {tables}")
+    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
+    
+    tables = hook.list_tables()
+    print(f"Tables: {tables}")
 
 
 def cleanup_task():
     """Delete test table using Thrift2."""
-    conn = BaseHook.get_connection("hbase_thrift2")
-    host = conn.host or "localhost"
-    port = conn.port or 9091
-
-    with HBaseThrift2Client(host=host, port=port) as client:
-        if client.table_exists("test_table_thrift2"):
-            client.delete_table("test_table_thrift2")
-            print("Deleted table: test_table_thrift2")
+    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
+    
+    if hook.table_exists("test_table_thrift2"):
+        hook.delete_table("test_table_thrift2")
+        print("Deleted table: test_table_thrift2")
 
 
 # Define tasks
