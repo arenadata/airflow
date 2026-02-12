@@ -136,54 +136,18 @@ class HBaseThrift2Client:
                     
                     def sasl_factory():
                         import sasl
-                        import os
-                        import subprocess
-                        
-                        # Set KRB5CCNAME if not set
-                        if 'KRB5CCNAME' not in os.environ:
-                            # Find ticket cache for current user
-                            try:
-                                result = subprocess.run(['klist', '-l'], capture_output=True, text=True)
-                                if result.returncode == 0:
-                                    for line in result.stdout.splitlines():
-                                        if 'FILE:' in line:
-                                            cache_path = line.split('FILE:')[1].strip().split()[0]
-                                            os.environ['KRB5CCNAME'] = f'FILE:{cache_path}'
-                                            logger.info("[KERBEROS DEBUG] Set KRB5CCNAME=%s", os.environ['KRB5CCNAME'])
-                                            break
-                            except Exception as e:
-                                logger.warning("[KERBEROS DEBUG] Failed to detect ticket cache: %s", e)
-                        
-                        logger.info("[KERBEROS DEBUG] Creating SASL client for GSSAPI")
-                        logger.info("[KERBEROS DEBUG] KRB5CCNAME: %s", os.environ.get('KRB5CCNAME', 'not set'))
                         
                         # Extract username from principal
                         username = None
                         if self.kerberos_principal:
                             username = self.kerberos_principal.split('@')[0].split('/')[0]
                         
-                        logger.info("[KERBEROS DEBUG] Host: %s, Service: %s, Username: %s", 
-                                   self.host, self.kerberos_service_name, username)
-                        
                         sasl_client = sasl.Client()
                         sasl_client.setAttr('host', self.host)
                         sasl_client.setAttr('service', self.kerberos_service_name)
                         if username:
                             sasl_client.setAttr('username', username)
-                        
-                        logger.info("[KERBEROS DEBUG] Initializing SASL client...")
                         sasl_client.init()
-                        logger.info("[KERBEROS DEBUG] SASL client initialized successfully")
-                        
-                        # Try to get available mechanisms
-                        try:
-                            logger.info("[KERBEROS DEBUG] Attempting GSSAPI start...")
-                            # This will trigger the actual Kerberos authentication
-                            result = sasl_client.start('GSSAPI')
-                            logger.info("[KERBEROS DEBUG] GSSAPI start result: %s", result)
-                        except Exception as e:
-                            logger.error("[KERBEROS DEBUG] GSSAPI start failed: %s", e)
-                            raise
                         
                         return sasl_client
                     
