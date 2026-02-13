@@ -26,6 +26,12 @@ from typing import Any
 from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport, TSSLSocket
 
+try:
+    from thrift_sasl import TSaslClientTransport
+    SASL_AVAILABLE = True
+except ImportError:
+    SASL_AVAILABLE = False
+
 from airflow.providers.arenadata.hbase.hbase_thrift2_generated import THBaseService, ttypes
 
 logger = logging.getLogger(__name__)
@@ -36,6 +42,10 @@ class HBaseThrift2Client:
 
     def __init__(self, host: str, port: int = 9090, timeout: int = 30000, 
                  ssl_options: dict[str, Any] | None = None,
+                 auth_method: str | None = None,
+                 kerberos_service_name: str = 'hbase',
+                 kerberos_principal: str | None = None,
+                 kerberos_keytab: str | None = None,
                  retry_max_attempts: int = 3,
                  retry_delay: float = 1.0,
                  retry_backoff_factor: float = 2.0):
@@ -46,6 +56,10 @@ class HBaseThrift2Client:
             port: HBase Thrift2 server port (default 9090 for Arenadata/Apache HBase)
             timeout: Connection timeout in milliseconds
             ssl_options: SSL options dict with keys: ca_certs, cert_file, key_file, validate (optional)
+            auth_method: Authentication method ('GSSAPI' for Kerberos, None for no auth)
+            kerberos_service_name: Kerberos service name (default 'hbase')
+            kerberos_principal: Kerberos principal username (e.g. 'airflow@REALM')
+            kerberos_keytab: Path to keytab file (e.g. '/etc/security/keytabs/airflow.keytab')
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
@@ -54,12 +68,23 @@ class HBaseThrift2Client:
         self.port = port
         self.timeout = timeout
         self.ssl_options = ssl_options
+        self.auth_method = auth_method
+        self.kerberos_service_name = kerberos_service_name
+        self.kerberos_principal = kerberos_principal
+        self.kerberos_keytab = kerberos_keytab
         self.retry_max_attempts = retry_max_attempts
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
         self._client = None
         
-        logger.debug("HBaseThrift2Client initialized with ssl_options: %s", ssl_options)
+        if auth_method and not SASL_AVAILABLE:
+            raise ImportError(
+                "thrift_sasl library is required for Kerberos authentication. "
+                "Install it with: pip install thrift_sasl"
+            )
+        
+        logger.debug("HBaseThrift2Client initialized with ssl_options: %s, auth_method: %s", 
+                    ssl_options, auth_method)
 
     def __enter__(self):
         self.open()
@@ -98,34 +123,106 @@ class HBaseThrift2Client:
                 
                 socket.setTimeout(self.timeout)
                 
-                # Try TBufferedTransport first, then TFramedTransport
-                for transport_type in ['buffered', 'framed']:
-                    try:
-                        if transport_type == 'buffered':
-                            self._transport = TTransport.TBufferedTransport(socket)
+                # Create transport with optional Kerberos authentication
+                if self.auth_method == 'GSSAPI':
+                    # Kerberos authentication
+                    import subprocess
+                    import os
+                    
+                    # Always try to get fresh ticket before connecting
+                    if self.kerberos_principal:
+                        # Use keytab if provided, otherwise try default
+                        if self.kerberos_keytab:
+                            kinit_cmd = ['kinit', '-kt', self.kerberos_keytab, self.kerberos_principal]
+                            logger.info("Getting Kerberos ticket using keytab: %s", self.kerberos_keytab)
                         else:
-                            self._transport = TTransport.TFramedTransport(socket)
+                            kinit_cmd = ['kinit', '-k', self.kerberos_principal]
+                            logger.info("Getting Kerberos ticket using default keytab")
                         
-                        protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
-                        self._client = THBaseService.Client(protocol)
-                        self._transport.open()
+                        result = subprocess.run(kinit_cmd, capture_output=True, text=True)
+                        if result.returncode != 0:
+                            logger.error("kinit failed (exit code %d): %s", result.returncode, result.stderr)
+                            raise RuntimeError(f"Failed to obtain Kerberos ticket: {result.stderr}")
+                        else:
+                            logger.info("Successfully obtained Kerberos ticket for %s", self.kerberos_principal)
+                            
+                            # Verify ticket was created
+                            klist_result = subprocess.run(['klist'], capture_output=True, text=True)
+                            if klist_result.returncode == 0:
+                                logger.info("Current Kerberos tickets:\n%s", klist_result.stdout)
+                            else:
+                                logger.warning("Could not verify Kerberos ticket: %s", klist_result.stderr)
+                    else:
+                        # No principal specified, check if ticket exists
+                        try:
+                            subprocess.run(['klist', '-s'], check=True, capture_output=True)
+                            logger.info("Using existing Kerberos ticket")
+                        except subprocess.CalledProcessError:
+                            logger.error("No Kerberos ticket found and no principal specified")
+                            raise RuntimeError("No Kerberos credentials available. Please specify kerberos_principal and kerberos_keytab in connection extra.")
+                    
+                    def sasl_factory():
+                        import sasl
                         
-                        # Test connection with a simple operation
-                        self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
+                        # Extract username from principal
+                        username = None
+                        if self.kerberos_principal:
+                            username = self.kerberos_principal.split('@')[0].split('/')[0]
                         
-                        logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)", 
-                                   self.host, self.port, bool(self.ssl_options) if self.ssl_options else False, transport_type)
-                        return
-                    except Exception as transport_error:
-                        logger.debug("Transport %s failed: %s", transport_type, transport_error)
-                        if hasattr(self, '_transport') and self._transport:
-                            try:
-                                self._transport.close()
-                            except:
-                                pass
-                        if transport_type == 'framed':
-                            # Both transports failed, raise the last error
-                            raise transport_error
+                        sasl_client = sasl.Client()
+                        sasl_client.setAttr('host', self.host)
+                        sasl_client.setAttr('service', self.kerberos_service_name)
+                        if username:
+                            sasl_client.setAttr('username', username)
+                        sasl_client.init()
+                        
+                        return sasl_client
+                    
+                    self._transport = TSaslClientTransport(
+                        sasl_factory,
+                        'GSSAPI',
+                        socket
+                    )
+                    
+                    protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
+                    self._client = THBaseService.Client(protocol)
+                    self._transport.open()
+                    
+                    # Test connection
+                    self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
+                    
+                    logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Auth: %s)", 
+                               self.host, self.port, bool(self.ssl_options), self.auth_method)
+                    return
+                else:
+                    # No authentication - try TBufferedTransport first, then TFramedTransport
+                    for transport_type in ['buffered', 'framed']:
+                        try:
+                            if transport_type == 'buffered':
+                                self._transport = TTransport.TBufferedTransport(socket)
+                            else:
+                                self._transport = TTransport.TFramedTransport(socket)
+                            
+                            protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
+                            self._client = THBaseService.Client(protocol)
+                            self._transport.open()
+                            
+                            # Test connection with a simple operation
+                            self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
+                            
+                            logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)", 
+                                       self.host, self.port, bool(self.ssl_options), transport_type)
+                            return
+                        except Exception as transport_error:
+                            logger.debug("Transport %s failed: %s", transport_type, transport_error)
+                            if hasattr(self, '_transport') and self._transport:
+                                try:
+                                    self._transport.close()
+                                except:
+                                    pass
+                            if transport_type == 'framed':
+                                # Both transports failed, raise the last error
+                                raise transport_error
                 
             except (ConnectionError, TimeoutError, OSError, Exception) as e:
                 last_exception = e

@@ -63,6 +63,11 @@ class HBaseThriftHook(BaseHook):
 
             # Get SSL options if configured
             ssl_options = None
+            auth_method = None
+            kerberos_service_name = 'hbase'
+            kerberos_principal = None
+            kerberos_keytab = None
+            
             if conn.extra_dejson:
                 # Support two formats:
                 # 1. Nested: {"ssl_options": {"ca_certs": "...", ...}}
@@ -75,10 +80,19 @@ class HBaseThriftHook(BaseHook):
                     for key in ["ca_certs", "cert_file", "key_file", "validate"]:
                         if key in conn.extra_dejson:
                             ssl_options[key] = conn.extra_dejson[key]
+                
+                # Get Kerberos authentication settings
+                auth_method = conn.extra_dejson.get('auth_method')
+                kerberos_service_name = conn.extra_dejson.get('kerberos_service_name', 'hbase')
+                kerberos_principal = conn.extra_dejson.get('kerberos_principal')
+                kerberos_keytab = conn.extra_dejson.get('kerberos_keytab')
             
             if ssl_options:
                 self.log.info("SSL/TLS enabled for Thrift2 connection with options: %s", 
                              {k: v for k, v in ssl_options.items() if k != 'key_file'})
+            
+            if auth_method:
+                self.log.info("Authentication enabled: %s (service: %s)", auth_method, kerberos_service_name)
 
             pool_config = self._get_pool_config(conn.extra_dejson or {})
 
@@ -92,6 +106,10 @@ class HBaseThriftHook(BaseHook):
                     port,
                     timeout,
                     ssl_options,
+                    auth_method=auth_method,
+                    kerberos_service_name=kerberos_service_name,
+                    kerberos_principal=kerberos_principal,
+                    kerberos_keytab=kerberos_keytab,
                     **retry_config
                 )
                 self._strategy = PooledThrift2Strategy(pool, self.log)
@@ -102,6 +120,10 @@ class HBaseThriftHook(BaseHook):
                     port=port,
                     timeout=timeout,
                     ssl_options=ssl_options,
+                    auth_method=auth_method,
+                    kerberos_service_name=kerberos_service_name,
+                    kerberos_principal=kerberos_principal,
+                    kerberos_keytab=kerberos_keytab,
                     **retry_config
                 )
                 client.open()
@@ -215,6 +237,8 @@ class HBaseThriftHook(BaseHook):
     "key_file": "/path/to/client.key",
     "validate": true
   },
+  "auth_method": "GSSAPI",
+  "kerberos_service_name": "hbase",
   "timeout": 30000,
   "retry_max_attempts": 3,
   "retry_delay": 1.0,

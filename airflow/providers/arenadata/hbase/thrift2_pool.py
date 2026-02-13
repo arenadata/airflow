@@ -31,7 +31,13 @@ class Thrift2ConnectionPool:
     """Connection pool for HBase Thrift2 clients."""
 
     def __init__(self, size: int, host: str, port: int = 9090, timeout: int = 30000, 
-                 ssl_options: dict[str, Any] | None = None, retry_max_attempts: int = 3, retry_delay: float = 1.0, 
+                 ssl_options: dict[str, Any] | None = None, 
+                 auth_method: str | None = None,
+                 kerberos_service_name: str = 'hbase',
+                 kerberos_principal: str | None = None,
+                 kerberos_keytab: str | None = None,
+                 retry_max_attempts: int = 3, 
+                 retry_delay: float = 1.0, 
                  retry_backoff_factor: float = 2.0):
         """Initialize connection pool.
         
@@ -41,6 +47,10 @@ class Thrift2ConnectionPool:
             port: HBase Thrift2 server port (default 9090 for Arenadata/Apache HBase)
             timeout: Connection timeout in milliseconds
             ssl_options: SSL options dict (optional)
+            auth_method: Authentication method ('GSSAPI' for Kerberos, None for no auth)
+            kerberos_service_name: Kerberos service name (default 'hbase')
+            kerberos_principal: Kerberos principal username (e.g. 'airflow@REALM')
+            kerberos_keytab: Path to keytab file (e.g. '/etc/security/keytabs/airflow.keytab')
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
@@ -50,6 +60,10 @@ class Thrift2ConnectionPool:
         self.port = port
         self.timeout = timeout
         self.ssl_options = ssl_options
+        self.auth_method = auth_method
+        self.kerberos_service_name = kerberos_service_name
+        self.kerberos_principal = kerberos_principal
+        self.kerberos_keytab = kerberos_keytab
         self.retry_max_attempts = retry_max_attempts
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
@@ -64,6 +78,10 @@ class Thrift2ConnectionPool:
             port=self.port, 
             timeout=self.timeout,
             ssl_options=self.ssl_options,
+            auth_method=self.auth_method,
+            kerberos_service_name=self.kerberos_service_name,
+            kerberos_principal=self.kerberos_principal,
+            kerberos_keytab=self.kerberos_keytab,
             retry_max_attempts=self.retry_max_attempts,
             retry_delay=self.retry_delay,
             retry_backoff_factor=self.retry_backoff_factor
@@ -161,6 +179,10 @@ def get_or_create_thrift2_pool(
     port: int = 9090, 
     timeout: int = 30000,
     ssl_options: dict[str, Any] | None = None,
+    auth_method: str | None = None,
+    kerberos_service_name: str = 'hbase',
+    kerberos_principal: str | None = None,
+    kerberos_keytab: str | None = None,
     retry_max_attempts: int = 3,
     retry_delay: float = 1.0,
     retry_backoff_factor: float = 2.0
@@ -174,6 +196,10 @@ def get_or_create_thrift2_pool(
         port: HBase Thrift2 server port
         timeout: Connection timeout in milliseconds
         ssl_options: SSL options dict (optional)
+        auth_method: Authentication method ('GSSAPI' for Kerberos, None for no auth)
+        kerberos_service_name: Kerberos service name (default 'hbase')
+        kerberos_principal: Kerberos principal username (e.g. 'airflow@REALM')
+        kerberos_keytab: Path to keytab file (e.g. '/etc/security/keytabs/airflow.keytab')
         retry_max_attempts: Maximum number of connection attempts
         retry_delay: Initial delay between retry attempts in seconds
         retry_backoff_factor: Multiplier for delay after each failed attempt
@@ -189,6 +215,10 @@ def get_or_create_thrift2_pool(
                 port=port,
                 timeout=timeout,
                 ssl_options=ssl_options,
+                auth_method=auth_method,
+                kerberos_service_name=kerberos_service_name,
+                kerberos_principal=kerberos_principal,
+                kerberos_keytab=kerberos_keytab,
                 retry_max_attempts=retry_max_attempts,
                 retry_delay=retry_delay,
                 retry_backoff_factor=retry_backoff_factor

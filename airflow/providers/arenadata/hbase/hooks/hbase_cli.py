@@ -73,10 +73,33 @@ class HBaseCLIHook(BaseHook):
         :param command: HBase command to execute (e.g., "backup create full /backup -t table1")
         :return: Command output
         """
+        # Get connection for Kerberos settings
+        conn = self.get_conn()
+        extra = conn.extra_dejson if conn.extra else {}
+        
+        # Check if Kerberos authentication is needed
+        kerberos_keytab = extra.get('kerberos_keytab')
+        
         # Use hbase_home to construct full command path
-        full_command = f"{self.hbase_home}/bin/{self.hbase_cmd} {command}"
+        hbase_command = f"{self.hbase_home}/bin/{self.hbase_cmd} {command}"
+        
+        # Run as hbase user if Kerberos is enabled (hbase user has access to WALs)
+        if kerberos_keytab:
+            # Get hbase principal and keytab
+            hbase_keytab = "/etc/security/keytabs/hbase.service.keytab"
+            # Get hostname for principal
+            import socket
+            hostname = socket.getfqdn()
+            hbase_principal = f"hbase/{hostname}@KRB5-TEST"
+            
+            # Do kinit as hbase user, then run command
+            kinit_cmd = f"sudo -u hbase kinit -kt {hbase_keytab} {hbase_principal}"
+            full_command = f"{kinit_cmd} && sudo -u hbase {hbase_command}"
+            logger.info(f"Running as hbase user with Kerberos: {hbase_principal}")
+        else:
+            full_command = hbase_command
 
-        # Set JAVA_HOME environment variable
+        # Set environment variables
         import os
         env = os.environ.copy()
         env['JAVA_HOME'] = self.java_home

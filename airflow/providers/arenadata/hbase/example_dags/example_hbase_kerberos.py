@@ -16,93 +16,81 @@
 # specific language governing permissions and limitations
 # under the License.
 """
-Example DAG showing HBase provider usage with Kerberos authentication.
+Example DAG demonstrating HBase operations with Kerberos authentication.
 
-This DAG demonstrates how to use HBase operators and sensors with Kerberos authentication.
-Make sure to configure the HBase connection with Kerberos settings in Airflow UI.
+This DAG shows how to:
+1. Connect to HBase Thrift2 server with Kerberos (GSSAPI) authentication
+2. Create a table
+3. Insert data
+4. Query data
+5. Clean up
 
-Connection Configuration (Admin -> Connections):
-- Connection Id: hbase_kerberos
-- Connection Type: HBase
-- Host: your-hbase-host
-- Port: 9090 (or your Thrift port)
-- Extra: {
-    "auth_method": "kerberos",
-    "principal": "your-principal@YOUR.REALM",
-    "keytab_path": "/path/to/your.keytab",
-    "timeout": 30000
-}
-
-Alternative using Airflow secrets:
-- Extra: {
-    "auth_method": "kerberos",
-    "principal": "your-principal@YOUR.REALM",
-    "keytab_secret_key": "HBASE_KEYTAB_SECRET",
-    "timeout": 30000
-}
-
-Note: keytab_secret_key will be looked up in:
-1. Airflow Variables (Admin -> Variables)
-2. Environment variables (fallback)
+Prerequisites:
+- Valid Kerberos ticket (kinit)
+- HBase Thrift2 server configured for Kerberos
+- Airflow connection 'hbase_kerberos' with:
+  - Host: HBase Thrift2 server hostname
+  - Port: 9090 (or your Thrift2 port)
+  - Extra: {"auth_method": "GSSAPI", "kerberos_service_name": "hbase"}
 """
 
-from datetime import datetime, timedelta
+from __future__ import annotations
+
+from datetime import datetime
 
 from airflow import DAG
-from airflow.providers.hbase.operators.hbase import (
+from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseCreateTableOperator,
+    HBasePutOperator,
+    HBaseScanOperator,
     HBaseDeleteTableOperator,
 )
-from airflow.providers.hbase.sensors.hbase import (
-    HBaseTableSensor,
-)
 
-default_args = {
-    "owner": "airflow",
-    "depends_on_past": False,
-    "start_date": datetime(2024, 1, 1),
-    "email_on_failure": False,
-    "email_on_retry": False,
-    "retries": 0,
-    "retry_delay": timedelta(minutes=5),
-}
-
-dag = DAG(
-    "example_hbase_kerberos",
-    default_args=default_args,
-    description="Example HBase DAG with Kerberos authentication",
-    schedule_interval=None,
+with DAG(
+    dag_id="example_hbase_kerberos",
+    start_date=datetime(2024, 1, 1),
+    schedule=None,
     catchup=False,
     tags=["example", "hbase", "kerberos"],
-)
+    doc_md=__doc__,
+) as dag:
+    # Create table with column families
+    create_table = HBaseCreateTableOperator(
+        task_id="create_table",
+        hbase_conn_id="hbase_kerberos",
+        table_name="test_kerberos_table",
+        families={"cf1": {}, "cf2": {}},
+    )
 
-# Note: "hbase_kerberos" is the Connection ID configured in Airflow UI with Kerberos settings
-create_table = HBaseCreateTableOperator(
-    task_id="create_table_kerberos",
-    table_name="test_table_krb",
-    families={
-        "cf1": {},  # Column family 1
-        "cf2": {},  # Column family 2
-    },
-    hbase_conn_id="hbase_kerberos",  # HBase connection with Kerberos auth
-    dag=dag,
-)
+    # Insert data into table
+    put_data = HBasePutOperator(
+        task_id="put_data",
+        hbase_conn_id="hbase_kerberos",
+        table_name="test_kerberos_table",
+        row_key="row1",
+        data={
+            "cf1:name": "Alice",
+            "cf1:age": "30",
+            "cf2:city": "New York",
+            "cf2:country": "USA",
+        },
+    )
 
-check_table = HBaseTableSensor(
-    task_id="check_table_exists_kerberos",
-    table_name="test_table_krb",
-    hbase_conn_id="hbase_kerberos",
-    timeout=20,
-    poke_interval=5,
-    dag=dag,
-)
+    # Get data from table
+    get_data = HBaseScanOperator(
+        task_id="get_data",
+        hbase_conn_id="hbase_kerberos",
+        table_name="test_kerberos_table",
+        row_start="row1",
+        row_stop="row2",
+    )
 
-delete_table = HBaseDeleteTableOperator(
-    task_id="delete_table_kerberos",
-    table_name="test_table_krb",
-    hbase_conn_id="hbase_kerberos",
-    dag=dag,
-)
+    # Delete table
+    delete_table = HBaseDeleteTableOperator(
+        task_id="delete_table",
+        hbase_conn_id="hbase_kerberos",
+        table_name="test_kerberos_table",
+    )
 
-# Set dependencies - Basic HBase operations
-create_table >> check_table >> delete_table
+    # Define task dependencies
+    create_table >> put_data >> get_data >> delete_table

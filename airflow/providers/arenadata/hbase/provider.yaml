@@ -30,6 +30,8 @@ versions:
 dependencies:
   - apache-airflow>=2.7.0
   - thrift>=0.13.0
+  - thrift_sasl>=0.4.3
+  - sasl>=0.3.1
 
 integrations:
   - integration-name: HBase
@@ -58,6 +60,8 @@ connection-types:
 example-dags:
   - airflow.providers.arenadata.hbase.example_dags.example_hbase
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_ssl
+  - airflow.providers.arenadata.hbase.example_dags.example_hbase_kerberos
+  - airflow.providers.arenadata.hbase.example_dags.example_hbase_pool_kerberos
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_hook
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_batch
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_pool
