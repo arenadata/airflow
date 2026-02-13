@@ -66,6 +66,7 @@ class HBaseThriftHook(BaseHook):
             auth_method = None
             kerberos_service_name = 'hbase'
             kerberos_principal = None
+            kerberos_keytab = None
             
             if conn.extra_dejson:
                 # Support two formats:
@@ -84,6 +85,7 @@ class HBaseThriftHook(BaseHook):
                 auth_method = conn.extra_dejson.get('auth_method')
                 kerberos_service_name = conn.extra_dejson.get('kerberos_service_name', 'hbase')
                 kerberos_principal = conn.extra_dejson.get('kerberos_principal')
+                kerberos_keytab = conn.extra_dejson.get('kerberos_keytab')
             
             if ssl_options:
                 self.log.info("SSL/TLS enabled for Thrift2 connection with options: %s", 
@@ -107,6 +109,7 @@ class HBaseThriftHook(BaseHook):
                     auth_method=auth_method,
                     kerberos_service_name=kerberos_service_name,
                     kerberos_principal=kerberos_principal,
+                    kerberos_keytab=kerberos_keytab,
                     **retry_config
                 )
                 self._strategy = PooledThrift2Strategy(pool, self.log)
@@ -120,6 +123,7 @@ class HBaseThriftHook(BaseHook):
                     auth_method=auth_method,
                     kerberos_service_name=kerberos_service_name,
                     kerberos_principal=kerberos_principal,
+                    kerberos_keytab=kerberos_keytab,
                     **retry_config
                 )
                 client.open()

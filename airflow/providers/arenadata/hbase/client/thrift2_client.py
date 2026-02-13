@@ -45,6 +45,7 @@ class HBaseThrift2Client:
                  auth_method: str | None = None,
                  kerberos_service_name: str = 'hbase',
                  kerberos_principal: str | None = None,
+                 kerberos_keytab: str | None = None,
                  retry_max_attempts: int = 3,
                  retry_delay: float = 1.0,
                  retry_backoff_factor: float = 2.0):
@@ -57,7 +58,8 @@ class HBaseThrift2Client:
             ssl_options: SSL options dict with keys: ca_certs, cert_file, key_file, validate (optional)
             auth_method: Authentication method ('GSSAPI' for Kerberos, None for no auth)
             kerberos_service_name: Kerberos service name (default 'hbase')
-            kerberos_principal: Kerberos principal username (e.g. 'airflow')
+            kerberos_principal: Kerberos principal username (e.g. 'airflow@REALM')
+            kerberos_keytab: Path to keytab file (e.g. '/etc/security/keytabs/airflow.keytab')
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
@@ -69,6 +71,7 @@ class HBaseThrift2Client:
         self.auth_method = auth_method
         self.kerberos_service_name = kerberos_service_name
         self.kerberos_principal = kerberos_principal
+        self.kerberos_keytab = kerberos_keytab
         self.retry_max_attempts = retry_max_attempts
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
@@ -123,16 +126,40 @@ class HBaseThrift2Client:
                 # Create transport with optional Kerberos authentication
                 if self.auth_method == 'GSSAPI':
                     # Kerberos authentication
-                    # Ensure we have a valid Kerberos ticket
                     import subprocess
-                    try:
-                        subprocess.run(['klist', '-s'], check=True, capture_output=True)
-                    except subprocess.CalledProcessError:
-                        logger.warning("No valid Kerberos ticket found. Attempting kinit...")
-                        if self.kerberos_principal:
-                            # Try to get ticket using default keytab
-                            subprocess.run(['kinit', '-k', self.kerberos_principal], 
-                                         check=False, capture_output=True)
+                    import os
+                    
+                    # Always try to get fresh ticket before connecting
+                    if self.kerberos_principal:
+                        # Use keytab if provided, otherwise try default
+                        if self.kerberos_keytab:
+                            kinit_cmd = ['kinit', '-kt', self.kerberos_keytab, self.kerberos_principal]
+                            logger.info("Getting Kerberos ticket using keytab: %s", self.kerberos_keytab)
+                        else:
+                            kinit_cmd = ['kinit', '-k', self.kerberos_principal]
+                            logger.info("Getting Kerberos ticket using default keytab")
+                        
+                        result = subprocess.run(kinit_cmd, capture_output=True, text=True)
+                        if result.returncode != 0:
+                            logger.error("kinit failed (exit code %d): %s", result.returncode, result.stderr)
+                            raise RuntimeError(f"Failed to obtain Kerberos ticket: {result.stderr}")
+                        else:
+                            logger.info("Successfully obtained Kerberos ticket for %s", self.kerberos_principal)
+                            
+                            # Verify ticket was created
+                            klist_result = subprocess.run(['klist'], capture_output=True, text=True)
+                            if klist_result.returncode == 0:
+                                logger.info("Current Kerberos tickets:\n%s", klist_result.stdout)
+                            else:
+                                logger.warning("Could not verify Kerberos ticket: %s", klist_result.stderr)
+                    else:
+                        # No principal specified, check if ticket exists
+                        try:
+                            subprocess.run(['klist', '-s'], check=True, capture_output=True)
+                            logger.info("Using existing Kerberos ticket")
+                        except subprocess.CalledProcessError:
+                            logger.error("No Kerberos ticket found and no principal specified")
+                            raise RuntimeError("No Kerberos credentials available. Please specify kerberos_principal and kerberos_keytab in connection extra.")
                     
                     def sasl_factory():
                         import sasl
