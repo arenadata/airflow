@@ -21,4 +21,4 @@ from __future__ import annotations
 
 __all__ = ["hbase_table_dataset"]
 
-from airflow.providers.hbase.datasets.hbase import hbase_table_dataset
+from airflow.providers.arenadata.hbase.datasets.hbase import hbase_table_dataset
