@@ -129,37 +129,49 @@ class HBaseThrift2Client:
                     import subprocess
                     import os
                     
-                    # Always try to get fresh ticket before connecting
-                    if self.kerberos_principal:
-                        # Use keytab if provided, otherwise try default
+                    # Set KRB5CCNAME BEFORE any GSSAPI operations
+                    if 'KRB5CCNAME' not in os.environ:
+                        result = subprocess.run(['klist'], capture_output=True, text=True)
+                        if result.returncode == 0:
+                            for line in result.stdout.split('\n'):
+                                if line.startswith('Ticket cache:'):
+                                    cache = line.split(':', 1)[1].strip()
+                                    os.environ['KRB5CCNAME'] = cache
+                                    logger.info("Set KRB5CCNAME=%s", cache)
+                                    break
+                    
+                    # Check if ticket exists and is valid
+                    try:
+                        subprocess.run(['klist', '-s'], check=True, capture_output=True)
+                        logger.info("Using existing Kerberos ticket")
+                    except subprocess.CalledProcessError:
+                        # No valid ticket - try to get one with keytab
                         if self.kerberos_keytab:
-                            kinit_cmd = ['kinit', '-kt', self.kerberos_keytab, self.kerberos_principal]
-                            logger.info("Getting Kerberos ticket using keytab: %s", self.kerberos_keytab)
-                        else:
-                            kinit_cmd = ['kinit', '-k', self.kerberos_principal]
-                            logger.info("Getting Kerberos ticket using default keytab")
-                        
-                        result = subprocess.run(kinit_cmd, capture_output=True, text=True)
-                        if result.returncode != 0:
-                            logger.error("kinit failed (exit code %d): %s", result.returncode, result.stderr)
-                            raise RuntimeError(f"Failed to obtain Kerberos ticket: {result.stderr}")
-                        else:
-                            logger.info("Successfully obtained Kerberos ticket for %s", self.kerberos_principal)
+                            # Use principal if provided, otherwise derive from keytab
+                            principal = self.kerberos_principal
+                            if not principal:
+                                # Try to get principal from keytab
+                                result = subprocess.run(['klist', '-kt', self.kerberos_keytab], capture_output=True, text=True)
+                                if result.returncode == 0:
+                                    # Parse first principal from keytab
+                                    for line in result.stdout.split('\n'):
+                                        if '@' in line and 'KVNO' not in line:
+                                            principal = line.split()[-1]
+                                            break
                             
-                            # Verify ticket was created
-                            klist_result = subprocess.run(['klist'], capture_output=True, text=True)
-                            if klist_result.returncode == 0:
-                                logger.info("Current Kerberos tickets:\n%s", klist_result.stdout)
+                            if principal:
+                                kinit_cmd = ['kinit', '-kt', self.kerberos_keytab, principal]
+                                logger.info("Getting Kerberos ticket using keytab: %s for principal: %s", self.kerberos_keytab, principal)
+                                result = subprocess.run(kinit_cmd, capture_output=True, text=True)
+                                if result.returncode != 0:
+                                    logger.error("kinit failed (exit code %d): %s", result.returncode, result.stderr)
+                                    raise RuntimeError(f"Failed to obtain Kerberos ticket: {result.stderr}")
+                                logger.info("Successfully obtained Kerberos ticket")
                             else:
-                                logger.warning("Could not verify Kerberos ticket: %s", klist_result.stderr)
-                    else:
-                        # No principal specified, check if ticket exists
-                        try:
-                            subprocess.run(['klist', '-s'], check=True, capture_output=True)
-                            logger.info("Using existing Kerberos ticket")
-                        except subprocess.CalledProcessError:
-                            logger.error("No Kerberos ticket found and no principal specified")
-                            raise RuntimeError("No Kerberos credentials available. Please specify kerberos_principal and kerberos_keytab in connection extra.")
+                                raise RuntimeError("Could not determine principal from keytab")
+                        else:
+                            logger.error("No Kerberos ticket found and no keytab specified")
+                            raise RuntimeError("No Kerberos credentials available. Please specify kerberos_keytab in connection extra.")
                     
                     def sasl_factory():
                         import sasl
@@ -169,6 +181,10 @@ class HBaseThrift2Client:
                         if self.kerberos_principal:
                             username = self.kerberos_principal.split('@')[0].split('/')[0]
                         
+                        logger.info("[SASL DEBUG] Creating SASL client")
+                        logger.info("[SASL DEBUG] host=%s, service=%s, username=%s", self.host, self.kerberos_service_name, username)
+                        logger.info("[SASL DEBUG] kerberos_principal=%s", self.kerberos_principal)
+                        
                         sasl_client = sasl.Client()
                         sasl_client.setAttr('host', self.host)
                         sasl_client.setAttr('service', self.kerberos_service_name)
@@ -176,6 +192,7 @@ class HBaseThrift2Client:
                             sasl_client.setAttr('username', username)
                         sasl_client.init()
                         
+                        logger.info("[SASL DEBUG] SASL client initialized")
                         return sasl_client
                     
                     self._transport = TSaslClientTransport(
