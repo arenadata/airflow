@@ -105,6 +105,6 @@ class KerberosAuthenticator(HBaseAuthenticator):
         """Get secret from Airflow secrets backend."""
         try:
             return Variable.get(secret_key, default_var=None)
-        except Exception:
+        except KeyError:
             # Fallback to environment variable
             return os.environ.get(secret_key)
