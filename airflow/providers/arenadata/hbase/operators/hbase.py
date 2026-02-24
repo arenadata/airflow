@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Sequence
 
@@ -421,7 +422,6 @@ class HBaseCreateBackupOperator(BaseOperator):
 
         # Extract backup_id from output
         # Output format: "Backup backup_1234567890123 completed."
-        import re
         match = re.search(r'backup_(\d+)', output)
         if match:
             backup_id = f"backup_{match.group(1)}"

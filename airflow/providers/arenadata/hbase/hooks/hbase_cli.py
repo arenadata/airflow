@@ -20,7 +20,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import socket
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -88,7 +90,6 @@ class HBaseCLIHook(BaseHook):
             # Get hbase principal and keytab
             hbase_keytab = "/etc/security/keytabs/hbase.service.keytab"
             # Get hostname for principal
-            import socket
             hostname = socket.getfqdn()
             hbase_principal = f"hbase/{hostname}@KRB5-TEST"
             
@@ -100,7 +101,6 @@ class HBaseCLIHook(BaseHook):
             full_command = hbase_command
 
         # Set environment variables
-        import os
         env = os.environ.copy()
         env['JAVA_HOME'] = self.java_home
 

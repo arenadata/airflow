@@ -19,12 +19,15 @@
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 from contextlib import contextmanager
 from typing import Any
 
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
+
+logger = logging.getLogger(__name__)
 
 
 class Thrift2ConnectionPool:
@@ -108,8 +111,6 @@ class Thrift2ConnectionPool:
             HBaseThrift2Client instance
         """
         client = None
-        import logging
-        logger = logging.getLogger(__name__)
         
         try:
             # Try to get from pool or create new

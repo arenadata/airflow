@@ -20,6 +20,10 @@
 from __future__ import annotations
 
 import logging
+import os
+import socket
+import ssl as ssl_module
+import subprocess
 import time
 from typing import Any
 
@@ -27,10 +31,13 @@ from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport, TSSLSocket
 
 try:
+    import sasl
     from thrift_sasl import TSaslClientTransport
     SASL_AVAILABLE = True
 except ImportError:
     SASL_AVAILABLE = False
+    sasl = None  # type: ignore
+    TSaslClientTransport = None  # type: ignore
 
 from airflow.providers.arenadata.hbase.hbase_thrift2_generated import THBaseService, ttypes
 
@@ -79,8 +86,8 @@ class HBaseThrift2Client:
         
         if auth_method and not SASL_AVAILABLE:
             raise ImportError(
-                "thrift_sasl library is required for Kerberos authentication. "
-                "Install it with: pip install thrift_sasl"
+                "thrift_sasl and sasl libraries are required for Kerberos authentication. "
+                "Install them with: pip install thrift_sasl sasl"
             )
         
         logger.debug("HBaseThrift2Client initialized with ssl_options: %s, auth_method: %s", 
@@ -101,7 +108,6 @@ class HBaseThrift2Client:
             try:
                 # Create socket (SSL or regular)
                 if self.ssl_options:
-                    import ssl as ssl_module
                     # Map our options to TSSLSocket parameters
                     ssl_params = {
                         'host': self.host,
@@ -126,8 +132,6 @@ class HBaseThrift2Client:
                 # Create transport with optional Kerberos authentication
                 if self.auth_method == 'GSSAPI':
                     # Kerberos authentication
-                    import subprocess
-                    import os
                     
                     # Set KRB5CCNAME BEFORE any GSSAPI operations
                     if 'KRB5CCNAME' not in os.environ:
@@ -174,7 +178,6 @@ class HBaseThrift2Client:
                             raise RuntimeError("No Kerberos credentials available. Please specify kerberos_keytab in connection extra.")
                     
                     def sasl_factory():
-                        import sasl
                         
                         # Extract username from principal
                         username = None

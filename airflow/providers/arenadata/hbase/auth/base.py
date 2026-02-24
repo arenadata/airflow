@@ -27,6 +27,8 @@ import tempfile
 from abc import ABC, abstractmethod
 from typing import Any
 
+from airflow.models import Variable
+
 log = logging.getLogger(__name__)
 
 
@@ -102,7 +104,6 @@ class KerberosAuthenticator(HBaseAuthenticator):
     def _get_secret(self, secret_key: str) -> str | None:
         """Get secret from Airflow secrets backend."""
         try:
-            from airflow.models import Variable
             return Variable.get(secret_key, default_var=None)
         except Exception:
             # Fallback to environment variable
