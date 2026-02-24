@@ -100,153 +100,199 @@ class HBaseThrift2Client:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def open(self):
-        """Open connection to Thrift2 server with retry logic."""
+    def _create_socket(self) -> TSocket.TSocket | TSSLSocket.TSSLSocket:
+        """Create socket (SSL or regular).
+        
+        Returns:
+            Configured socket instance
+        """
+        if self.ssl_options:
+            # Map our options to TSSLSocket parameters
+            ssl_params = {
+                'host': self.host,
+                'port': self.port,
+            }
+            if 'ca_certs' in self.ssl_options:
+                ssl_params['ca_certs'] = self.ssl_options['ca_certs']
+            if 'cert_file' in self.ssl_options:
+                ssl_params['certfile'] = self.ssl_options['cert_file']
+            if 'key_file' in self.ssl_options:
+                ssl_params['keyfile'] = self.ssl_options['key_file']
+            if 'validate' in self.ssl_options:
+                ssl_params['cert_reqs'] = ssl_module.CERT_REQUIRED if self.ssl_options['validate'] else ssl_module.CERT_NONE
+            
+            sock = TSSLSocket.TSSLSocket(**ssl_params)
+        else:
+            sock = TSocket.TSocket(self.host, self.port)
+        
+        sock.setTimeout(self.timeout)
+        return sock
+
+    def _setup_kerberos(self) -> None:
+        """Setup Kerberos authentication.
+        
+        Raises:
+            RuntimeError: If Kerberos setup fails
+        """
+        # Set KRB5CCNAME BEFORE any GSSAPI operations
+        if 'KRB5CCNAME' not in os.environ:
+            result = subprocess.run(['klist'], capture_output=True, text=True)
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if line.startswith('Ticket cache:'):
+                        cache = line.split(':', 1)[1].strip()
+                        os.environ['KRB5CCNAME'] = cache
+                        logger.info("Set KRB5CCNAME=%s", cache)
+                        break
+        
+        # Check if ticket exists and is valid
+        try:
+            subprocess.run(['klist', '-s'], check=True, capture_output=True)
+            logger.info("Using existing Kerberos ticket")
+        except subprocess.CalledProcessError:
+            # No valid ticket - try to get one with keytab
+            if self.kerberos_keytab:
+                principal = self.kerberos_principal
+                if not principal:
+                    # Try to get principal from keytab
+                    result = subprocess.run(['klist', '-kt', self.kerberos_keytab], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        for line in result.stdout.split('\n'):
+                            if '@' in line and 'KVNO' not in line:
+                                principal = line.split()[-1]
+                                break
+                
+                if principal:
+                    kinit_cmd = ['kinit', '-kt', self.kerberos_keytab, principal]
+                    logger.info("Getting Kerberos ticket using keytab: %s for principal: %s", self.kerberos_keytab, principal)
+                    result = subprocess.run(kinit_cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        logger.error("kinit failed (exit code %d): %s", result.returncode, result.stderr)
+                        raise RuntimeError(f"Failed to obtain Kerberos ticket: {result.stderr}")
+                    logger.info("Successfully obtained Kerberos ticket")
+                else:
+                    raise RuntimeError("Could not determine principal from keytab")
+            else:
+                logger.error("No Kerberos ticket found and no keytab specified")
+                raise RuntimeError("No Kerberos credentials available. Please specify kerberos_keytab in connection extra.")
+
+    def _create_sasl_transport(self, socket: TSocket.TSocket | TSSLSocket.TSSLSocket):
+        """Create SASL transport for Kerberos authentication.
+        
+        Args:
+            socket: Base socket
+            
+        Returns:
+            SASL transport instance
+        """
+        def sasl_factory():
+            username = None
+            if self.kerberos_principal:
+                username = self.kerberos_principal.split('@')[0].split('/')[0]
+            
+            logger.info("[SASL DEBUG] Creating SASL client")
+            logger.info("[SASL DEBUG] host=%s, service=%s, username=%s", self.host, self.kerberos_service_name, username)
+            logger.info("[SASL DEBUG] kerberos_principal=%s", self.kerberos_principal)
+            
+            sasl_client = sasl.Client()
+            sasl_client.setAttr('host', self.host)
+            sasl_client.setAttr('service', self.kerberos_service_name)
+            if username:
+                sasl_client.setAttr('username', username)
+            sasl_client.init()
+            
+            logger.info("[SASL DEBUG] SASL client initialized")
+            return sasl_client
+        
+        return TSaslClientTransport(sasl_factory, 'GSSAPI', socket)
+
+    def _setup_kerberos_transport(self, socket: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
+        """Setup Kerberos transport and client.
+        
+        Args:
+            socket: Base socket
+            
+        Raises:
+            RuntimeError: If Kerberos setup fails
+        """
+        self._setup_kerberos()
+        self._transport = self._create_sasl_transport(socket)
+        protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
+        self._client = THBaseService.Client(protocol)
+        self._transport.open()
+
+    def _setup_simple_transport(self, socket: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
+        """Setup simple transport without authentication.
+        
+        Args:
+            socket: Base socket
+            
+        Raises:
+            Exception: If both transport types fail
+        """
+        for transport_type in ['buffered', 'framed']:
+            try:
+                if transport_type == 'buffered':
+                    self._transport = TTransport.TBufferedTransport(socket)
+                else:
+                    self._transport = TTransport.TFramedTransport(socket)
+                
+                protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
+                self._client = THBaseService.Client(protocol)
+                self._transport.open()
+                
+                # Test connection
+                self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
+                
+                logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)", 
+                           self.host, self.port, bool(self.ssl_options), transport_type)
+                return
+            except Exception as transport_error:
+                logger.debug("Transport %s failed: %s", transport_type, transport_error)
+                if hasattr(self, '_transport') and self._transport:
+                    try:
+                        self._transport.close()
+                    except:
+                        pass
+                if transport_type == 'framed':
+                    raise transport_error
+
+    def _test_connection(self) -> None:
+        """Test connection with a simple operation.
+        
+        Raises:
+            Exception: If connection test fails
+        """
+        self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
+
+    def open(self) -> None:
+        """Open connection to Thrift2 server with retry logic.
+        
+        Raises:
+            ConnectionError: If connection fails after all retries
+            TimeoutError: If connection times out
+            RuntimeError: If Kerberos authentication fails
+            OSError: If socket operation fails
+        """
         last_exception = None
         
         for attempt in range(self.retry_max_attempts):
             try:
-                # Create socket (SSL or regular)
-                if self.ssl_options:
-                    # Map our options to TSSLSocket parameters
-                    ssl_params = {
-                        'host': self.host,
-                        'port': self.port,
-                    }
-                    if 'ca_certs' in self.ssl_options:
-                        ssl_params['ca_certs'] = self.ssl_options['ca_certs']
-                    if 'cert_file' in self.ssl_options:
-                        ssl_params['certfile'] = self.ssl_options['cert_file']
-                    if 'key_file' in self.ssl_options:
-                        ssl_params['keyfile'] = self.ssl_options['key_file']
-                    if 'validate' in self.ssl_options:
-                        # Map validate to cert_reqs
-                        ssl_params['cert_reqs'] = ssl_module.CERT_REQUIRED if self.ssl_options['validate'] else ssl_module.CERT_NONE
-                    
-                    socket = TSSLSocket.TSSLSocket(**ssl_params)
-                else:
-                    socket = TSocket.TSocket(self.host, self.port)
+                socket = self._create_socket()
                 
-                socket.setTimeout(self.timeout)
-                
-                # Create transport with optional Kerberos authentication
                 if self.auth_method == 'GSSAPI':
-                    # Kerberos authentication
-                    
-                    # Set KRB5CCNAME BEFORE any GSSAPI operations
-                    if 'KRB5CCNAME' not in os.environ:
-                        result = subprocess.run(['klist'], capture_output=True, text=True)
-                        if result.returncode == 0:
-                            for line in result.stdout.split('\n'):
-                                if line.startswith('Ticket cache:'):
-                                    cache = line.split(':', 1)[1].strip()
-                                    os.environ['KRB5CCNAME'] = cache
-                                    logger.info("Set KRB5CCNAME=%s", cache)
-                                    break
-                    
-                    # Check if ticket exists and is valid
-                    try:
-                        subprocess.run(['klist', '-s'], check=True, capture_output=True)
-                        logger.info("Using existing Kerberos ticket")
-                    except subprocess.CalledProcessError:
-                        # No valid ticket - try to get one with keytab
-                        if self.kerberos_keytab:
-                            # Use principal if provided, otherwise derive from keytab
-                            principal = self.kerberos_principal
-                            if not principal:
-                                # Try to get principal from keytab
-                                result = subprocess.run(['klist', '-kt', self.kerberos_keytab], capture_output=True, text=True)
-                                if result.returncode == 0:
-                                    # Parse first principal from keytab
-                                    for line in result.stdout.split('\n'):
-                                        if '@' in line and 'KVNO' not in line:
-                                            principal = line.split()[-1]
-                                            break
-                            
-                            if principal:
-                                kinit_cmd = ['kinit', '-kt', self.kerberos_keytab, principal]
-                                logger.info("Getting Kerberos ticket using keytab: %s for principal: %s", self.kerberos_keytab, principal)
-                                result = subprocess.run(kinit_cmd, capture_output=True, text=True)
-                                if result.returncode != 0:
-                                    logger.error("kinit failed (exit code %d): %s", result.returncode, result.stderr)
-                                    raise RuntimeError(f"Failed to obtain Kerberos ticket: {result.stderr}")
-                                logger.info("Successfully obtained Kerberos ticket")
-                            else:
-                                raise RuntimeError("Could not determine principal from keytab")
-                        else:
-                            logger.error("No Kerberos ticket found and no keytab specified")
-                            raise RuntimeError("No Kerberos credentials available. Please specify kerberos_keytab in connection extra.")
-                    
-                    def sasl_factory():
-                        
-                        # Extract username from principal
-                        username = None
-                        if self.kerberos_principal:
-                            username = self.kerberos_principal.split('@')[0].split('/')[0]
-                        
-                        logger.info("[SASL DEBUG] Creating SASL client")
-                        logger.info("[SASL DEBUG] host=%s, service=%s, username=%s", self.host, self.kerberos_service_name, username)
-                        logger.info("[SASL DEBUG] kerberos_principal=%s", self.kerberos_principal)
-                        
-                        sasl_client = sasl.Client()
-                        sasl_client.setAttr('host', self.host)
-                        sasl_client.setAttr('service', self.kerberos_service_name)
-                        if username:
-                            sasl_client.setAttr('username', username)
-                        sasl_client.init()
-                        
-                        logger.info("[SASL DEBUG] SASL client initialized")
-                        return sasl_client
-                    
-                    self._transport = TSaslClientTransport(
-                        sasl_factory,
-                        'GSSAPI',
-                        socket
-                    )
-                    
-                    protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
-                    self._client = THBaseService.Client(protocol)
-                    self._transport.open()
-                    
-                    # Test connection
-                    self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
-                    
+                    self._setup_kerberos_transport(socket)
+                    self._test_connection()
                     logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Auth: %s)", 
                                self.host, self.port, bool(self.ssl_options), self.auth_method)
-                    return
                 else:
-                    # No authentication - try TBufferedTransport first, then TFramedTransport
-                    for transport_type in ['buffered', 'framed']:
-                        try:
-                            if transport_type == 'buffered':
-                                self._transport = TTransport.TBufferedTransport(socket)
-                            else:
-                                self._transport = TTransport.TFramedTransport(socket)
-                            
-                            protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
-                            self._client = THBaseService.Client(protocol)
-                            self._transport.open()
-                            
-                            # Test connection with a simple operation
-                            self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
-                            
-                            logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)", 
-                                       self.host, self.port, bool(self.ssl_options), transport_type)
-                            return
-                        except Exception as transport_error:
-                            logger.debug("Transport %s failed: %s", transport_type, transport_error)
-                            if hasattr(self, '_transport') and self._transport:
-                                try:
-                                    self._transport.close()
-                                except:
-                                    pass
-                            if transport_type == 'framed':
-                                # Both transports failed, raise the last error
-                                raise transport_error
+                    self._setup_simple_transport(socket)
+                
+                return
                 
             except (ConnectionError, TimeoutError, OSError, Exception) as e:
                 last_exception = e
-                if attempt == self.retry_max_attempts - 1:  # Last attempt
+                if attempt == self.retry_max_attempts - 1:
                     logger.error("All %d connection attempts failed. Last error: %s", self.retry_max_attempts, e)
                     raise e
 
@@ -257,7 +303,6 @@ class HBaseThrift2Client:
                 )
                 time.sleep(wait_time)
         
-        # This should never be reached, but just in case
         if last_exception:
             raise last_exception
 
