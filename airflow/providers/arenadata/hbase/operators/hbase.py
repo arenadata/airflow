@@ -36,8 +36,6 @@ class BackupSetAction(str, Enum):
 
     ADD = "add"
     LIST = "list"
-    DESCRIBE = "describe"
-    DELETE = "delete"
 
 
 class BackupType(str, Enum):
@@ -334,9 +332,6 @@ class HBaseBackupSetOperator(BaseOperator):
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
-        if not isinstance(self.action, BackupSetAction):
-            raise ValueError(f"Unsupported action: {self.action}")
-
         if self.action == BackupSetAction.ADD:
             if not self.backup_set_name or not self.tables:
                 raise ValueError("backup_set_name and tables are required for 'add' action")
@@ -347,16 +342,8 @@ class HBaseBackupSetOperator(BaseOperator):
             result = hook.list_backup_sets()
             self.log.info("Backup sets:\n%s", result if result else "(empty)")
             return result
-        elif self.action == BackupSetAction.DESCRIBE:
-            if not self.backup_set_name:
-                raise ValueError("backup_set_name is required for 'describe' action")
-            # Note: describe not implemented in hook yet
-            raise NotImplementedError("Backup set describe not yet implemented")
-        elif self.action == BackupSetAction.DELETE:
-            if not self.backup_set_name:
-                raise ValueError("backup_set_name is required for 'delete' action")
-            # Note: delete not implemented in hook yet
-            raise NotImplementedError("Backup set delete not yet implemented")
+        else:
+            raise ValueError(f"Unsupported action: {self.action}")
 
 
 class HBaseCreateBackupOperator(BaseOperator):
