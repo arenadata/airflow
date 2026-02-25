@@ -52,15 +52,15 @@ class HBaseCLIHook(BaseHook):
     def __init__(
         self,
         hbase_conn_id: str = default_conn_name,
-        hbase_cmd: str = "hbase",
-        java_home: str = "/usr/lib/jvm/java-arenadata-openjdk-8",
-        hbase_home: str = "/usr/lib/hbase",
+        hbase_cmd: str | None = None,
+        java_home: str | None = None,
+        hbase_home: str | None = None,
     ) -> None:
         super().__init__()
         self.hbase_conn_id = hbase_conn_id
-        self.hbase_cmd = hbase_cmd
-        self.java_home = java_home
-        self.hbase_home = hbase_home
+        self.hbase_cmd = hbase_cmd or os.getenv('HBASE_CMD', 'hbase')
+        self.java_home = java_home or os.getenv('JAVA_HOME', '/usr/lib/jvm/java-arenadata-openjdk-8')
+        self.hbase_home = hbase_home or os.getenv('HBASE_HOME', '/usr/lib/hbase')
         self._connection: Connection | None = None
 
     def get_conn(self) -> Connection:
