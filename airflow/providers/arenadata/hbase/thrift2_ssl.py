@@ -19,14 +19,16 @@
 
 from __future__ import annotations
 
+import os
 import ssl
 import tempfile
+from collections.abc import Callable
 from typing import Any
 
 from airflow.models import Variable
 
 
-def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, list[str]]:
+def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Callable[[], None]]:
     """Create SSL context from configuration.
     
     Args:
@@ -38,7 +40,7 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, list
             - ssl_min_version: Minimum TLS version (e.g., TLSv1_2)
             
     Returns:
-        Tuple of (ssl_context, temp_files_list)
+        Tuple of (ssl_context, cleanup_function)
     """
     ssl_context = ssl.create_default_context()
     temp_files = []
@@ -86,4 +88,12 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, list
         if min_version:
             ssl_context.minimum_version = min_version
     
-    return ssl_context, temp_files
+    def cleanup():
+        """Cleanup temporary files."""
+        for filepath in temp_files:
+            try:
+                os.unlink(filepath)
+            except Exception:
+                pass
+    
+    return ssl_context, cleanup
