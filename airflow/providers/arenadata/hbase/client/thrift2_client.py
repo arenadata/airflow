@@ -29,6 +29,7 @@ from typing import Any
 
 from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport, TSSLSocket
+from thrift.transport.TTransport import TTransportException
 
 try:
     import sasl
@@ -252,8 +253,8 @@ class HBaseThrift2Client:
                 if hasattr(self, '_transport') and self._transport:
                     try:
                         self._transport.close()
-                    except:
-                        pass
+                    except (TTransportException, OSError):
+                        logger.debug("Failed to close transport during cleanup")
                 if transport_type == 'framed':
                     raise transport_error
 
