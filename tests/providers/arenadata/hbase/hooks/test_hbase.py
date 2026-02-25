@@ -193,8 +193,8 @@ class TestHBaseThriftHookMethods:
         hook = HBaseThriftHook()
         
         with patch.object(hook._get_strategy(), 'delete_table') as mock_delete:
-            hook.delete_table("test_table", disable=True)
-            mock_delete.assert_called_once_with("test_table", True)
+            hook.delete_table("test_table")
+            mock_delete.assert_called_once_with("test_table")
 
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.HBaseThrift2Client.open")
     @patch.object(HBaseThriftHook, "get_connection")

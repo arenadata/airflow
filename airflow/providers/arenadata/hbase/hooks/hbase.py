@@ -160,9 +160,9 @@ class HBaseThriftHook(BaseHook):
         self._get_strategy().create_table(table_name, families)
         self.log.info("Created table %s", table_name)
 
-    def delete_table(self, table_name: str, disable: bool = True) -> None:
+    def delete_table(self, table_name: str) -> None:
         """Delete HBase table."""
-        self._get_strategy().delete_table(table_name, disable)
+        self._get_strategy().delete_table(table_name)
         self.log.info("Deleted table %s", table_name)
 
     def put_row(self, table_name: str, row_key: str, data: dict[str, Any]) -> None:

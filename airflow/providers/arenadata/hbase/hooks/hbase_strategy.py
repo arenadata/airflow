@@ -51,7 +51,7 @@ class HBaseStrategy(ABC):
         pass
 
     @abstractmethod
-    def delete_table(self, table_name: str, disable: bool = True) -> None:
+    def delete_table(self, table_name: str) -> None:
         """Delete table."""
         pass
 
@@ -153,7 +153,7 @@ class Thrift2Strategy(HBaseStrategy):
         """Create table via Thrift2."""
         self.client.create_table(table_name, families)
 
-    def delete_table(self, table_name: str, disable: bool = True) -> None:
+    def delete_table(self, table_name: str) -> None:
         """Delete table via Thrift2."""
         self.client.delete_table(table_name)
 
