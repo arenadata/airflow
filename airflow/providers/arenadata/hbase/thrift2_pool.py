@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 import queue
 import threading
@@ -175,6 +176,14 @@ _thrift2_pools: dict[str, Thrift2ConnectionPool] = {}
 _pool_lock = threading.Lock()
 
 
+def _cleanup_pools() -> None:
+    """Cleanup all pools on exit."""
+    with _pool_lock:
+        for pool in _thrift2_pools.values():
+            pool.close_all()
+        _thrift2_pools.clear()
+
+
 def get_or_create_thrift2_pool(
     conn_id: str, 
     pool_size: int, 
@@ -230,3 +239,7 @@ def get_or_create_thrift2_pool(
                 retry_backoff_factor=retry_backoff_factor
             )
         return _thrift2_pools[conn_id]
+
+
+# Register cleanup on exit
+atexit.register(_cleanup_pools)
