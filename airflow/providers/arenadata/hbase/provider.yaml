@@ -54,7 +54,9 @@ hooks:
       - airflow.providers.arenadata.hbase.hooks.hbase
 
 connection-types:
-  - hook-class-name: airflow.providers.arenadata.hbase.hooks.hbase.HBaseHook
+  - hook-class-name: airflow.providers.arenadata.hbase.hooks.hbase.HBaseThriftHook
+    connection-type: hbase
+  - hook-class-name: airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook
     connection-type: hbase
 
 example-dags:
