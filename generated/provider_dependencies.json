@@ -313,6 +313,21 @@
     "excluded-python-versions": [],
     "state": "ready"
   },
+  "arenadata.hbase": {
+    "deps": [
+      "apache-airflow>=2.7.0",
+      "sasl>=0.3.1",
+      "thrift>=0.13.0",
+      "thrift_sasl>=0.4.3"
+    ],
+    "devel-deps": [],
+    "plugins": [],
+    "cross-providers-deps": [
+      "openlineage"
+    ],
+    "excluded-python-versions": [],
+    "state": "ready"
+  },
   "asana": {
     "deps": [
       "apache-airflow>=2.7.0",
@@ -712,19 +727,6 @@
     "plugins": [],
     "cross-providers-deps": [
       "google"
-    ],
-    "excluded-python-versions": [],
-    "state": "ready"
-  },
-  "hbase": {
-    "deps": [
-      "apache-airflow>=2.7.0",
-      "thrift>=0.13.0"
-    ],
-    "devel-deps": [],
-    "plugins": [],
-    "cross-providers-deps": [
-      "openlineage"
     ],
     "excluded-python-versions": [],
     "state": "ready"

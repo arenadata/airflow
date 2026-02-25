@@ -58,7 +58,7 @@ class TestKerberosAuthentication:
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.SASL_AVAILABLE", False)
     def test_kerberos_without_thrift_sasl_raises_error(self):
         """Test that using Kerberos without thrift_sasl raises ImportError."""
-        with pytest.raises(ImportError, match="thrift_sasl library is required"):
+        with pytest.raises(ImportError, match="thrift_sasl and sasl libraries are required"):
             HBaseThrift2Client(
                 host="localhost",
                 port=9090,
@@ -66,12 +66,13 @@ class TestKerberosAuthentication:
             )
 
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.SASL_AVAILABLE", True)
+    @patch("airflow.providers.arenadata.hbase.client.thrift2_client.subprocess.run")
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TSaslClientTransport")
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.THBaseService")
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TBinaryProtocol")
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TSocket")
     def test_open_connection_with_kerberos(
-        self, mock_socket, mock_protocol, mock_service, mock_sasl_transport
+        self, mock_socket, mock_protocol, mock_service, mock_sasl_transport, mock_subprocess
     ):
         """Test opening connection with Kerberos authentication."""
         mock_socket_inst = MagicMock()
@@ -86,11 +87,14 @@ class TestKerberosAuthentication:
         mock_client = MagicMock()
         mock_service.Client.return_value = mock_client
         
+        mock_subprocess.return_value = MagicMock(returncode=0)
+        
         client = HBaseThrift2Client(
             host="localhost",
             port=9090,
             auth_method="GSSAPI",
-            kerberos_service_name="hbase"
+            kerberos_service_name="hbase",
+            kerberos_keytab="/path/to/keytab"
         )
         client.open()
         

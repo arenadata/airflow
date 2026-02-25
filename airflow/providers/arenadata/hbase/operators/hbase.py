@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Sequence
 
@@ -35,8 +36,6 @@ class BackupSetAction(str, Enum):
 
     ADD = "add"
     LIST = "list"
-    DESCRIBE = "describe"
-    DELETE = "delete"
 
 
 class BackupType(str, Enum):
@@ -81,6 +80,8 @@ class HBasePutOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.row_key = row_key
         self.data = data
@@ -113,6 +114,8 @@ class HBaseCreateTableOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.families = families
         self.if_exists = if_exists
@@ -150,6 +153,8 @@ class HBaseDeleteTableOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.disable = disable
         self.if_not_exists = if_not_exists
@@ -193,6 +198,8 @@ class HBaseScanOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.row_start = row_start
         self.row_stop = row_stop
@@ -246,6 +253,8 @@ class HBaseBatchPutOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.rows = rows
         self.batch_size = batch_size
@@ -281,6 +290,8 @@ class HBaseBatchGetOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.row_keys = row_keys
         self.columns = columns
@@ -333,9 +344,6 @@ class HBaseBackupSetOperator(BaseOperator):
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
-        if not isinstance(self.action, BackupSetAction):
-            raise ValueError(f"Unsupported action: {self.action}")
-
         if self.action == BackupSetAction.ADD:
             if not self.backup_set_name or not self.tables:
                 raise ValueError("backup_set_name and tables are required for 'add' action")
@@ -346,16 +354,8 @@ class HBaseBackupSetOperator(BaseOperator):
             result = hook.list_backup_sets()
             self.log.info("Backup sets:\n%s", result if result else "(empty)")
             return result
-        elif self.action == BackupSetAction.DESCRIBE:
-            if not self.backup_set_name:
-                raise ValueError("backup_set_name is required for 'describe' action")
-            # Note: describe not implemented in hook yet
-            raise NotImplementedError("Backup set describe not yet implemented")
-        elif self.action == BackupSetAction.DELETE:
-            if not self.backup_set_name:
-                raise ValueError("backup_set_name is required for 'delete' action")
-            # Note: delete not implemented in hook yet
-            raise NotImplementedError("Backup set delete not yet implemented")
+        else:
+            raise ValueError(f"Unsupported action: {self.action}")
 
 
 class HBaseCreateBackupOperator(BaseOperator):
@@ -421,7 +421,6 @@ class HBaseCreateBackupOperator(BaseOperator):
 
         # Extract backup_id from output
         # Output format: "Backup backup_1234567890123 completed."
-        import re
         match = re.search(r'backup_(\d+)', output)
         if match:
             backup_id = f"backup_{match.group(1)}"

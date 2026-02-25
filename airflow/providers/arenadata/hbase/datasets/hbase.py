@@ -28,7 +28,6 @@ def hbase_table_dataset(
     host: str,
     port: int = 9090,
     table_name: str = "",
-    extra: dict | None = None,
 ) -> Dataset:
     """
     Create a Dataset for HBase table.
@@ -36,9 +35,10 @@ def hbase_table_dataset(
     :param host: HBase Thrift server host
     :param port: HBase Thrift server port
     :param table_name: Name of the HBase table
-    :param extra: Extra parameters
     :return: Dataset object
     """
+    if not table_name:
+        raise ValueError("table_name cannot be empty")
     return Dataset(
         uri=urlunparse((
             "hbase",

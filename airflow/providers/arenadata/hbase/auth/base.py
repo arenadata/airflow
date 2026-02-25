@@ -20,11 +20,16 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
 from typing import Any
+
+from airflow.models import Variable
+
+log = logging.getLogger(__name__)
 
 
 class HBaseAuthenticator(ABC):
@@ -88,16 +93,18 @@ class KerberosAuthenticator(HBaseAuthenticator):
             raise RuntimeError(f"Kerberos authentication failed: {e.stderr}")
         finally:
             # Clean up temporary keytab file if created
-            if keytab_secret_key and keytab_path and os.path.exists(keytab_path):
-                os.unlink(keytab_path)
+            if keytab_secret_key and keytab_path:
+                try:
+                    os.unlink(keytab_path)
+                except OSError as e:
+                    log.warning("Failed to cleanup temporary keytab file: %s", e)
 
         return {}  # kinit handles authentication, use default transport
 
     def _get_secret(self, secret_key: str) -> str | None:
         """Get secret from Airflow secrets backend."""
         try:
-            from airflow.models import Variable
             return Variable.get(secret_key, default_var=None)
-        except Exception:
+        except KeyError:
             # Fallback to environment variable
             return os.environ.get(secret_key)

@@ -20,7 +20,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import socket
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -36,10 +38,19 @@ class HBaseCLIHook(BaseHook):
     """
     Hook for HBase administrative operations (backup/restore).
 
-    This hook will use HBase Admin client API for backup/restore operations.
-    Currently not implemented - placeholder for future implementation.
+    This hook executes HBase CLI commands for backup/restore operations.
+    
+    **Requirements:**
+    
+    - HBase CLI tools must be installed on the Airflow worker
+    - For Kerberos-enabled clusters: passwordless sudo access to run commands as 'hbase' user
+      (required because backup operations need access to HBase WAL files)
+    - Sudoers configuration example: ``airflow ALL=(hbase) NOPASSWD: /usr/bin/kinit, /usr/lib/hbase/bin/hbase``
 
     :param hbase_conn_id: Connection ID for HBase.
+    :param hbase_cmd: HBase command name (default: 'hbase' or HBASE_CMD env var)
+    :param java_home: Java home directory (default: JAVA_HOME env var or '/usr/lib/jvm/java-arenadata-openjdk-8')
+    :param hbase_home: HBase installation directory (default: HBASE_HOME env var or '/usr/lib/hbase')
     """
 
     conn_name_attr = "hbase_conn_id"
@@ -50,15 +61,15 @@ class HBaseCLIHook(BaseHook):
     def __init__(
         self,
         hbase_conn_id: str = default_conn_name,
-        hbase_cmd: str = "hbase",
-        java_home: str = "/usr/lib/jvm/java-arenadata-openjdk-8",
-        hbase_home: str = "/usr/lib/hbase",
+        hbase_cmd: str | None = None,
+        java_home: str | None = None,
+        hbase_home: str | None = None,
     ) -> None:
         super().__init__()
         self.hbase_conn_id = hbase_conn_id
-        self.hbase_cmd = hbase_cmd
-        self.java_home = java_home
-        self.hbase_home = hbase_home
+        self.hbase_cmd = hbase_cmd or os.getenv('HBASE_CMD', 'hbase')
+        self.java_home = java_home or os.getenv('JAVA_HOME', '/usr/lib/jvm/java-arenadata-openjdk-8')
+        self.hbase_home = hbase_home or os.getenv('HBASE_HOME', '/usr/lib/hbase')
         self._connection: Connection | None = None
 
     def get_conn(self) -> Connection:
@@ -85,12 +96,15 @@ class HBaseCLIHook(BaseHook):
         
         # Run as hbase user if Kerberos is enabled (hbase user has access to WALs)
         if kerberos_keytab:
-            # Get hbase principal and keytab
-            hbase_keytab = "/etc/security/keytabs/hbase.service.keytab"
-            # Get hostname for principal
-            import socket
-            hostname = socket.getfqdn()
-            hbase_principal = f"hbase/{hostname}@KRB5-TEST"
+            # Get hbase service keytab and principal from connection extra
+            hbase_keytab = extra.get('hbase_service_keytab', '/etc/security/keytabs/hbase.service.keytab')
+            hbase_principal = extra.get('hbase_service_principal')
+            
+            if not hbase_principal:
+                # Construct default principal if not provided
+                hostname = socket.getfqdn()
+                realm = extra.get('kerberos_realm', 'KRB5-TEST')
+                hbase_principal = f"hbase/{hostname}@{realm}"
             
             # Do kinit as hbase user, then run command
             kinit_cmd = f"sudo -u hbase kinit -kt {hbase_keytab} {hbase_principal}"
@@ -100,9 +114,10 @@ class HBaseCLIHook(BaseHook):
             full_command = hbase_command
 
         # Set environment variables
-        import os
         env = os.environ.copy()
         env['JAVA_HOME'] = self.java_home
+        # Suppress SLF4J internal warnings
+        env['HBASE_OPTS'] = env.get('HBASE_OPTS', '') + ' -Dslf4j.internal.verbosity=warn'
 
         logger.info(f"Executing HBase command: {self._mask_sensitive(full_command)}")
         logger.info(f"Using JAVA_HOME: {self.java_home}")
@@ -118,31 +133,13 @@ class HBaseCLIHook(BaseHook):
                 env=env
             )
             logger.info(f"Command completed successfully")
-            # Filter out SLF4J warnings from output
-            output = self._filter_slf4j_warnings(result.stdout)
-            return output
+            return result.stdout.strip()
         except subprocess.CalledProcessError as e:
-            # Filter SLF4J warnings from stderr to show real error
-            stderr_filtered = self._filter_slf4j_warnings(e.stderr)
-            stdout_filtered = self._filter_slf4j_warnings(e.stdout)
-
-            error_msg = stderr_filtered or stdout_filtered or "Unknown error"
+            error_msg = e.stderr.strip() or e.stdout.strip() or "Unknown error"
             logger.error(f"Command failed with exit code {e.returncode}")
             logger.error(f"Error output: {error_msg}")
 
             raise RuntimeError(f"HBase command failed (exit code {e.returncode}): {error_msg}") from e
-
-    def _filter_slf4j_warnings(self, text: str) -> str:
-        """Filter out SLF4J warnings from output."""
-        if not text:
-            return text
-
-        lines = text.split('\n')
-        filtered_lines = [
-            line for line in lines
-            if not line.startswith('SLF4J:')
-        ]
-        return '\n'.join(filtered_lines).strip()
 
     def _mask_sensitive(self, text: str) -> str:
         """Mask sensitive information in logs."""

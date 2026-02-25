@@ -19,12 +19,20 @@
 
 from __future__ import annotations
 
+import atexit
+import logging
+import os
 import queue
 import threading
 from contextlib import contextmanager
 from typing import Any
 
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
+
+logger = logging.getLogger(__name__)
+
+# Pool connection timeout in seconds
+POOL_CONNECTION_TIMEOUT = float(os.getenv('HBASE_POOL_CONNECTION_TIMEOUT', '30.0'))
 
 
 class Thrift2ConnectionPool:
@@ -36,6 +44,7 @@ class Thrift2ConnectionPool:
                  kerberos_service_name: str = 'hbase',
                  kerberos_principal: str | None = None,
                  kerberos_keytab: str | None = None,
+                 namespace: str = 'default',
                  retry_max_attempts: int = 3, 
                  retry_delay: float = 1.0, 
                  retry_backoff_factor: float = 2.0):
@@ -51,6 +60,7 @@ class Thrift2ConnectionPool:
             kerberos_service_name: Kerberos service name (default 'hbase')
             kerberos_principal: Kerberos principal username (e.g. 'airflow@REALM')
             kerberos_keytab: Path to keytab file (e.g. '/etc/security/keytabs/airflow.keytab')
+            namespace: HBase namespace (default 'default')
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
@@ -64,12 +74,19 @@ class Thrift2ConnectionPool:
         self.kerberos_service_name = kerberos_service_name
         self.kerberos_principal = kerberos_principal
         self.kerberos_keytab = kerberos_keytab
+        self.namespace = namespace
         self.retry_max_attempts = retry_max_attempts
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
         self._pool = queue.Queue(maxsize=size)
-        self._lock = threading.Lock()
-        self._created = 0
+        self._semaphore = threading.Semaphore(size)
+
+    def __del__(self):
+        """Cleanup connections when pool is garbage collected."""
+        try:
+            self.close_all()
+        except Exception:
+            pass
 
     def _create_connection(self) -> HBaseThrift2Client:
         """Create new Thrift2 client connection."""
@@ -82,6 +99,7 @@ class Thrift2ConnectionPool:
             kerberos_service_name=self.kerberos_service_name,
             kerberos_principal=self.kerberos_principal,
             kerberos_keytab=self.kerberos_keytab,
+            namespace=self.namespace,
             retry_max_attempts=self.retry_max_attempts,
             retry_delay=self.retry_delay,
             retry_backoff_factor=self.retry_backoff_factor
@@ -90,46 +108,46 @@ class Thrift2ConnectionPool:
         return client
 
     def _is_connection_alive(self, client: HBaseThrift2Client) -> bool:
-        """Check if connection is alive."""
+        """Check if connection is alive by testing request to server."""
         try:
-            # Check if client has active connection
-            return client._client is not None
-        except Exception:
+            if client._client is None:
+                return False
+            # Test connection with lightweight request
+            client._client.listTableNames()
+            return True
+        except Exception as e:
+            logger.debug(f"Connection check failed: {e}")
             return False
 
     @contextmanager
-    def connection(self, timeout: float = 30.0):
+    def connection(self, timeout: float = POOL_CONNECTION_TIMEOUT):
         """Get connection from pool.
         
         Args:
-            timeout: Timeout to wait for available connection
+            timeout: Timeout in seconds to wait for available connection from pool.
+                Warning: If pool is exhausted and timeout is too low, requests may fail.
+                Consider increasing timeout or pool size for high-load scenarios.
             
         Yields:
             HBaseThrift2Client instance
         """
         client = None
-        import logging
-        logger = logging.getLogger(__name__)
         
         try:
             # Try to get from pool or create new
             try:
                 client = self._pool.get_nowait()
             except queue.Empty:
-                with self._lock:
-                    if self._created < self.size:
-                        self._created += 1
-                        logger.debug(f"Creating new connection ({self._created}/{self.size})")
-                        try:
-                            client = self._create_connection()
-                        except Exception as e:
-                            self._created -= 1
-                            logger.error(f"Failed to create connection: {e}")
-                            raise
-                    else:
-                        logger.debug(f"Pool exhausted, waiting...")
-                
-                if client is None:
+                if self._semaphore.acquire(blocking=False):
+                    logger.debug("Creating new connection")
+                    try:
+                        client = self._create_connection()
+                    except Exception as e:
+                        self._semaphore.release()
+                        logger.error(f"Failed to create connection: {e}")
+                        raise
+                else:
+                    logger.debug("Pool exhausted, waiting...")
                     client = self._pool.get(timeout=timeout)
             
             # Check if connection is alive, reconnect if needed
@@ -150,8 +168,7 @@ class Thrift2ConnectionPool:
                     client.close()
                 except Exception:
                     pass
-                with self._lock:
-                    self._created -= 1
+                self._semaphore.release()
             raise
         else:
             if client:
@@ -172,6 +189,14 @@ _thrift2_pools: dict[str, Thrift2ConnectionPool] = {}
 _pool_lock = threading.Lock()
 
 
+def _cleanup_pools() -> None:
+    """Cleanup all pools on exit."""
+    with _pool_lock:
+        for pool in _thrift2_pools.values():
+            pool.close_all()
+        _thrift2_pools.clear()
+
+
 def get_or_create_thrift2_pool(
     conn_id: str, 
     pool_size: int, 
@@ -183,6 +208,7 @@ def get_or_create_thrift2_pool(
     kerberos_service_name: str = 'hbase',
     kerberos_principal: str | None = None,
     kerberos_keytab: str | None = None,
+    namespace: str = 'default',
     retry_max_attempts: int = 3,
     retry_delay: float = 1.0,
     retry_backoff_factor: float = 2.0
@@ -200,6 +226,7 @@ def get_or_create_thrift2_pool(
         kerberos_service_name: Kerberos service name (default 'hbase')
         kerberos_principal: Kerberos principal username (e.g. 'airflow@REALM')
         kerberos_keytab: Path to keytab file (e.g. '/etc/security/keytabs/airflow.keytab')
+        namespace: HBase namespace (default 'default')
         retry_max_attempts: Maximum number of connection attempts
         retry_delay: Initial delay between retry attempts in seconds
         retry_backoff_factor: Multiplier for delay after each failed attempt
@@ -219,8 +246,13 @@ def get_or_create_thrift2_pool(
                 kerberos_service_name=kerberos_service_name,
                 kerberos_principal=kerberos_principal,
                 kerberos_keytab=kerberos_keytab,
+                namespace=namespace,
                 retry_max_attempts=retry_max_attempts,
                 retry_delay=retry_delay,
                 retry_backoff_factor=retry_backoff_factor
             )
         return _thrift2_pools[conn_id]
+
+
+# Register cleanup on exit
+atexit.register(_cleanup_pools)

@@ -19,8 +19,6 @@
 
 from __future__ import annotations
 
-from typing import Type
-
 from airflow.providers.arenadata.hbase.auth.base import (
     HBaseAuthenticator,
     KerberosAuthenticator,
@@ -31,7 +29,7 @@ from airflow.providers.arenadata.hbase.auth.base import (
 class AuthenticatorFactory:
     """Factory for creating HBase authenticators."""
 
-    _authenticators: dict[str, Type[HBaseAuthenticator]] = {
+    _authenticators: dict[str, type[HBaseAuthenticator]] = {
         "simple": SimpleAuthenticator,
         "kerberos": KerberosAuthenticator,
     }
@@ -52,7 +50,7 @@ class AuthenticatorFactory:
         return cls._authenticators[auth_method]()
 
     @classmethod
-    def register(cls, name: str, authenticator_class: Type[HBaseAuthenticator]) -> None:
+    def register(cls, name: str, authenticator_class: type[HBaseAuthenticator]) -> None:
         """
         Register custom authenticator.
         

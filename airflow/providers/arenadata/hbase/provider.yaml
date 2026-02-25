@@ -54,18 +54,21 @@ hooks:
       - airflow.providers.arenadata.hbase.hooks.hbase
 
 connection-types:
-  - hook-class-name: airflow.providers.arenadata.hbase.hooks.hbase.HBaseHook
+  - hook-class-name: airflow.providers.arenadata.hbase.hooks.hbase.HBaseThriftHook
+    connection-type: hbase
+  - hook-class-name: airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook
     connection-type: hbase
 
 example-dags:
   - airflow.providers.arenadata.hbase.example_dags.example_hbase
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_ssl
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_kerberos
-  - airflow.providers.arenadata.hbase.example_dags.example_hbase_pool_kerberos
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_hook
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_batch
+  - airflow.providers.arenadata.hbase.example_dags.example_hbase_bulk_optimized
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_pool
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_sensors
+  - airflow.providers.arenadata.hbase.example_dags.example_hbase_cli_commands
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_backup_producer
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_backup_consumer
   - airflow.providers.arenadata.hbase.example_dags.example_hbase_restore

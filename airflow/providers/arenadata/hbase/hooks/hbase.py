@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -62,35 +63,25 @@ class HBaseThriftHook(BaseHook):
             retry_config = self._get_retry_config(conn.extra_dejson or {})
 
             # Get SSL options if configured
-            ssl_options = None
+            ssl_options = self._get_ssl_options(conn.extra_dejson or {})
             auth_method = None
             kerberos_service_name = 'hbase'
             kerberos_principal = None
             kerberos_keytab = None
-            
+            namespace = 'default'
+
             if conn.extra_dejson:
-                # Support two formats:
-                # 1. Nested: {"ssl_options": {"ca_certs": "...", ...}}
-                # 2. Flat: {"ca_certs": "...", "cert_file": "...", ...}
-                if "ssl_options" in conn.extra_dejson:
-                    ssl_options = conn.extra_dejson["ssl_options"]
-                elif any(key in conn.extra_dejson for key in ["ca_certs", "cert_file", "key_file"]):
-                    # Build ssl_options from flat structure
-                    ssl_options = {}
-                    for key in ["ca_certs", "cert_file", "key_file", "validate"]:
-                        if key in conn.extra_dejson:
-                            ssl_options[key] = conn.extra_dejson[key]
-                
                 # Get Kerberos authentication settings
                 auth_method = conn.extra_dejson.get('auth_method')
                 kerberos_service_name = conn.extra_dejson.get('kerberos_service_name', 'hbase')
                 kerberos_principal = conn.extra_dejson.get('kerberos_principal')
                 kerberos_keytab = conn.extra_dejson.get('kerberos_keytab')
-            
+                namespace = conn.extra_dejson.get('namespace', 'default')
+
             if ssl_options:
-                self.log.info("SSL/TLS enabled for Thrift2 connection with options: %s", 
+                self.log.info("SSL/TLS enabled for Thrift2 connection with options: %s",
                              {k: v for k, v in ssl_options.items() if k != 'key_file'})
-            
+
             if auth_method:
                 self.log.info("Authentication enabled: %s (service: %s)", auth_method, kerberos_service_name)
 
@@ -110,6 +101,7 @@ class HBaseThriftHook(BaseHook):
                     kerberos_service_name=kerberos_service_name,
                     kerberos_principal=kerberos_principal,
                     kerberos_keytab=kerberos_keytab,
+                    namespace=namespace,
                     **retry_config
                 )
                 self._strategy = PooledThrift2Strategy(pool, self.log)
@@ -124,11 +116,31 @@ class HBaseThriftHook(BaseHook):
                     kerberos_service_name=kerberos_service_name,
                     kerberos_principal=kerberos_principal,
                     kerberos_keytab=kerberos_keytab,
+                    namespace=namespace,
                     **retry_config
                 )
                 client.open()
                 self._strategy = Thrift2Strategy(client, self.log)
         return self._strategy
+
+    def _get_ssl_options(self, extra_config: dict[str, Any]) -> dict[str, Any] | None:
+        """Get SSL options from connection extra.
+
+        Supports two formats:
+        1. Nested: {"ssl_options": {"ca_certs": "...", ...}}
+        2. Flat: {"ca_certs": "...", "cert_file": "...", ...}
+        """
+        if "ssl_options" in extra_config:
+            return extra_config["ssl_options"]
+
+        if any(key in extra_config for key in ["ca_certs", "cert_file", "key_file"]):
+            ssl_options = {}
+            for key in ["ca_certs", "cert_file", "key_file", "validate"]:
+                if key in extra_config:
+                    ssl_options[key] = extra_config[key]
+            return ssl_options
+
+        return None
 
     def _get_pool_config(self, extra_config: dict[str, Any]) -> dict[str, Any]:
         """Get connection pool configuration from connection extra."""
@@ -156,9 +168,9 @@ class HBaseThriftHook(BaseHook):
         self._get_strategy().create_table(table_name, families)
         self.log.info("Created table %s", table_name)
 
-    def delete_table(self, table_name: str, disable: bool = True) -> None:
+    def delete_table(self, table_name: str) -> None:
         """Delete HBase table."""
-        self._get_strategy().delete_table(table_name, disable)
+        self._get_strategy().delete_table(table_name)
         self.log.info("Deleted table %s", table_name)
 
     def put_row(self, table_name: str, row_key: str, data: dict[str, Any]) -> None:
@@ -202,10 +214,6 @@ class HBaseThriftHook(BaseHook):
         self._get_strategy().delete_row(table_name, row_key, columns)
         self.log.info("Deleted row %s from table %s", row_key, table_name)
 
-    def get_table_families(self, table_name: str) -> dict[str, dict]:
-        """Get column families for a table."""
-        return self._get_strategy().get_table_families(table_name)
-
     def get_openlineage_database_info(self, connection):
         """Return HBase specific information for OpenLineage."""
         try:
@@ -221,6 +229,11 @@ class HBaseThriftHook(BaseHook):
     @classmethod
     def get_ui_field_behaviour(cls) -> dict[str, Any]:
         """Return custom UI field behaviour for HBase connection."""
+        # Load extra placeholder from JSON file
+        json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ui_field_behaviour.json')
+        with open(json_path, 'r') as f:
+            extra_placeholder = json.load(f)
+
         return {
             "hidden_fields": ["schema"],
             "relabeling": {
@@ -230,32 +243,16 @@ class HBaseThriftHook(BaseHook):
             "placeholders": {
                 "host": "localhost",
                 "port": "9090",
-                "extra": '''{
-  "ssl_options": {
-    "ca_certs": "/path/to/ca.crt",
-    "cert_file": "/path/to/client.crt",
-    "key_file": "/path/to/client.key",
-    "validate": true
-  },
-  "auth_method": "GSSAPI",
-  "kerberos_service_name": "hbase",
-  "timeout": 30000,
-  "retry_max_attempts": 3,
-  "retry_delay": 1.0,
-  "retry_backoff_factor": 2.0,
-  "connection_pool": {
-    "enabled": false,
-    "size": 10,
-    "timeout": 30
-  }
-}'''
+                "extra": json.dumps(extra_placeholder, indent=2)
             },
         }
 
     def close(self) -> None:
         """Close HBase connection."""
         if self._strategy:
-            # Don't close pooled strategies - they manage their own lifecycle
-            if not isinstance(self._strategy, PooledThrift2Strategy):
-                if hasattr(self._strategy, 'client') and self._strategy.client:
-                    self._strategy.client.close()
+            if isinstance(self._strategy, PooledThrift2Strategy):
+                # Close all connections in pool
+                self._strategy.pool.close_all()
+            elif hasattr(self._strategy, 'client') and self._strategy.client:
+                # Close single client connection
+                self._strategy.client.close()
