@@ -74,8 +74,7 @@ class Thrift2ConnectionPool:
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
         self._pool = queue.Queue(maxsize=size)
-        self._lock = threading.Lock()
-        self._created = 0
+        self._semaphore = threading.Semaphore(size)
 
     def _create_connection(self) -> HBaseThrift2Client:
         """Create new Thrift2 client connection."""
@@ -121,20 +120,16 @@ class Thrift2ConnectionPool:
             try:
                 client = self._pool.get_nowait()
             except queue.Empty:
-                with self._lock:
-                    if self._created < self.size:
-                        self._created += 1
-                        logger.debug(f"Creating new connection ({self._created}/{self.size})")
-                        try:
-                            client = self._create_connection()
-                        except Exception as e:
-                            self._created -= 1
-                            logger.error(f"Failed to create connection: {e}")
-                            raise
-                    else:
-                        logger.debug(f"Pool exhausted, waiting...")
-                
-                if client is None:
+                if self._semaphore.acquire(blocking=False):
+                    logger.debug("Creating new connection")
+                    try:
+                        client = self._create_connection()
+                    except Exception as e:
+                        self._semaphore.release()
+                        logger.error(f"Failed to create connection: {e}")
+                        raise
+                else:
+                    logger.debug("Pool exhausted, waiting...")
                     client = self._pool.get(timeout=timeout)
             
             # Check if connection is alive, reconnect if needed
@@ -155,8 +150,7 @@ class Thrift2ConnectionPool:
                     client.close()
                 except Exception:
                     pass
-                with self._lock:
-                    self._created -= 1
+                self._semaphore.release()
             raise
         else:
             if client:
