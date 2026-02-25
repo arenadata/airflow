@@ -37,6 +37,8 @@ def hbase_table_dataset(
     :param table_name: Name of the HBase table
     :return: Dataset object
     """
+    if not table_name:
+        raise ValueError("table_name cannot be empty")
     return Dataset(
         uri=urlunparse((
             "hbase",
