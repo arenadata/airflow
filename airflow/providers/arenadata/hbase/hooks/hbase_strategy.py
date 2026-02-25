@@ -83,11 +83,6 @@ class HBaseStrategy(ABC):
         pass
 
     @abstractmethod
-    def get_table_families(self, table_name: str) -> dict[str, dict]:
-        """Get column families for a table."""
-        pass
-
-    @abstractmethod
     def batch_get_rows(self, table_name: str, row_keys: list[str], columns: list[str] | None = None) -> list[dict[str, Any]]:
         """Get multiple rows in batch."""
         pass
@@ -182,10 +177,6 @@ class Thrift2Strategy(HBaseStrategy):
         """Delete row via Thrift2."""
         self.client.delete(table_name, row_key, columns)
 
-    def get_table_families(self, table_name: str) -> dict[str, dict]:
-        """Get column families via Thrift2."""
-        return {}
-
     def batch_get_rows(self, table_name: str, row_keys: list[str], columns: list[str] | None = None) -> list[dict[str, Any]]:
         """Get multiple rows via Thrift2 using batch API."""
         results = self.client.get_multiple(table_name, row_keys, columns)
@@ -196,16 +187,16 @@ class Thrift2Strategy(HBaseStrategy):
         if max_workers > 1:
             self.log.warning("Thrift2 doesn't support parallel processing (no connection pool). Using single thread.")
             max_workers = 1
-        
+
         # Debug: check row format
         if rows:
             self.log.info(f"First row type: {type(rows[0])}, content: {rows[0]}")
-        
+
         def process_chunk(chunk):
             """Process chunk using batch API."""
             chunk_size = sum(len(str(row)) for row in chunk)
             self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_size} bytes")
-            
+
             try:
                 puts = []
                 for row in chunk:
@@ -221,7 +212,7 @@ class Thrift2Strategy(HBaseStrategy):
                         puts.append((row_key, row_data))
                     else:
                         self.log.warning(f"Unknown row format: {type(row)}, {row}")
-                
+
                 self.log.info(f"Prepared {len(puts)} puts for batch insert")
                 if puts:
                     self.log.info(f"Sample put: {puts[0] if puts else 'none'}")
@@ -229,7 +220,7 @@ class Thrift2Strategy(HBaseStrategy):
                     self.log.info(f"Successfully inserted {len(puts)} rows")
                 else:
                     self.log.warning("No puts prepared - check row format")
-                
+
                 time.sleep(0.1)
             except Exception as e:
                 self.log.error(f"Chunk processing failed: {e}")
@@ -237,7 +228,7 @@ class Thrift2Strategy(HBaseStrategy):
 
         chunks = self._create_chunks(rows, batch_size)
         self.log.info(f"Processing {len(rows)} rows in {len(chunks)} chunks (batch_size={batch_size})")
-        
+
         for chunk in chunks:
             process_chunk(chunk)
 
@@ -269,7 +260,7 @@ class Thrift2Strategy(HBaseStrategy):
 
         chunks = self._create_chunks(row_keys, batch_size)
         self.log.info(f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})")
-        
+
         for chunk in chunks:
             process_chunk(chunk)
 
@@ -340,10 +331,6 @@ class PooledThrift2Strategy(HBaseStrategy):
         with self.pool.connection() as client:
             client.delete(table_name, row_key, columns)
 
-    def get_table_families(self, table_name: str) -> dict[str, dict]:
-        """Get column families via pooled Thrift2."""
-        return {}
-
     def batch_get_rows(self, table_name: str, row_keys: list[str], columns: list[str] | None = None) -> list[dict[str, Any]]:
         """Get multiple rows via pooled Thrift2."""
         with self.pool.connection() as client:
@@ -359,7 +346,7 @@ class PooledThrift2Strategy(HBaseStrategy):
             """Process chunk using pooled connection."""
             chunk_size = sum(len(str(row)) for row in chunk)
             self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_size} bytes")
-            
+
             try:
                 with self.pool.connection() as client:
                     puts = []
@@ -368,10 +355,10 @@ class PooledThrift2Strategy(HBaseStrategy):
                             row_key = row.get('row_key')
                             row_data = {k: v for k, v in row.items() if k != 'row_key'}
                             puts.append((row_key, row_data))
-                    
+
                     if puts:
                         client.put_multiple(table_name, puts)
-                
+
                 time.sleep(0.1)
             except Exception as e:
                 self.log.error(f"Chunk processing failed: {e}")
@@ -379,9 +366,9 @@ class PooledThrift2Strategy(HBaseStrategy):
 
         chunk_size = max(1, len(rows) // max_workers) if max_workers > 1 else batch_size
         chunks = self._create_chunks(rows, chunk_size)
-        
+
         self.log.info(f"Processing {len(rows)} rows in {len(chunks)} chunks with {max_workers} workers (batch_size={batch_size})")
-        
+
         if max_workers > 1:
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [executor.submit(process_chunk, chunk) for chunk in chunks]
@@ -421,7 +408,7 @@ class PooledThrift2Strategy(HBaseStrategy):
 
         chunks = self._create_chunks(row_keys, batch_size)
         self.log.info(f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})")
-        
+
         for chunk in chunks:
             process_chunk(chunk)
 

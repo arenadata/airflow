@@ -69,7 +69,7 @@ class HBaseThriftHook(BaseHook):
             kerberos_principal = None
             kerberos_keytab = None
             namespace = 'default'
-            
+
             if conn.extra_dejson:
                 # Get Kerberos authentication settings
                 auth_method = conn.extra_dejson.get('auth_method')
@@ -77,11 +77,11 @@ class HBaseThriftHook(BaseHook):
                 kerberos_principal = conn.extra_dejson.get('kerberos_principal')
                 kerberos_keytab = conn.extra_dejson.get('kerberos_keytab')
                 namespace = conn.extra_dejson.get('namespace', 'default')
-            
+
             if ssl_options:
-                self.log.info("SSL/TLS enabled for Thrift2 connection with options: %s", 
+                self.log.info("SSL/TLS enabled for Thrift2 connection with options: %s",
                              {k: v for k, v in ssl_options.items() if k != 'key_file'})
-            
+
             if auth_method:
                 self.log.info("Authentication enabled: %s (service: %s)", auth_method, kerberos_service_name)
 
@@ -125,21 +125,21 @@ class HBaseThriftHook(BaseHook):
 
     def _get_ssl_options(self, extra_config: dict[str, Any]) -> dict[str, Any] | None:
         """Get SSL options from connection extra.
-        
+
         Supports two formats:
         1. Nested: {"ssl_options": {"ca_certs": "...", ...}}
         2. Flat: {"ca_certs": "...", "cert_file": "...", ...}
         """
         if "ssl_options" in extra_config:
             return extra_config["ssl_options"]
-        
+
         if any(key in extra_config for key in ["ca_certs", "cert_file", "key_file"]):
             ssl_options = {}
             for key in ["ca_certs", "cert_file", "key_file", "validate"]:
                 if key in extra_config:
                     ssl_options[key] = extra_config[key]
             return ssl_options
-        
+
         return None
 
     def _get_pool_config(self, extra_config: dict[str, Any]) -> dict[str, Any]:
@@ -214,10 +214,6 @@ class HBaseThriftHook(BaseHook):
         self._get_strategy().delete_row(table_name, row_key, columns)
         self.log.info("Deleted row %s from table %s", row_key, table_name)
 
-    def get_table_families(self, table_name: str) -> dict[str, dict]:
-        """Get column families for a table."""
-        return self._get_strategy().get_table_families(table_name)
-
     def get_openlineage_database_info(self, connection):
         """Return HBase specific information for OpenLineage."""
         try:
@@ -237,7 +233,7 @@ class HBaseThriftHook(BaseHook):
         json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ui_field_behaviour.json')
         with open(json_path, 'r') as f:
             extra_placeholder = json.load(f)
-        
+
         return {
             "hidden_fields": ["schema"],
             "relabeling": {
