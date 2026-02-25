@@ -80,6 +80,8 @@ class HBasePutOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.row_key = row_key
         self.data = data
@@ -112,6 +114,8 @@ class HBaseCreateTableOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.families = families
         self.if_exists = if_exists
@@ -149,6 +153,8 @@ class HBaseDeleteTableOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.disable = disable
         self.if_not_exists = if_not_exists
@@ -192,6 +198,8 @@ class HBaseScanOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.row_start = row_start
         self.row_stop = row_stop
@@ -245,6 +253,8 @@ class HBaseBatchPutOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.rows = rows
         self.batch_size = batch_size
@@ -280,6 +290,8 @@ class HBaseBatchGetOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not table_name:
+            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.row_keys = row_keys
         self.columns = columns
