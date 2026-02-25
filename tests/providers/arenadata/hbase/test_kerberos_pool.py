@@ -80,6 +80,7 @@ class TestKerberosPool:
             auth_method="GSSAPI",
             kerberos_service_name="hbase",
             kerberos_principal=None,
+            kerberos_keytab=None,
             retry_max_attempts=3,
             retry_delay=1.0,
             retry_backoff_factor=2.0

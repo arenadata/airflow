@@ -78,6 +78,7 @@ class TestThrift2ConnectionPool:
                 auth_method=None,
                 kerberos_service_name="hbase",
                 kerberos_principal=None,
+                kerberos_keytab=None,
                 retry_max_attempts=3,
                 retry_delay=1.0,
                 retry_backoff_factor=2.0
@@ -109,6 +110,7 @@ class TestThrift2ConnectionPool:
                 auth_method=None,
                 kerberos_service_name="hbase",
                 kerberos_principal=None,
+                kerberos_keytab=None,
                 retry_max_attempts=5,
                 retry_delay=2.0,
                 retry_backoff_factor=3.0
