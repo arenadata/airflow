@@ -254,7 +254,9 @@ class HBaseThriftHook(BaseHook):
     def close(self) -> None:
         """Close HBase connection."""
         if self._strategy:
-            # Don't close pooled strategies - they manage their own lifecycle
-            if not isinstance(self._strategy, PooledThrift2Strategy):
-                if hasattr(self._strategy, 'client') and self._strategy.client:
-                    self._strategy.client.close()
+            if isinstance(self._strategy, PooledThrift2Strategy):
+                # Close all connections in pool
+                self._strategy.pool.close_all()
+            elif hasattr(self._strategy, 'client') and self._strategy.client:
+                # Close single client connection
+                self._strategy.client.close()
