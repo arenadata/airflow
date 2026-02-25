@@ -26,7 +26,7 @@ for efficient bulk data processing with HBase.
 from datetime import datetime, timedelta
 
 from airflow import DAG
-from airflow.providers.hbase.operators.hbase import (
+from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseBatchPutOperator,
     HBaseCreateTableOperator,
     HBaseDeleteTableOperator,
