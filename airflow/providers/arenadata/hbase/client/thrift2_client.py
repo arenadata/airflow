@@ -54,6 +54,7 @@ class HBaseThrift2Client:
                  kerberos_service_name: str = 'hbase',
                  kerberos_principal: str | None = None,
                  kerberos_keytab: str | None = None,
+                 namespace: str = 'default',
                  retry_max_attempts: int = 3,
                  retry_delay: float = 1.0,
                  retry_backoff_factor: float = 2.0):
@@ -68,6 +69,7 @@ class HBaseThrift2Client:
             kerberos_service_name: Kerberos service name (default 'hbase')
             kerberos_principal: Kerberos principal username (e.g. 'airflow@REALM')
             kerberos_keytab: Path to keytab file (e.g. '/etc/security/keytabs/airflow.keytab')
+            namespace: HBase namespace (default 'default')
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
@@ -80,6 +82,7 @@ class HBaseThrift2Client:
         self.kerberos_service_name = kerberos_service_name
         self.kerberos_principal = kerberos_principal
         self.kerberos_keytab = kerberos_keytab
+        self.namespace = namespace
         self.retry_max_attempts = retry_max_attempts
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
@@ -322,7 +325,7 @@ class HBaseThrift2Client:
     def table_exists(self, table_name: str) -> bool:
         """Check if table exists."""
         table_name_obj = ttypes.TTableName(
-            ns=b"default",
+            ns=self.namespace.encode(),
             qualifier=table_name.encode()
         )
         return self._client.tableExists(table_name_obj)
@@ -335,7 +338,7 @@ class HBaseThrift2Client:
             families: Dictionary of column families
         """
         table_name_obj = ttypes.TTableName(
-            ns=b"default",
+            ns=self.namespace.encode(),
             qualifier=table_name.encode()
         )
 
@@ -360,7 +363,7 @@ class HBaseThrift2Client:
             table_name: Name of the table
         """
         table_name_obj = ttypes.TTableName(
-            ns=b"default",
+            ns=self.namespace.encode(),
             qualifier=table_name.encode()
         )
         
