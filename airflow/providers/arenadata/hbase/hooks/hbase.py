@@ -62,7 +62,7 @@ class HBaseThriftHook(BaseHook):
             retry_config = self._get_retry_config(conn.extra_dejson or {})
 
             # Get SSL options if configured
-            ssl_options = None
+            ssl_options = self._get_ssl_options(conn.extra_dejson or {})
             auth_method = None
             kerberos_service_name = 'hbase'
             kerberos_principal = None
@@ -70,18 +70,6 @@ class HBaseThriftHook(BaseHook):
             namespace = 'default'
             
             if conn.extra_dejson:
-                # Support two formats:
-                # 1. Nested: {"ssl_options": {"ca_certs": "...", ...}}
-                # 2. Flat: {"ca_certs": "...", "cert_file": "...", ...}
-                if "ssl_options" in conn.extra_dejson:
-                    ssl_options = conn.extra_dejson["ssl_options"]
-                elif any(key in conn.extra_dejson for key in ["ca_certs", "cert_file", "key_file"]):
-                    # Build ssl_options from flat structure
-                    ssl_options = {}
-                    for key in ["ca_certs", "cert_file", "key_file", "validate"]:
-                        if key in conn.extra_dejson:
-                            ssl_options[key] = conn.extra_dejson[key]
-                
                 # Get Kerberos authentication settings
                 auth_method = conn.extra_dejson.get('auth_method')
                 kerberos_service_name = conn.extra_dejson.get('kerberos_service_name', 'hbase')
@@ -133,6 +121,25 @@ class HBaseThriftHook(BaseHook):
                 client.open()
                 self._strategy = Thrift2Strategy(client, self.log)
         return self._strategy
+
+    def _get_ssl_options(self, extra_config: dict[str, Any]) -> dict[str, Any] | None:
+        """Get SSL options from connection extra.
+        
+        Supports two formats:
+        1. Nested: {"ssl_options": {"ca_certs": "...", ...}}
+        2. Flat: {"ca_certs": "...", "cert_file": "...", ...}
+        """
+        if "ssl_options" in extra_config:
+            return extra_config["ssl_options"]
+        
+        if any(key in extra_config for key in ["ca_certs", "cert_file", "key_file"]):
+            ssl_options = {}
+            for key in ["ca_certs", "cert_file", "key_file", "validate"]:
+                if key in extra_config:
+                    ssl_options[key] = extra_config[key]
+            return ssl_options
+        
+        return None
 
     def _get_pool_config(self, extra_config: dict[str, Any]) -> dict[str, Any]:
         """Get connection pool configuration from connection extra."""
