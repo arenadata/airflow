@@ -38,10 +38,19 @@ class HBaseCLIHook(BaseHook):
     """
     Hook for HBase administrative operations (backup/restore).
 
-    This hook will use HBase Admin client API for backup/restore operations.
-    Currently not implemented - placeholder for future implementation.
+    This hook executes HBase CLI commands for backup/restore operations.
+    
+    **Requirements:**
+    
+    - HBase CLI tools must be installed on the Airflow worker
+    - For Kerberos-enabled clusters: passwordless sudo access to run commands as 'hbase' user
+      (required because backup operations need access to HBase WAL files)
+    - Sudoers configuration example: ``airflow ALL=(hbase) NOPASSWD: /usr/bin/kinit, /usr/lib/hbase/bin/hbase``
 
     :param hbase_conn_id: Connection ID for HBase.
+    :param hbase_cmd: HBase command name (default: 'hbase' or HBASE_CMD env var)
+    :param java_home: Java home directory (default: JAVA_HOME env var or '/usr/lib/jvm/java-arenadata-openjdk-8')
+    :param hbase_home: HBase installation directory (default: HBASE_HOME env var or '/usr/lib/hbase')
     """
 
     conn_name_attr = "hbase_conn_id"
