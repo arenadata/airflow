@@ -38,6 +38,11 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Call
             - ssl_cert_secret: Airflow Variable name for client certificate
             - ssl_key_secret: Airflow Variable name for client key
             - ssl_min_version: Minimum TLS version (e.g., TLSv1_2)
+    
+    Warning:
+        Storing certificates in Airflow Variables is not recommended for production
+        unless using external Secret Backend (AWS Secrets Manager, HashiCorp Vault, etc.).
+        Consider using file paths instead for better security.
             
     Returns:
         Tuple of (ssl_context, cleanup_function)
