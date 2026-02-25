@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 import concurrent.futures
 from abc import ABC, abstractmethod
@@ -26,6 +27,9 @@ from typing import Any
 
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
 from airflow.providers.arenadata.hbase.thrift2_pool import Thrift2ConnectionPool
+
+# Delay between batch operations to avoid overwhelming HBase
+BATCH_DELAY = float(os.getenv('HBASE_BATCH_DELAY', '0.1'))
 
 
 class HBaseStrategy(ABC):
@@ -221,7 +225,7 @@ class Thrift2Strategy(HBaseStrategy):
                 else:
                     self.log.warning("No puts prepared - check row format")
 
-                time.sleep(0.1)
+                time.sleep(BATCH_DELAY)
             except Exception as e:
                 self.log.error(f"Chunk processing failed: {e}")
                 raise
@@ -253,7 +257,7 @@ class Thrift2Strategy(HBaseStrategy):
                 # Convert row_keys to (row_key, None) tuples for delete_multiple
                 deletes = [(row_key, None) for row_key in chunk]
                 self.client.delete_multiple(table_name, deletes)
-                time.sleep(0.1)
+                time.sleep(BATCH_DELAY)
             except Exception as e:
                 self.log.error(f"Chunk deletion failed: {e}")
                 raise
@@ -359,7 +363,7 @@ class PooledThrift2Strategy(HBaseStrategy):
                     if puts:
                         client.put_multiple(table_name, puts)
 
-                time.sleep(0.1)
+                time.sleep(BATCH_DELAY)
             except Exception as e:
                 self.log.error(f"Chunk processing failed: {e}")
                 raise
@@ -401,7 +405,7 @@ class PooledThrift2Strategy(HBaseStrategy):
                     # Convert row_keys to (row_key, None) tuples for delete_multiple
                     deletes = [(row_key, None) for row_key in chunk]
                     client.delete_multiple(table_name, deletes)
-                time.sleep(0.1)
+                time.sleep(BATCH_DELAY)
             except Exception as e:
                 self.log.error(f"Chunk deletion failed: {e}")
                 raise
