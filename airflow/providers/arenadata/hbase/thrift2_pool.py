@@ -96,11 +96,15 @@ class Thrift2ConnectionPool:
         return client
 
     def _is_connection_alive(self, client: HBaseThrift2Client) -> bool:
-        """Check if connection is alive."""
+        """Check if connection is alive by testing request to server."""
         try:
-            # Check if client has active connection
-            return client._client is not None
-        except Exception:
+            if client._client is None:
+                return False
+            # Test connection with lightweight request
+            client._client.listTableNames()
+            return True
+        except Exception as e:
+            logger.debug(f"Connection check failed: {e}")
             return False
 
     @contextmanager
