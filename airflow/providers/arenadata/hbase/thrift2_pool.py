@@ -81,6 +81,13 @@ class Thrift2ConnectionPool:
         self._pool = queue.Queue(maxsize=size)
         self._semaphore = threading.Semaphore(size)
 
+    def __del__(self):
+        """Cleanup connections when pool is garbage collected."""
+        try:
+            self.close_all()
+        except Exception:
+            pass
+
     def _create_connection(self) -> HBaseThrift2Client:
         """Create new Thrift2 client connection."""
         client = HBaseThrift2Client(
