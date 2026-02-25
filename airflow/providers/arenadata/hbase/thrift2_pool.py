@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import atexit
 import logging
+import os
 import queue
 import threading
 from contextlib import contextmanager
@@ -29,6 +30,9 @@ from typing import Any
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
 
 logger = logging.getLogger(__name__)
+
+# Pool connection timeout in seconds
+POOL_CONNECTION_TIMEOUT = float(os.getenv('HBASE_POOL_CONNECTION_TIMEOUT', '30.0'))
 
 
 class Thrift2ConnectionPool:
@@ -109,11 +113,13 @@ class Thrift2ConnectionPool:
             return False
 
     @contextmanager
-    def connection(self, timeout: float = 30.0):
+    def connection(self, timeout: float = POOL_CONNECTION_TIMEOUT):
         """Get connection from pool.
         
         Args:
-            timeout: Timeout to wait for available connection
+            timeout: Timeout in seconds to wait for available connection from pool.
+                Warning: If pool is exhausted and timeout is too low, requests may fail.
+                Consider increasing timeout or pool size for high-load scenarios.
             
         Yields:
             HBaseThrift2Client instance
