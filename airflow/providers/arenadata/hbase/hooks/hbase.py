@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -232,6 +233,11 @@ class HBaseThriftHook(BaseHook):
     @classmethod
     def get_ui_field_behaviour(cls) -> dict[str, Any]:
         """Return custom UI field behaviour for HBase connection."""
+        # Load extra placeholder from JSON file
+        json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ui_field_behaviour.json')
+        with open(json_path, 'r') as f:
+            extra_placeholder = json.load(f)
+        
         return {
             "hidden_fields": ["schema"],
             "relabeling": {
@@ -241,25 +247,7 @@ class HBaseThriftHook(BaseHook):
             "placeholders": {
                 "host": "localhost",
                 "port": "9090",
-                "extra": '''{
-  "ssl_options": {
-    "ca_certs": "/path/to/ca.crt",
-    "cert_file": "/path/to/client.crt",
-    "key_file": "/path/to/client.key",
-    "validate": true
-  },
-  "auth_method": "GSSAPI",
-  "kerberos_service_name": "hbase",
-  "timeout": 30000,
-  "retry_max_attempts": 3,
-  "retry_delay": 1.0,
-  "retry_backoff_factor": 2.0,
-  "connection_pool": {
-    "enabled": false,
-    "size": 10,
-    "timeout": 30
-  }
-}'''
+                "extra": json.dumps(extra_placeholder, indent=2)
             },
         }
 
