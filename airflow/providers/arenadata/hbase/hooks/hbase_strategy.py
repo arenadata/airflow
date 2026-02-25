@@ -313,7 +313,7 @@ class PooledThrift2Strategy(HBaseStrategy):
         with self.pool.connection() as client:
             client.create_table(table_name, families)
 
-    def delete_table(self, table_name: str, disable: bool = True) -> None:
+    def delete_table(self, table_name: str) -> None:
         """Delete table via pooled Thrift2."""
         with self.pool.connection() as client:
             client.delete_table(table_name)
