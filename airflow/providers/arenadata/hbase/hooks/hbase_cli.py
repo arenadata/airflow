@@ -87,11 +87,15 @@ class HBaseCLIHook(BaseHook):
         
         # Run as hbase user if Kerberos is enabled (hbase user has access to WALs)
         if kerberos_keytab:
-            # Get hbase principal and keytab
-            hbase_keytab = "/etc/security/keytabs/hbase.service.keytab"
-            # Get hostname for principal
-            hostname = socket.getfqdn()
-            hbase_principal = f"hbase/{hostname}@KRB5-TEST"
+            # Get hbase service keytab and principal from connection extra
+            hbase_keytab = extra.get('hbase_service_keytab', '/etc/security/keytabs/hbase.service.keytab')
+            hbase_principal = extra.get('hbase_service_principal')
+            
+            if not hbase_principal:
+                # Construct default principal if not provided
+                hostname = socket.getfqdn()
+                realm = extra.get('kerberos_realm', 'KRB5-TEST')
+                hbase_principal = f"hbase/{hostname}@{realm}"
             
             # Do kinit as hbase user, then run command
             kinit_cmd = f"sudo -u hbase kinit -kt {hbase_keytab} {hbase_principal}"
