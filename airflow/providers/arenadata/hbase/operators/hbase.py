@@ -168,7 +168,7 @@ class HBaseDeleteTableOperator(BaseOperator):
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         if hook.table_exists(self.table_name):
-            hook.delete_table(self.table_name, self.disable)
+            hook.delete_table(self.table_name)
         else:
             if self.if_not_exists == IfNotExistsAction.ERROR:
                 raise ValueError(f"Table {self.table_name} does not exist")
