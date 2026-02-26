@@ -39,18 +39,22 @@ class HBaseCLIHook(BaseHook):
     Hook for HBase administrative operations (backup/restore).
 
     This hook executes HBase CLI commands for backup/restore operations.
-    
+
     **Requirements:**
-    
+
     - HBase CLI tools must be installed on the Airflow worker
     - For Kerberos-enabled clusters: passwordless sudo access to run commands as 'hbase' user
       (required because backup operations need access to HBase WAL files)
-    - Sudoers configuration example: ``airflow ALL=(hbase) NOPASSWD: /usr/bin/kinit, /usr/lib/hbase/bin/hbase``
+    - Sudoers configuration example:
+      ``airflow ALL=(hbase) NOPASSWD: /usr/bin/kinit, /usr/lib/hbase/bin/hbase``
 
     :param hbase_conn_id: Connection ID for HBase.
-    :param hbase_cmd: HBase command name (default: 'hbase' or HBASE_CMD env var)
-    :param java_home: Java home directory (default: JAVA_HOME env var or '/usr/lib/jvm/java-arenadata-openjdk-8')
-    :param hbase_home: HBase installation directory (default: HBASE_HOME env var or '/usr/lib/hbase')
+    :param hbase_cmd: HBase command name
+        (default: 'hbase' or HBASE_CMD env var)
+    :param java_home: Java home directory
+        (default: JAVA_HOME env var or '/usr/lib/jvm/java-arenadata-openjdk-8')
+    :param hbase_home: HBase installation directory
+        (default: HBASE_HOME env var or '/usr/lib/hbase')
     """
 
     conn_name_attr = "hbase_conn_id"
@@ -68,7 +72,9 @@ class HBaseCLIHook(BaseHook):
         super().__init__()
         self.hbase_conn_id = hbase_conn_id
         self.hbase_cmd = hbase_cmd or os.getenv('HBASE_CMD', 'hbase')
-        self.java_home = java_home or os.getenv('JAVA_HOME', '/usr/lib/jvm/java-arenadata-openjdk-8')
+        self.java_home = (
+            java_home or os.getenv('JAVA_HOME', '/usr/lib/jvm/java-arenadata-openjdk-8')
+        )
         self.hbase_home = hbase_home or os.getenv('HBASE_HOME', '/usr/lib/hbase')
         self._connection: Connection | None = None
 
@@ -78,7 +84,7 @@ class HBaseCLIHook(BaseHook):
             self._connection = self.get_connection(self.hbase_conn_id)
         return self._connection
 
-    def _execute_hbase_command(self, command: str) -> str:
+    def _execute_hbase_command(self, command: str) -> str:  # pylint: disable=too-many-locals
         """Execute HBase CLI command.
 
         :param command: HBase command to execute (e.g., "backup create full /backup -t table1")
@@ -87,29 +93,33 @@ class HBaseCLIHook(BaseHook):
         # Get connection for Kerberos settings
         conn = self.get_conn()
         extra = conn.extra_dejson if conn.extra else {}
-        
+
         # Check if Kerberos authentication is needed
         kerberos_keytab = extra.get('kerberos_keytab')
-        
+
         # Use hbase_home to construct full command path
         hbase_command = f"{self.hbase_home}/bin/{self.hbase_cmd} {command}"
-        
+
         # Run as hbase user if Kerberos is enabled (hbase user has access to WALs)
         if kerberos_keytab:
             # Get hbase service keytab and principal from connection extra
-            hbase_keytab = extra.get('hbase_service_keytab', '/etc/security/keytabs/hbase.service.keytab')
+            hbase_keytab = extra.get(
+                'hbase_service_keytab', '/etc/security/keytabs/hbase.service.keytab'
+            )
             hbase_principal = extra.get('hbase_service_principal')
-            
+
             if not hbase_principal:
                 # Construct default principal if not provided
                 hostname = socket.getfqdn()
                 realm = extra.get('kerberos_realm', 'KRB5-TEST')
                 hbase_principal = f"hbase/{hostname}@{realm}"
-            
+
             # Do kinit as hbase user, then run command
             kinit_cmd = f"sudo -u hbase kinit -kt {hbase_keytab} {hbase_principal}"
             full_command = f"{kinit_cmd} && sudo -u hbase {hbase_command}"
-            logger.info(f"Running as hbase user with Kerberos: {hbase_principal}")
+            logger.info(
+                "Running as hbase user with Kerberos: %s", hbase_principal
+            )
         else:
             full_command = hbase_command
 
@@ -117,11 +127,15 @@ class HBaseCLIHook(BaseHook):
         env = os.environ.copy()
         env['JAVA_HOME'] = self.java_home
         # Suppress SLF4J internal warnings
-        env['HBASE_OPTS'] = env.get('HBASE_OPTS', '') + ' -Dslf4j.internal.verbosity=warn'
+        env['HBASE_OPTS'] = (
+            env.get('HBASE_OPTS', '') + ' -Dslf4j.internal.verbosity=warn'
+        )
 
-        logger.info(f"Executing HBase command: {self._mask_sensitive(full_command)}")
-        logger.info(f"Using JAVA_HOME: {self.java_home}")
-        logger.info(f"Using HBASE_HOME: {self.hbase_home}")
+        logger.info(
+            "Executing HBase command: %s", self._mask_sensitive(full_command)
+        )
+        logger.info("Using JAVA_HOME: %s", self.java_home)
+        logger.info("Using HBASE_HOME: %s", self.hbase_home)
 
         try:
             result = subprocess.run(
@@ -132,14 +146,16 @@ class HBaseCLIHook(BaseHook):
                 check=True,
                 env=env
             )
-            logger.info(f"Command completed successfully")
+            logger.info("Command completed successfully")
             return result.stdout.strip()
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.strip() or e.stdout.strip() or "Unknown error"
-            logger.error(f"Command failed with exit code {e.returncode}")
-            logger.error(f"Error output: {error_msg}")
+            logger.error("Command failed with exit code %d", e.returncode)
+            logger.error("Error output: %s", error_msg)
 
-            raise RuntimeError(f"HBase command failed (exit code {e.returncode}): {error_msg}") from e
+            raise RuntimeError(
+                f"HBase command failed (exit code {e.returncode}): {error_msg}"
+            ) from e
 
     def _mask_sensitive(self, text: str) -> str:
         """Mask sensitive information in logs."""
