@@ -29,7 +29,7 @@ from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
 from airflow.providers.arenadata.hbase.thrift2_pool import Thrift2ConnectionPool
 
 # Delay between batch operations to avoid overwhelming HBase
-BATCH_DELAY = float(os.getenv('HBASE_BATCH_DELAY', '0.1'))
+BATCH_DELAY = float(os.getenv("HBASE_BATCH_DELAY", "0.1"))
 
 
 class HBaseStrategy(ABC):
@@ -42,111 +42,124 @@ class HBaseStrategy(ABC):
             return []
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
-        return [rows[i:i + chunk_size] for i in range(0, len(rows), chunk_size)]
+        return [rows[i : i + chunk_size] for i in range(0, len(rows), chunk_size)]
 
     @staticmethod
     def _convert_scan_result(result: dict) -> tuple[str, dict[str, Any]]:
         """Convert scan result to tuple format."""
-        return (result['row'], {col: data['value'] for col, data in result['columns'].items()})
+        return (result["row"], {col: data["value"] for col, data in result["columns"].items()})
 
     @staticmethod
     def _convert_get_result(result: dict | None) -> dict[str, Any]:
         """Convert get result to dict format."""
-        if not result or 'columns' not in result:
+        if not result or "columns" not in result:
             return {}
-        return {col: data['value'] for col, data in result['columns'].items()}
+        return {col: data["value"] for col, data in result["columns"].items()}
 
     @abstractmethod
     def table_exists(self, table_name: str) -> bool:
         """Check if table exists."""
-        pass
 
     @abstractmethod
     def create_table(self, table_name: str, families: dict[str, dict]) -> None:
         """Create table."""
-        pass
 
     @abstractmethod
     def delete_table(self, table_name: str) -> None:
         """Delete table."""
-        pass
 
     @abstractmethod
     def put_row(self, table_name: str, row_key: str, data: dict[str, Any]) -> None:
         """Put row data."""
-        pass
 
     @abstractmethod
-    def get_row(self, table_name: str, row_key: str, columns: list[str] | None = None) -> dict[str, Any]:
+    def get_row(
+        self, table_name: str, row_key: str, columns: list[str] | None = None
+    ) -> dict[str, Any]:
         """Get row data."""
-        pass
 
     @abstractmethod
     def delete_row(self, table_name: str, row_key: str, columns: list[str] | None = None) -> None:
         """Delete row or specific columns."""
-        pass
 
     @abstractmethod
-    def batch_get_rows(self, table_name: str, row_keys: list[str], columns: list[str] | None = None) -> list[dict[str, Any]]:
+    def batch_get_rows(
+        self, table_name: str, row_keys: list[str], columns: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         """Get multiple rows in batch."""
-        pass
 
     @abstractmethod
-    def batch_put_rows(self, table_name: str, rows: list[dict[str, Any]], batch_size: int = 200, max_workers: int = 4) -> None:
+    def batch_put_rows(
+        self,
+        table_name: str,
+        rows: list[dict[str, Any]],
+        batch_size: int = 200,
+        max_workers: int = 4,
+    ) -> None:
         """Insert multiple rows in batch with chunking and parallel processing."""
-        pass
 
     @abstractmethod
-    def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
+    def batch_delete_rows(
+        self, table_name: str, row_keys: list[str], batch_size: int = 200
+    ) -> None:
         """Delete multiple rows in batch."""
-        pass
 
     @abstractmethod
-    def scan_table(
+    def scan_table(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         table_name: str,
         row_start: str | None = None,
         row_stop: str | None = None,
         columns: list[str] | None = None,
-        limit: int | None = None
+        limit: int | None = None,
     ) -> list[tuple[str, dict[str, Any]]]:
         """Scan table."""
-        pass
 
     @abstractmethod
     def create_backup_set(self, backup_set_name: str, tables: list[str]) -> str:
         """Create backup set."""
-        pass
 
     @abstractmethod
     def list_backup_sets(self) -> str:
         """List backup sets."""
-        pass
 
     @abstractmethod
-    def create_full_backup(self, backup_root: str, backup_set_name: str | None = None, tables: list[str] | None = None, workers: int | None = None) -> str:
+    def create_full_backup(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        backup_root: str,
+        backup_set_name: str | None = None,
+        tables: list[str] | None = None,
+        workers: int | None = None,
+    ) -> str:
         """Create full backup."""
-        pass
 
     @abstractmethod
-    def create_incremental_backup(self, backup_root: str, backup_set_name: str | None = None, tables: list[str] | None = None, workers: int | None = None) -> str:
+    def create_incremental_backup(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        backup_root: str,
+        backup_set_name: str | None = None,
+        tables: list[str] | None = None,
+        workers: int | None = None,
+    ) -> str:
         """Create incremental backup."""
-        pass
 
     @abstractmethod
     def get_backup_history(self, backup_set_name: str | None = None) -> str:
         """Get backup history."""
-        pass
 
     @abstractmethod
     def describe_backup(self, backup_id: str) -> str:
         """Describe backup."""
-        pass
 
     @abstractmethod
-    def restore_backup(self, backup_root: str, backup_id: str, tables: list[str] | None = None, overwrite: bool = False) -> str:
+    def restore_backup(
+        self,
+        backup_root: str,
+        backup_id: str,
+        tables: list[str] | None = None,
+        overwrite: bool = False,
+    ) -> str:
         """Restore backup."""
-        pass
 
 
 class Thrift2Strategy(HBaseStrategy):
@@ -172,7 +185,9 @@ class Thrift2Strategy(HBaseStrategy):
         """Put row via Thrift2."""
         self.client.put(table_name, row_key, data)
 
-    def get_row(self, table_name: str, row_key: str, columns: list[str] | None = None) -> dict[str, Any]:
+    def get_row(
+        self, table_name: str, row_key: str, columns: list[str] | None = None
+    ) -> dict[str, Any]:
         """Get row via Thrift2."""
         result = self.client.get(table_name, row_key, columns)
         return self._convert_get_result(result)
@@ -181,15 +196,26 @@ class Thrift2Strategy(HBaseStrategy):
         """Delete row via Thrift2."""
         self.client.delete(table_name, row_key, columns)
 
-    def batch_get_rows(self, table_name: str, row_keys: list[str], columns: list[str] | None = None) -> list[dict[str, Any]]:
+    def batch_get_rows(
+        self, table_name: str, row_keys: list[str], columns: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         """Get multiple rows via Thrift2 using batch API."""
         results = self.client.get_multiple(table_name, row_keys, columns)
         return [self._convert_get_result(result) for result in results if result]
 
-    def batch_put_rows(self, table_name: str, rows: list[dict[str, Any]], batch_size: int = 200, max_workers: int = 1) -> None:
+    def batch_put_rows(
+        self,
+        table_name: str,
+        rows: list[dict[str, Any]],
+        batch_size: int = 200,
+        max_workers: int = 1,
+    ) -> None:
         """Insert multiple rows via Thrift2 with batch API (single-threaded)."""
         if max_workers > 1:
-            self.log.warning("Thrift2 doesn't support parallel processing (no connection pool). Using single thread.")
+            self.log.warning(
+                "Thrift2 doesn't support parallel processing "
+                "(no connection pool). Using single thread."
+            )
             max_workers = 1
 
         # Debug: check row format
@@ -209,10 +235,10 @@ class Thrift2Strategy(HBaseStrategy):
                         # Format: (row_key, {col: val, ...})
                         row_key, row_data = row
                         puts.append((row_key, row_data))
-                    elif isinstance(row, dict) and 'row_key' in row:
+                    elif isinstance(row, dict) and "row_key" in row:
                         # Format: {"row_key": "key", "col": "val", ...}
-                        row_key = row.get('row_key')
-                        row_data = {k: v for k, v in row.items() if k != 'row_key'}
+                        row_key = row.get("row_key")
+                        row_data = {k: v for k, v in row.items() if k != "row_key"}
                         puts.append((row_key, row_data))
                     else:
                         self.log.warning(f"Unknown row format: {type(row)}, {row}")
@@ -231,25 +257,30 @@ class Thrift2Strategy(HBaseStrategy):
                 raise
 
         chunks = self._create_chunks(rows, batch_size)
-        self.log.info(f"Processing {len(rows)} rows in {len(chunks)} chunks (batch_size={batch_size})")
+        self.log.info(
+            f"Processing {len(rows)} rows in {len(chunks)} chunks (batch_size={batch_size})"
+        )
 
         for chunk in chunks:
             process_chunk(chunk)
 
-    def scan_table(
+    def scan_table(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         table_name: str,
         row_start: str | None = None,
         row_stop: str | None = None,
         columns: list[str] | None = None,
-        limit: int | None = None
+        limit: int | None = None,
     ) -> list[tuple[str, dict[str, Any]]]:
         """Scan table via Thrift2."""
         results = self.client.scan(table_name, row_start, row_stop, columns, limit)
         return [self._convert_scan_result(r) for r in results]
 
-    def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
+    def batch_delete_rows(
+        self, table_name: str, row_keys: list[str], batch_size: int = 200
+    ) -> None:
         """Delete multiple rows in batch via Thrift2."""
+
         def process_chunk(chunk):
             """Process chunk using batch delete API."""
             self.log.info(f"Deleting chunk: {len(chunk)} rows")
@@ -263,7 +294,9 @@ class Thrift2Strategy(HBaseStrategy):
                 raise
 
         chunks = self._create_chunks(row_keys, batch_size)
-        self.log.info(f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})")
+        self.log.info(
+            f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})"
+        )
 
         for chunk in chunks:
             process_chunk(chunk)
@@ -276,11 +309,23 @@ class Thrift2Strategy(HBaseStrategy):
         """List backup sets - not supported in Thrift2 mode."""
         raise NotImplementedError("Backup operations require SSH connection mode")
 
-    def create_full_backup(self, backup_root: str, backup_set_name: str | None = None, tables: list[str] | None = None, workers: int | None = None) -> str:
+    def create_full_backup(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        backup_root: str,
+        backup_set_name: str | None = None,
+        tables: list[str] | None = None,
+        workers: int | None = None,
+    ) -> str:
         """Create full backup - not supported in Thrift2 mode."""
         raise NotImplementedError("Backup operations require SSH connection mode")
 
-    def create_incremental_backup(self, backup_root: str, backup_set_name: str | None = None, tables: list[str] | None = None, workers: int | None = None) -> str:
+    def create_incremental_backup(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        backup_root: str,
+        backup_set_name: str | None = None,
+        tables: list[str] | None = None,
+        workers: int | None = None,
+    ) -> str:
         """Create incremental backup - not supported in Thrift2 mode."""
         raise NotImplementedError("Backup operations require SSH connection mode")
 
@@ -292,7 +337,13 @@ class Thrift2Strategy(HBaseStrategy):
         """Describe backup - not supported in Thrift2 mode."""
         raise NotImplementedError("Backup operations require SSH connection mode")
 
-    def restore_backup(self, backup_root: str, backup_id: str, tables: list[str] | None = None, overwrite: bool = False) -> str:
+    def restore_backup(
+        self,
+        backup_root: str,
+        backup_id: str,
+        tables: list[str] | None = None,
+        overwrite: bool = False,
+    ) -> str:
         """Restore backup - not supported in Thrift2 mode."""
         raise NotImplementedError("Backup operations require SSH connection mode")
 
@@ -324,7 +375,9 @@ class PooledThrift2Strategy(HBaseStrategy):
         with self.pool.connection() as client:
             client.put(table_name, row_key, data)
 
-    def get_row(self, table_name: str, row_key: str, columns: list[str] | None = None) -> dict[str, Any]:
+    def get_row(
+        self, table_name: str, row_key: str, columns: list[str] | None = None
+    ) -> dict[str, Any]:
         """Get row via pooled Thrift2."""
         with self.pool.connection() as client:
             result = client.get(table_name, row_key, columns)
@@ -335,16 +388,27 @@ class PooledThrift2Strategy(HBaseStrategy):
         with self.pool.connection() as client:
             client.delete(table_name, row_key, columns)
 
-    def batch_get_rows(self, table_name: str, row_keys: list[str], columns: list[str] | None = None) -> list[dict[str, Any]]:
+    def batch_get_rows(
+        self, table_name: str, row_keys: list[str], columns: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         """Get multiple rows via pooled Thrift2."""
         with self.pool.connection() as client:
             results = client.get_multiple(table_name, row_keys, columns)
             return [self._convert_get_result(result) for result in results if result]
 
-    def batch_put_rows(self, table_name: str, rows: list[dict[str, Any]], batch_size: int = 200, max_workers: int = 4) -> None:
+    def batch_put_rows(
+        self,
+        table_name: str,
+        rows: list[dict[str, Any]],
+        batch_size: int = 200,
+        max_workers: int = 4,
+    ) -> None:
         """Insert multiple rows via pooled Thrift2 with parallel processing."""
-        if hasattr(self.pool, 'size') and self.pool.size < max_workers:
-            self.log.warning(f"Pool size ({self.pool.size}) < max_workers ({max_workers}). Consider increasing pool size.")
+        if hasattr(self.pool, "size") and self.pool.size < max_workers:
+            self.log.warning(
+                f"Pool size ({self.pool.size}) < max_workers ({max_workers}). "
+                "Consider increasing pool size."
+            )
 
         def process_chunk(chunk):
             """Process chunk using pooled connection."""
@@ -355,9 +419,9 @@ class PooledThrift2Strategy(HBaseStrategy):
                 with self.pool.connection() as client:
                     puts = []
                     for row in chunk:
-                        if 'row_key' in row:
-                            row_key = row.get('row_key')
-                            row_data = {k: v for k, v in row.items() if k != 'row_key'}
+                        if "row_key" in row:
+                            row_key = row.get("row_key")
+                            row_data = {k: v for k, v in row.items() if k != "row_key"}
                             puts.append((row_key, row_data))
 
                     if puts:
@@ -371,7 +435,10 @@ class PooledThrift2Strategy(HBaseStrategy):
         chunk_size = max(1, len(rows) // max_workers) if max_workers > 1 else batch_size
         chunks = self._create_chunks(rows, chunk_size)
 
-        self.log.info(f"Processing {len(rows)} rows in {len(chunks)} chunks with {max_workers} workers (batch_size={batch_size})")
+        self.log.info(
+            f"Processing {len(rows)} rows in {len(chunks)} chunks "
+            f"with {max_workers} workers (batch_size={batch_size})"
+        )
 
         if max_workers > 1:
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -382,21 +449,24 @@ class PooledThrift2Strategy(HBaseStrategy):
             for chunk in chunks:
                 process_chunk(chunk)
 
-    def scan_table(
+    def scan_table(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         table_name: str,
         row_start: str | None = None,
         row_stop: str | None = None,
         columns: list[str] | None = None,
-        limit: int | None = None
+        limit: int | None = None,
     ) -> list[tuple[str, dict[str, Any]]]:
         """Scan table via pooled Thrift2."""
         with self.pool.connection() as client:
             results = client.scan(table_name, row_start, row_stop, columns, limit)
             return [self._convert_scan_result(r) for r in results]
 
-    def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
+    def batch_delete_rows(
+        self, table_name: str, row_keys: list[str], batch_size: int = 200
+    ) -> None:
         """Delete multiple rows in batch via pooled Thrift2."""
+
         def process_chunk(chunk):
             """Process chunk using pooled connection."""
             self.log.info(f"Deleting chunk: {len(chunk)} rows")
@@ -411,7 +481,9 @@ class PooledThrift2Strategy(HBaseStrategy):
                 raise
 
         chunks = self._create_chunks(row_keys, batch_size)
-        self.log.info(f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})")
+        self.log.info(
+            f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})"
+        )
 
         for chunk in chunks:
             process_chunk(chunk)
@@ -424,11 +496,23 @@ class PooledThrift2Strategy(HBaseStrategy):
         """List backup sets - not supported in Thrift2 mode."""
         raise NotImplementedError("Backup operations require SSH connection mode")
 
-    def create_full_backup(self, backup_root: str, backup_set_name: str | None = None, tables: list[str] | None = None, workers: int | None = None) -> str:
+    def create_full_backup(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        backup_root: str,
+        backup_set_name: str | None = None,
+        tables: list[str] | None = None,
+        workers: int | None = None,
+    ) -> str:
         """Create full backup - not supported in Thrift2 mode."""
         raise NotImplementedError("Backup operations require SSH connection mode")
 
-    def create_incremental_backup(self, backup_root: str, backup_set_name: str | None = None, tables: list[str] | None = None, workers: int | None = None) -> str:
+    def create_incremental_backup(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        backup_root: str,
+        backup_set_name: str | None = None,
+        tables: list[str] | None = None,
+        workers: int | None = None,
+    ) -> str:
         """Create incremental backup - not supported in Thrift2 mode."""
         raise NotImplementedError("Backup operations require SSH connection mode")
 
@@ -440,6 +524,12 @@ class PooledThrift2Strategy(HBaseStrategy):
         """Describe backup - not supported in Thrift2 mode."""
         raise NotImplementedError("Backup operations require SSH connection mode")
 
-    def restore_backup(self, backup_root: str, backup_id: str, tables: list[str] | None = None, overwrite: bool = False) -> str:
+    def restore_backup(
+        self,
+        backup_root: str,
+        backup_id: str,
+        tables: list[str] | None = None,
+        overwrite: bool = False,
+    ) -> str:
         """Restore backup - not supported in Thrift2 mode."""
         raise NotImplementedError("Backup operations require SSH connection mode")
