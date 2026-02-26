@@ -27,7 +27,7 @@ import threading
 from contextlib import contextmanager
 from typing import Any
 
-from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
+from airflow.providers.arenadata.hbase.client import HBaseThrift2Client  # pylint: disable=import-error
 
 logger = logging.getLogger(__name__)
 
@@ -35,21 +35,22 @@ logger = logging.getLogger(__name__)
 POOL_CONNECTION_TIMEOUT = float(os.getenv('HBASE_POOL_CONNECTION_TIMEOUT', '30.0'))
 
 
-class Thrift2ConnectionPool:
+class Thrift2ConnectionPool:  # pylint: disable=too-many-instance-attributes
     """Connection pool for HBase Thrift2 clients."""
 
-    def __init__(self, size: int, host: str, port: int = 9090, timeout: int = 30000, 
-                 ssl_options: dict[str, Any] | None = None, 
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self, size: int, host: str, port: int = 9090, timeout: int = 30000,
+                 ssl_options: dict[str, Any] | None = None,
                  auth_method: str | None = None,
                  kerberos_service_name: str = 'hbase',
                  kerberos_principal: str | None = None,
                  kerberos_keytab: str | None = None,
                  namespace: str = 'default',
-                 retry_max_attempts: int = 3, 
-                 retry_delay: float = 1.0, 
+                 retry_max_attempts: int = 3,
+                 retry_delay: float = 1.0,
                  retry_backoff_factor: float = 2.0):
         """Initialize connection pool.
-        
+
         Args:
             size: Pool size
             host: HBase Thrift2 server host
@@ -91,8 +92,8 @@ class Thrift2ConnectionPool:
     def _create_connection(self) -> HBaseThrift2Client:
         """Create new Thrift2 client connection."""
         client = HBaseThrift2Client(
-            host=self.host, 
-            port=self.port, 
+            host=self.host,
+            port=self.port,
             timeout=self.timeout,
             ssl_options=self.ssl_options,
             auth_method=self.auth_method,
@@ -110,29 +111,29 @@ class Thrift2ConnectionPool:
     def _is_connection_alive(self, client: HBaseThrift2Client) -> bool:
         """Check if connection is alive by testing request to server."""
         try:
-            if client._client is None:
+            if client._client is None:  # pylint: disable=protected-access
                 return False
             # Test connection with lightweight request
-            client._client.listTableNames()
+            client._client.listTableNames()  # pylint: disable=protected-access
             return True
-        except Exception as e:
-            logger.debug(f"Connection check failed: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.debug("Connection check failed: %s", e)
             return False
 
     @contextmanager
     def connection(self, timeout: float = POOL_CONNECTION_TIMEOUT):
         """Get connection from pool.
-        
+
         Args:
             timeout: Timeout in seconds to wait for available connection from pool.
                 Warning: If pool is exhausted and timeout is too low, requests may fail.
                 Consider increasing timeout or pool size for high-load scenarios.
-            
+
         Yields:
             HBaseThrift2Client instance
         """
         client = None
-        
+
         try:
             # Try to get from pool or create new
             try:
@@ -142,31 +143,31 @@ class Thrift2ConnectionPool:
                     logger.debug("Creating new connection")
                     try:
                         client = self._create_connection()
-                    except Exception as e:
+                    except Exception as e:  # pylint: disable=broad-exception-caught
                         self._semaphore.release()
-                        logger.error(f"Failed to create connection: {e}")
+                        logger.error("Failed to create connection: %s", e)
                         raise
                 else:
                     logger.debug("Pool exhausted, waiting...")
                     client = self._pool.get(timeout=timeout)
-            
+
             # Check if connection is alive, reconnect if needed
             if not self._is_connection_alive(client):
                 logger.warning("Connection is dead, reconnecting...")
                 try:
                     client.close()
-                except Exception:
+                except Exception:  # pylint: disable=broad-exception-caught
                     pass
                 client.open()
-            
+
             yield client
-            
-        except Exception as e:
-            logger.error(f"Connection error: {e}")
+
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("Connection error: %s", e)
             if client:
                 try:
                     client.close()
-                except Exception:
+                except Exception:  # pylint: disable=broad-exception-caught
                     pass
                 self._semaphore.release()
             raise
@@ -197,11 +198,11 @@ def _cleanup_pools() -> None:
         _thrift2_pools.clear()
 
 
-def get_or_create_thrift2_pool(
-    conn_id: str, 
-    pool_size: int, 
-    host: str, 
-    port: int = 9090, 
+def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    conn_id: str,
+    pool_size: int,
+    host: str,
+    port: int = 9090,
     timeout: int = 30000,
     ssl_options: dict[str, Any] | None = None,
     auth_method: str | None = None,
@@ -214,7 +215,7 @@ def get_or_create_thrift2_pool(
     retry_backoff_factor: float = 2.0
 ) -> Thrift2ConnectionPool:
     """Get existing Thrift2 pool or create new one.
-    
+
     Args:
         conn_id: Connection ID
         pool_size: Pool size
@@ -230,7 +231,7 @@ def get_or_create_thrift2_pool(
         retry_max_attempts: Maximum number of connection attempts
         retry_delay: Initial delay between retry attempts in seconds
         retry_backoff_factor: Multiplier for delay after each failed attempt
-        
+
     Returns:
         Thrift2ConnectionPool instance
     """

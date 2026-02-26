@@ -131,7 +131,7 @@ class TestHBaseDeleteTableOperator:
         operator.execute({})
         
         mock_hook.table_exists.assert_called_once_with("test_table")
-        mock_hook.delete_table.assert_called_once_with("test_table", True)
+        mock_hook.delete_table.assert_called_once_with("test_table")
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_table_not_exists(self, mock_hook_class):

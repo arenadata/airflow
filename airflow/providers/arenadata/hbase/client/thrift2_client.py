@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 class HBaseThrift2Client:
     """Lightweight HBase Thrift2 client."""
 
-    def __init__(self, host: str, port: int = 9090, timeout: int = 30000, 
+    def __init__(self, host: str, port: int = 9090, timeout: int = 30000,
                  ssl_options: dict[str, Any] | None = None,
                  auth_method: str | None = None,
                  kerberos_service_name: str = 'hbase',
@@ -59,7 +59,7 @@ class HBaseThrift2Client:
                  retry_delay: float = 1.0,
                  retry_backoff_factor: float = 2.0):
         """Initialize Thrift2 client.
-        
+
         Args:
             host: HBase Thrift2 server host
             port: HBase Thrift2 server port (default 9090 for Arenadata/Apache HBase)
@@ -87,14 +87,14 @@ class HBaseThrift2Client:
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
         self._client = None
-        
+
         if auth_method and not SASL_AVAILABLE:
             raise ImportError(
                 "thrift_sasl and sasl libraries are required for Kerberos authentication. "
                 "Install them with: pip install thrift_sasl sasl"
             )
-        
-        logger.debug("HBaseThrift2Client initialized with ssl_options: %s, auth_method: %s", 
+
+        logger.debug("HBaseThrift2Client initialized with ssl_options: %s, auth_method: %s",
                     ssl_options, auth_method)
 
     def __enter__(self):
@@ -106,7 +106,7 @@ class HBaseThrift2Client:
 
     def _create_socket(self) -> TSocket.TSocket | TSSLSocket.TSSLSocket:
         """Create socket (SSL or regular).
-        
+
         Returns:
             Configured socket instance
         """
@@ -124,17 +124,17 @@ class HBaseThrift2Client:
                 ssl_params['keyfile'] = self.ssl_options['key_file']
             if 'validate' in self.ssl_options:
                 ssl_params['cert_reqs'] = ssl_module.CERT_REQUIRED if self.ssl_options['validate'] else ssl_module.CERT_NONE
-            
+
             sock = TSSLSocket.TSSLSocket(**ssl_params)
         else:
             sock = TSocket.TSocket(self.host, self.port)
-        
+
         sock.setTimeout(self.timeout)
         return sock
 
     def _setup_kerberos(self) -> None:
         """Setup Kerberos authentication.
-        
+
         Raises:
             RuntimeError: If Kerberos setup fails
         """
@@ -148,7 +148,7 @@ class HBaseThrift2Client:
                         os.environ['KRB5CCNAME'] = cache
                         logger.info("Set KRB5CCNAME=%s", cache)
                         break
-        
+
         # Check if ticket exists and is valid
         try:
             subprocess.run(['klist', '-s'], check=True, capture_output=True)
@@ -165,7 +165,7 @@ class HBaseThrift2Client:
                             if '@' in line and 'KVNO' not in line:
                                 principal = line.split()[-1]
                                 break
-                
+
                 if principal:
                     kinit_cmd = ['kinit', '-kt', self.kerberos_keytab, principal]
                     logger.info("Getting Kerberos ticket using keytab: %s for principal: %s", self.kerberos_keytab, principal)
@@ -182,10 +182,10 @@ class HBaseThrift2Client:
 
     def _create_sasl_transport(self, socket: TSocket.TSocket | TSSLSocket.TSSLSocket):
         """Create SASL transport for Kerberos authentication.
-        
+
         Args:
             socket: Base socket
-            
+
         Returns:
             SASL transport instance
         """
@@ -193,29 +193,29 @@ class HBaseThrift2Client:
             username = None
             if self.kerberos_principal:
                 username = self.kerberos_principal.split('@')[0].split('/')[0]
-            
+
             logger.info("[SASL DEBUG] Creating SASL client")
             logger.info("[SASL DEBUG] host=%s, service=%s, username=%s", self.host, self.kerberos_service_name, username)
             logger.info("[SASL DEBUG] kerberos_principal=%s", self.kerberos_principal)
-            
+
             sasl_client = sasl.Client()
             sasl_client.setAttr('host', self.host)
             sasl_client.setAttr('service', self.kerberos_service_name)
             if username:
                 sasl_client.setAttr('username', username)
             sasl_client.init()
-            
+
             logger.info("[SASL DEBUG] SASL client initialized")
             return sasl_client
-        
+
         return TSaslClientTransport(sasl_factory, 'GSSAPI', socket)
 
     def _setup_kerberos_transport(self, socket: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
         """Setup Kerberos transport and client.
-        
+
         Args:
             socket: Base socket
-            
+
         Raises:
             RuntimeError: If Kerberos setup fails
         """
@@ -227,10 +227,10 @@ class HBaseThrift2Client:
 
     def _setup_simple_transport(self, socket: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
         """Setup simple transport without authentication.
-        
+
         Args:
             socket: Base socket
-            
+
         Raises:
             Exception: If both transport types fail
         """
@@ -240,15 +240,15 @@ class HBaseThrift2Client:
                     self._transport = TTransport.TBufferedTransport(socket)
                 else:
                     self._transport = TTransport.TFramedTransport(socket)
-                
+
                 protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
                 self._client = THBaseService.Client(protocol)
                 self._transport.open()
-                
+
                 # Test connection
                 self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
-                
-                logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)", 
+
+                logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)",
                            self.host, self.port, bool(self.ssl_options), transport_type)
                 return
             except Exception as transport_error:
@@ -263,7 +263,7 @@ class HBaseThrift2Client:
 
     def _test_connection(self) -> None:
         """Test connection with a simple operation.
-        
+
         Raises:
             Exception: If connection test fails
         """
@@ -271,7 +271,7 @@ class HBaseThrift2Client:
 
     def open(self) -> None:
         """Open connection to Thrift2 server with retry logic.
-        
+
         Raises:
             ConnectionError: If connection fails after all retries
             TimeoutError: If connection times out
@@ -279,21 +279,21 @@ class HBaseThrift2Client:
             OSError: If socket operation fails
         """
         last_exception = None
-        
+
         for attempt in range(self.retry_max_attempts):
             try:
                 socket = self._create_socket()
-                
+
                 if self.auth_method == 'GSSAPI':
                     self._setup_kerberos_transport(socket)
                     self._test_connection()
-                    logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Auth: %s)", 
+                    logger.info("Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Auth: %s)",
                                self.host, self.port, bool(self.ssl_options), self.auth_method)
                 else:
                     self._setup_simple_transport(socket)
-                
+
                 return
-                
+
             except (ConnectionError, TimeoutError, OSError, Exception) as e:
                 last_exception = e
                 if attempt == self.retry_max_attempts - 1:
@@ -306,7 +306,7 @@ class HBaseThrift2Client:
                     attempt + 1, self.retry_max_attempts, e, wait_time
                 )
                 time.sleep(wait_time)
-        
+
         if last_exception:
             raise last_exception
 
@@ -332,7 +332,7 @@ class HBaseThrift2Client:
 
     def create_table(self, table_name: str, families: dict[str, dict]) -> None:
         """Create table.
-        
+
         Args:
             table_name: Name of the table
             families: Dictionary of column families
@@ -358,7 +358,7 @@ class HBaseThrift2Client:
 
     def delete_table(self, table_name: str) -> None:
         """Delete table.
-        
+
         Args:
             table_name: Name of the table
         """
@@ -366,7 +366,7 @@ class HBaseThrift2Client:
             ns=self.namespace.encode(),
             qualifier=table_name.encode()
         )
-        
+
         # Disable table first
         self._client.disableTable(table_name_obj)
         # Delete table
@@ -374,7 +374,7 @@ class HBaseThrift2Client:
 
     def put(self, table_name: str, row_key: str, data: dict[str, str]) -> None:
         """Put data into table.
-        
+
         Args:
             table_name: Name of the table
             row_key: Row key
@@ -400,7 +400,7 @@ class HBaseThrift2Client:
 
     def put_multiple(self, table_name: str, puts: list[tuple[str, dict[str, str]]]) -> None:
         """Put multiple rows in batch.
-        
+
         Args:
             table_name: Name of the table
             puts: List of (row_key, data) tuples
@@ -427,12 +427,12 @@ class HBaseThrift2Client:
 
     def get(self, table_name: str, row_key: str, columns: list[str] | None = None) -> dict[str, Any]:
         """Get row from table.
-        
+
         Args:
             table_name: Name of the table
             row_key: Row key
             columns: List of columns to retrieve (format: "family:qualifier")
-            
+
         Returns:
             Dictionary with row data
         """
@@ -453,19 +453,19 @@ class HBaseThrift2Client:
 
     def get_multiple(self, table_name: str, row_keys: list[str], columns: list[str] | None = None) -> list[dict[str, Any]]:
         """Get multiple rows in batch.
-        
+
         Args:
             table_name: Name of the table
             row_keys: List of row keys
             columns: List of columns to retrieve
-            
+
         Returns:
             List of row data dictionaries
         """
         tgets = []
         for row_key in row_keys:
             tget = ttypes.TGet(row=row_key.encode())
-            
+
             if columns:
                 tget.columns = []
                 for column in columns:
@@ -475,7 +475,7 @@ class HBaseThrift2Client:
                         qualifier=qualifier.encode()
                     )
                     tget.columns.append(tcol)
-            
+
             tgets.append(tget)
 
         results = self._client.getMultiple(table_name.encode(), tgets)
@@ -483,7 +483,7 @@ class HBaseThrift2Client:
 
     def delete(self, table_name: str, row_key: str, columns: list[str] | None = None) -> None:
         """Delete row or columns.
-        
+
         Args:
             table_name: Name of the table
             row_key: Row key
@@ -505,7 +505,7 @@ class HBaseThrift2Client:
 
     def delete_multiple(self, table_name: str, deletes: list[tuple[str, list[str] | None]]) -> None:
         """Delete multiple rows in batch.
-        
+
         Args:
             table_name: Name of the table
             deletes: List of (row_key, columns) tuples
@@ -513,7 +513,7 @@ class HBaseThrift2Client:
         tdeletes = []
         for row_key, columns in deletes:
             tdelete = ttypes.TDelete(row=row_key.encode())
-            
+
             if columns:
                 tdelete.columns = []
                 for column in columns:
@@ -523,7 +523,7 @@ class HBaseThrift2Client:
                         qualifier=qualifier.encode()
                     )
                     tdelete.columns.append(tcol)
-            
+
             tdeletes.append(tdelete)
 
         self._client.deleteMultiple(table_name.encode(), tdeletes)
@@ -537,14 +537,14 @@ class HBaseThrift2Client:
         limit: int | None = None
     ) -> list[dict[str, Any]]:
         """Scan table.
-        
+
         Args:
             table_name: Name of the table
             start_row: Start row key
             stop_row: Stop row key
             columns: List of columns to retrieve
             limit: Maximum number of rows
-            
+
         Returns:
             List of row data dictionaries
         """
@@ -588,10 +588,10 @@ class HBaseThrift2Client:
 
     def _parse_result(self, result) -> dict[str, Any]:
         """Parse Thrift2 result to dictionary.
-        
+
         Args:
             result: TResult object from Thrift2
-            
+
         Returns:
             Dictionary with parsed data
         """
