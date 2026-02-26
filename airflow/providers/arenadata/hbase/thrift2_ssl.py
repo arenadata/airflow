@@ -25,7 +25,7 @@ import tempfile
 from collections.abc import Callable
 from typing import Any
 
-from airflow.models import Variable
+from airflow.models import Variable  # pylint: disable=import-error
 
 
 def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Callable[[], None]]:
@@ -64,11 +64,11 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Call
     if ssl_config.get("ssl_ca_secret"):
         ca_cert_content = Variable.get(ssl_config["ssl_ca_secret"], None)
         if ca_cert_content:
-            ca_cert_file = tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False)
-            ca_cert_file.write(ca_cert_content)
-            ca_cert_file.close()
-            ssl_context.load_verify_locations(cafile=ca_cert_file.name)
-            temp_files.append(ca_cert_file.name)
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as ca_cert_file:
+                ca_cert_file.write(ca_cert_content)
+                ca_cert_path = ca_cert_file.name
+            ssl_context.load_verify_locations(cafile=ca_cert_path)
+            temp_files.append(ca_cert_path)
 
     # Load client certificates
     if ssl_config.get("ssl_cert_secret") and ssl_config.get("ssl_key_secret"):
@@ -76,16 +76,16 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Call
         key_content = Variable.get(ssl_config["ssl_key_secret"], None)
 
         if cert_content and key_content:
-            cert_file = tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False)
-            cert_file.write(cert_content)
-            cert_file.close()
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as cert_file:
+                cert_file.write(cert_content)
+                cert_path = cert_file.name
 
-            key_file = tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False)
-            key_file.write(key_content)
-            key_file.close()
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as key_file:
+                key_file.write(key_content)
+                key_path = key_file.name
 
-            ssl_context.load_cert_chain(certfile=cert_file.name, keyfile=key_file.name)
-            temp_files.extend([cert_file.name, key_file.name])
+            ssl_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+            temp_files.extend([cert_path, key_path])
 
     # Configure minimum TLS version
     if ssl_config.get("ssl_min_version"):
@@ -98,7 +98,7 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Call
         for filepath in temp_files:
             try:
                 os.unlink(filepath)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
     return ssl_context, cleanup
