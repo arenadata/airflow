@@ -139,15 +139,16 @@ class Thrift2ConnectionPool:  # pylint: disable=too-many-instance-attributes
             try:
                 client = self._pool.get_nowait()
             except queue.Empty:
-                if self._semaphore.acquire(blocking=False):
+                acquired = self._semaphore.acquire(blocking=False)
+                if acquired:
                     logger.debug("Creating new connection")
                     try:
                         client = self._create_connection()
                     except Exception as e:  # pylint: disable=broad-exception-caught
                         self._semaphore.release()
                         logger.error("Failed to create connection: %s", e)
-                        raise
-                else:
+                        acquired = False
+                if not acquired:
                     logger.debug("Pool exhausted, waiting...")
                     client = self._pool.get(timeout=timeout)
 
@@ -171,9 +172,8 @@ class Thrift2ConnectionPool:  # pylint: disable=too-many-instance-attributes
                     pass
                 self._semaphore.release()
             raise
-        else:
-            if client:
-                self._pool.put(client)
+        if client:
+            self._pool.put(client)
 
     def close_all(self):
         """Close all connections in pool."""
