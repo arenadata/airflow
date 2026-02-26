@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from airflow.providers.arenadata.ozone.utils.security.secret_resolver import get_secret_value
 from airflow.utils.log.secrets_masker import mask_secret
@@ -42,97 +41,96 @@ class SSLConfig:
         return merged
 
 
-def _get_ozone_ssl_env(extra: dict[str, Any], conn_id: str | None) -> dict[str, str]:
+def _build_ssl_env(
+    extra: dict[str, object],
+    conn_id: str | None,
+    mapping: tuple[tuple[str, str, bool], ...],
+) -> dict[str, str]:
+    """Build SSL env vars from an extra->env mapping."""
+    env: dict[str, str] = {}
+    for extra_key, env_key, is_secret in mapping:
+        if extra_key not in extra:
+            continue
+        value = extra[extra_key]
+        if is_secret:
+            resolved = get_secret_value(value, conn_id)
+            mask_secret(resolved)
+            env[env_key] = str(resolved)
+        else:
+            env[env_key] = str(value)
+    return env
+
+
+def _get_ozone_ssl_env(extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
     """Build SSL env vars for Ozone Native CLI (ozone-site.xml mapping)."""
     env: dict[str, str] = {}
 
     if extra.get("ozone_security_enabled") == "true" or extra.get("ozone.security.enabled") == "true":
         env["OZONE_SECURITY_ENABLED"] = "true"
-
-        # SSL/TLS ports
-        if "ozone_om_https_port" in extra:
-            env["OZONE_OM_HTTPS_PORT"] = str(extra["ozone_om_https_port"])
-        if "ozone.scm.https.port" in extra:
-            env["OZONE_SCM_HTTPS_PORT"] = str(extra["ozone.scm.https.port"])
-
-        # Keystore configuration (for client certificates)
-        if "ozone_ssl_keystore_location" in extra:
-            env["OZONE_SSL_KEYSTORE_LOCATION"] = extra["ozone_ssl_keystore_location"]
-        if "ozone_ssl_keystore_password" in extra:
-            password = get_secret_value(extra["ozone_ssl_keystore_password"], conn_id)
-            mask_secret(password)
-            env["OZONE_SSL_KEYSTORE_PASSWORD"] = password
-        if "ozone_ssl_keystore_type" in extra:
-            env["OZONE_SSL_KEYSTORE_TYPE"] = extra["ozone_ssl_keystore_type"]
-
-        # Truststore configuration (for CA certificates)
-        if "ozone_ssl_truststore_location" in extra:
-            env["OZONE_SSL_TRUSTSTORE_LOCATION"] = extra["ozone_ssl_truststore_location"]
-        if "ozone_ssl_truststore_password" in extra:
-            password = get_secret_value(extra["ozone_ssl_truststore_password"], conn_id)
-            mask_secret(password)
-            env["OZONE_SSL_TRUSTSTORE_PASSWORD"] = password
-        if "ozone_ssl_truststore_type" in extra:
-            env["OZONE_SSL_TRUSTSTORE_TYPE"] = extra["ozone_ssl_truststore_type"]
+        env.update(
+            _build_ssl_env(
+                extra,
+                conn_id,
+                (
+                    ("ozone_om_https_port", "OZONE_OM_HTTPS_PORT", False),
+                    ("ozone.scm.https.port", "OZONE_SCM_HTTPS_PORT", False),
+                    ("ozone_ssl_keystore_location", "OZONE_SSL_KEYSTORE_LOCATION", False),
+                    ("ozone_ssl_keystore_password", "OZONE_SSL_KEYSTORE_PASSWORD", True),
+                    ("ozone_ssl_keystore_type", "OZONE_SSL_KEYSTORE_TYPE", False),
+                    ("ozone_ssl_truststore_location", "OZONE_SSL_TRUSTSTORE_LOCATION", False),
+                    ("ozone_ssl_truststore_password", "OZONE_SSL_TRUSTSTORE_PASSWORD", True),
+                    ("ozone_ssl_truststore_type", "OZONE_SSL_TRUSTSTORE_TYPE", False),
+                ),
+            )
+        )
 
     return env
 
 
-def _get_hive_ssl_env(extra: dict[str, Any], conn_id: str | None) -> dict[str, str]:
+def _get_hive_ssl_env(extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
     """Build SSL env vars for Hive CLI (hive-site.xml mapping)."""
     env: dict[str, str] = {}
 
     if extra.get("hive_ssl_enabled") == "true" or extra.get("hive.ssl.enabled") == "true":
         env["HIVE_SSL_ENABLED"] = "true"
-
-        if "hive_ssl_keystore_path" in extra:
-            env["HIVE_SSL_KEYSTORE_PATH"] = extra["hive_ssl_keystore_path"]
-        if "hive_ssl_keystore_password" in extra:
-            password = get_secret_value(extra["hive_ssl_keystore_password"], conn_id)
-            mask_secret(password)
-            env["HIVE_SSL_KEYSTORE_PASSWORD"] = password
-        if "hive_ssl_truststore_path" in extra:
-            env["HIVE_SSL_TRUSTSTORE_PATH"] = extra["hive_ssl_truststore_path"]
-        if "hive_ssl_truststore_password" in extra:
-            password = get_secret_value(extra["hive_ssl_truststore_password"], conn_id)
-            mask_secret(password)
-            env["HIVE_SSL_TRUSTSTORE_PASSWORD"] = password
+        env.update(
+            _build_ssl_env(
+                extra,
+                conn_id,
+                (
+                    ("hive_ssl_keystore_path", "HIVE_SSL_KEYSTORE_PATH", False),
+                    ("hive_ssl_keystore_password", "HIVE_SSL_KEYSTORE_PASSWORD", True),
+                    ("hive_ssl_truststore_path", "HIVE_SSL_TRUSTSTORE_PATH", False),
+                    ("hive_ssl_truststore_password", "HIVE_SSL_TRUSTSTORE_PASSWORD", True),
+                ),
+            )
+        )
 
     return env
 
 
-def _get_hdfs_ssl_env(extra: dict[str, Any], conn_id: str | None) -> dict[str, str]:
+def _get_hdfs_ssl_env(extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
     """Build SSL env vars for HDFS clients (core-site.xml / hdfs-site.xml mapping)."""
     env: dict[str, str] = {}
 
     if extra.get("hdfs_ssl_enabled") == "true" or extra.get("dfs.encrypt.data.transfer") == "true":
         env["HDFS_SSL_ENABLED"] = "true"
-
-        # Data transfer encryption
-        if "dfs_encrypt_data_transfer" in extra:
-            env["DFS_ENCRYPT_DATA_TRANSFER"] = extra["dfs_encrypt_data_transfer"]
-        if "dfs.encrypt.data.transfer" in extra:
-            env["DFS_ENCRYPT_DATA_TRANSFER"] = extra["dfs.encrypt.data.transfer"]
-
-        # Keystore configuration
-        if "hdfs_ssl_keystore_location" in extra:
-            env["HDFS_SSL_KEYSTORE_LOCATION"] = extra["hdfs_ssl_keystore_location"]
-        if "hdfs_ssl_keystore_password" in extra:
-            password = get_secret_value(extra["hdfs_ssl_keystore_password"], conn_id)
-            mask_secret(password)
-            env["HDFS_SSL_KEYSTORE_PASSWORD"] = password
-        if "hdfs_ssl_keystore_type" in extra:
-            env["HDFS_SSL_KEYSTORE_TYPE"] = extra["hdfs_ssl_keystore_type"]
-
-        # Truststore configuration
-        if "hdfs_ssl_truststore_location" in extra:
-            env["HDFS_SSL_TRUSTSTORE_LOCATION"] = extra["hdfs_ssl_truststore_location"]
-        if "hdfs_ssl_truststore_password" in extra:
-            password = get_secret_value(extra["hdfs_ssl_truststore_password"], conn_id)
-            mask_secret(password)
-            env["HDFS_SSL_TRUSTSTORE_PASSWORD"] = password
-        if "hdfs_ssl_truststore_type" in extra:
-            env["HDFS_SSL_TRUSTSTORE_TYPE"] = extra["hdfs_ssl_truststore_type"]
+        env.update(
+            _build_ssl_env(
+                extra,
+                conn_id,
+                (
+                    ("dfs_encrypt_data_transfer", "DFS_ENCRYPT_DATA_TRANSFER", False),
+                    ("dfs.encrypt.data.transfer", "DFS_ENCRYPT_DATA_TRANSFER", False),
+                    ("hdfs_ssl_keystore_location", "HDFS_SSL_KEYSTORE_LOCATION", False),
+                    ("hdfs_ssl_keystore_password", "HDFS_SSL_KEYSTORE_PASSWORD", True),
+                    ("hdfs_ssl_keystore_type", "HDFS_SSL_KEYSTORE_TYPE", False),
+                    ("hdfs_ssl_truststore_location", "HDFS_SSL_TRUSTSTORE_LOCATION", False),
+                    ("hdfs_ssl_truststore_password", "HDFS_SSL_TRUSTSTORE_PASSWORD", True),
+                    ("hdfs_ssl_truststore_type", "HDFS_SSL_TRUSTSTORE_TYPE", False),
+                ),
+            )
+        )
 
     return env
 

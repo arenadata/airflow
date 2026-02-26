@@ -159,7 +159,7 @@ class OzoneSetQuotaOperator(BaseOperator):
             self.ozone_conn_id,
         )
 
-    def execute(self, context):
+    def execute(self, context: Context):
         target = f"/{self.volume}" if not self.bucket else f"/{self.volume}/{self.bucket}"
         cmd_type = "volume" if not self.bucket else "bucket"
 

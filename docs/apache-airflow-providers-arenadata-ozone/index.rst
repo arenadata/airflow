@@ -60,7 +60,7 @@ Requirements
 ------------
 
 * ``apache-airflow`` >= 2.10.3
-* ``apache-airflow-providers-amazon`` >= 8.27.0
+* ``boto3`` >= 1.35.0
 
 Example DAGs
 ------------

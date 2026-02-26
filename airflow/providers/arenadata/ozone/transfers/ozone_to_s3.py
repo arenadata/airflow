@@ -20,12 +20,16 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
+from typing import TYPE_CHECKING
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
 from airflow.providers.arenadata.ozone.utils import s3_client
+
+if TYPE_CHECKING:
+    from airflow.utils.context import Context
 
 log = logging.getLogger(__name__)
 
@@ -75,8 +79,6 @@ class OzoneToS3Operator(BaseOperator):
         if not isinstance(max_workers, int) or max_workers <= 0:
             raise ValueError("max_workers parameter must be a positive integer")
 
-        # NOTE: validate-operators-init requires template fields to be assigned
-        # directly from __init__ arguments after super().__init__(**kwargs).
         self.ozone_bucket = ozone_bucket
         self.s3_bucket = s3_bucket
         self.ozone_prefix = ozone_prefix
@@ -95,18 +97,15 @@ class OzoneToS3Operator(BaseOperator):
             self.max_workers,
         )
 
-    def execute(self, context):
+    def execute(self, context: Context):
         self.log.info("Starting Ozone to S3 data transfer operation")
         self.log.info("Source: ozone://%s/%s", self.ozone_bucket, self.ozone_prefix)
         self.log.info("Destination: s3://%s/%s", self.s3_bucket, self.s3_prefix)
         self.log.debug("Ozone connection: %s, S3 connection: %s", self.ozone_conn_id, self.s3_conn_id)
         self.log.info("Using parallel transfer with %d worker(s) for bulk operations", self.max_workers)
 
-        # Create hooks/clients once and reuse (boto3 clients are thread-safe and use connection pooling)
         self.log.debug("Initializing connection pools for Ozone and destination S3")
         ozone_hook = OzoneS3Hook(ozone_conn_id=self.ozone_conn_id)
-        # Destination S3 may be a completely separate AWS/MinIO endpoint; resolve
-        # its connection explicitly via BaseHook for clarity.
         dest_conn = BaseHook().get_connection(self.s3_conn_id)
         dest_client = s3_client.get_s3_client(dest_conn)
 
@@ -198,7 +197,6 @@ class OzoneToS3Operator(BaseOperator):
         if failed_count > 0 and transferred_count == 0:
             raise AirflowException(f"All {failed_count} key(s) failed to transfer. Check logs for details.")
 
-        # Return structured result so downstream tasks can branch/alert on partial success.
         return {
             "transferred": transferred_count,
             "failed": failed_count,

@@ -53,48 +53,58 @@ class OzoneS3Hook(BaseHook):
         self._ozone_conn_id = ozone_conn_id.strip()
         self._client = None
         self._verify = None
+        self._security_details_logged = False
 
         self.log.debug("Initializing OzoneS3Hook with connection ID: %s", self._ozone_conn_id)
-
         try:
             conn = self.get_connection(self._ozone_conn_id)
-            if conn.login and str(conn.login).startswith("secret://"):
-                self.log.info("Using Secrets Backend for S3 access key (conn_id=%s)", self._ozone_conn_id)
-            if conn.password and str(conn.password).startswith("secret://"):
-                self.log.info("Using Secrets Backend for S3 secret key (conn_id=%s)", self._ozone_conn_id)
             extra = conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
-            endpoint_url = extra.get("endpoint_url", "")
-            verify = extra.get("verify", None)
-            self._verify = verify
-        except Exception as e:
-            self.log.debug("Could not check connection for SSL (may not exist yet): %s", str(e))
-            endpoint_url = ""
+            self._verify = extra.get("verify")
+        except Exception:
+            self._verify = None
 
-        if endpoint_url and str(endpoint_url).startswith("https://"):
+    def _log_connection_security_details(self, conn) -> None:
+        """Log secrets backend and SSL details lazily after connection resolution."""
+        if self._security_details_logged:
+            return
+
+        if conn.login and str(conn.login).startswith("secret://"):
+            self.log.info("Using Secrets Backend for S3 access key (conn_id=%s)", self._ozone_conn_id)
+        if conn.password and str(conn.password).startswith("secret://"):
+            self.log.info("Using Secrets Backend for S3 secret key (conn_id=%s)", self._ozone_conn_id)
+
+        extra = conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
+        endpoint_url = str(extra.get("endpoint_url", "") or "")
+        verify = extra.get("verify")
+        self._verify = verify
+
+        if endpoint_url.startswith("https://"):
             self.log.info("SSL/TLS enabled: Using HTTPS endpoint: %s", endpoint_url)
-            if self._verify is False:
+            if verify is False:
                 self.log.warning(
                     "SSL certificate verification is disabled (verify=False). "
                     "This should only be used for development/testing."
                 )
-            elif isinstance(self._verify, str):
-                self.log.info("Using custom CA certificate for SSL verification: %s", self._verify)
+            elif isinstance(verify, str):
+                self.log.info("Using custom CA certificate for SSL verification: %s", verify)
             else:
                 self.log.debug("Using default SSL certificate verification")
-        elif endpoint_url and str(endpoint_url).startswith("http://"):
+        elif endpoint_url.startswith("http://"):
             self.log.warning("Using unencrypted HTTP connection. Consider using HTTPS for production.")
+
+        self._security_details_logged = True
 
     def get_conn(self):
         """Return cached boto3 S3 client (built from connection)."""
         if self._client is None:
             conn = self.get_connection(self._ozone_conn_id)
+            self._log_connection_security_details(conn)
             self._client = s3_client.get_s3_client(conn)
         return self._client
 
     def get_key(self, key: str, bucket_name: str):
         """Return object that supports .get()['Body'] for streaming."""
         client = self.get_conn()
-        # Use keyword arguments for clarity and to make tests less brittle.
         return s3_client.get_key(client, bucket_name=bucket_name, key=key)
 
     def head_object(self, key: str, bucket_name: str) -> dict | None:

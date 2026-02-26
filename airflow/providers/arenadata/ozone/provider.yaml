@@ -27,13 +27,13 @@ description: |
   - S3 Gateway (S3-compatible API) via a boto3-based hook
 
 state: ready
-source-date-epoch: 1769773234
 # note that those versions are maintained by release manager - do not update them manually
 versions:
   - 1.0.0
 
 dependencies:
   - apache-airflow>=2.10.3
+  - apache-airflow-providers-apache-hdfs
   - boto3>=1.35.0
 
 integrations:

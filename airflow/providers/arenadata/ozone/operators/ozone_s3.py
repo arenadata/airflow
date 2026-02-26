@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
@@ -67,7 +67,7 @@ class OzoneS3PutObjectOperator(BaseOperator):
         self,
         bucket_name: str,
         key: str,
-        data: Any,
+        data: object,
         ozone_conn_id: str = OzoneS3Hook.default_conn_name,
         **kwargs,
     ):
@@ -81,8 +81,6 @@ class OzoneS3PutObjectOperator(BaseOperator):
         if not ozone_conn_id or not ozone_conn_id.strip():
             raise ValueError("ozone_conn_id parameter cannot be empty")
 
-        # NOTE: validate-operators-init requires template fields to be assigned
-        # directly from __init__ arguments after super().__init__(**kwargs).
         self.bucket_name = bucket_name
         self.key = key
         self.data = data

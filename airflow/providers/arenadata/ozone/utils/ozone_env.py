@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import shutil
@@ -32,6 +33,25 @@ from airflow.providers.arenadata.ozone.utils.security import (
     get_ssl_env_vars,
     kinit_from_env_vars,
 )
+
+_LOG = logging.getLogger(__name__)
+_CONF_DIRS: set[str] = set()
+
+
+def _cleanup_conf_dirs() -> None:
+    """Best-effort cleanup for temporary client configuration directories."""
+    for conf_dir in list(_CONF_DIRS):
+        try:
+            shutil.rmtree(conf_dir)
+        except FileNotFoundError:
+            _LOG.debug("Temporary Ozone conf directory already removed: %s", conf_dir)
+        except OSError as exc:
+            _LOG.warning("Failed to clean temporary Ozone conf directory %s: %s", conf_dir, exc)
+        finally:
+            _CONF_DIRS.discard(conf_dir)
+
+
+atexit.register(_cleanup_conf_dirs)
 
 
 @dataclass(frozen=True)
@@ -120,10 +140,7 @@ class OzoneEnv:
             snap = self.get_connection_snapshot()
             kerberos_env_vars = get_kerberos_env_vars(snap.extra, conn_id=self.conn_id)
             if kerberos_env_vars:
-                # Side-effect is explicit and happens exactly once (lazy) during Kerberos load.
                 kinit_from_env_vars(kerberos_env_vars, existing_env=os.environ)
-
-                # Build process env overrides (pure).
                 self._kerberos_env = apply_kerberos_env_vars(kerberos_env_vars)
 
                 self.log.debug(
@@ -180,6 +197,7 @@ class OzoneEnv:
         if self._client_conf_dir is not None:
             return self._client_conf_dir
 
+        tmpdir: str | None = None
         try:
             snap = self.get_connection_snapshot()
         except Exception as e:
@@ -222,13 +240,21 @@ class OzoneEnv:
             self.log.debug("Generated minimal ozone-site.xml (om=%s, scm=%s)", om_addr, scm_addr)
 
             self._client_conf_dir = tmpdir
+            _CONF_DIRS.add(tmpdir)
             return tmpdir
         except Exception as e:
             self.log.warning("Failed to create Ozone client conf from Extra: %s", e)
-            try:
-                shutil.rmtree(tmpdir, ignore_errors=True)
-            except Exception:
-                pass
+            if tmpdir:
+                try:
+                    shutil.rmtree(tmpdir)
+                except FileNotFoundError:
+                    self.log.debug("Temporary Ozone conf directory already removed: %s", tmpdir)
+                except OSError as cleanup_error:
+                    self.log.warning(
+                        "Failed to clean temporary Ozone conf directory %s: %s",
+                        tmpdir,
+                        cleanup_error,
+                    )
             return None
 
     def build_env(self) -> dict[str, str]:

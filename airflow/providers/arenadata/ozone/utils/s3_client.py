@@ -33,7 +33,7 @@ Design goals:
 from __future__ import annotations
 
 from io import BytesIO
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import boto3
 from botocore.config import Config
@@ -57,11 +57,11 @@ class S3KeyWrapper:
     def __init__(self, body):
         self._body = body
 
-    def get(self) -> dict[str, Any]:
+    def get(self) -> dict[str, object]:
         return {"Body": self._body}
 
 
-def _as_bool_or_str(value: Any, default: Any) -> Any:
+def _as_bool_or_str(value: object, default: object) -> object:
     """
     Normalize values that may come from Connection extra as strings.
 

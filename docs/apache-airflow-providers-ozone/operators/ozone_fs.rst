@@ -48,7 +48,7 @@ Both ``OzoneDeleteKeyOperator`` and ``OzoneListOperator`` support wildcard patte
 
 **Behavior:**
 
-* ``OzoneDeleteKeyOperator``: Deletes only files matching the pattern. If nothing matches, the operator succeeds (idempotent cleanup). If listing the parent directory fails, falls back to CLI delete with the pattern.
+* ``OzoneDeleteKeyOperator``: Deletes only files matching the pattern. If nothing matches, the operator succeeds. If listing the parent directory fails, uses CLI delete with the pattern.
 * ``OzoneListOperator``: Returns only paths matching the pattern. If listing the parent directory fails, falls back to direct listing of the pattern path.
 
 Example

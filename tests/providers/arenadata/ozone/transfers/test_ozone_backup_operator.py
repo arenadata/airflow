@@ -41,8 +41,7 @@ class TestOzoneBackupOperator:
         operator.execute(context={})
 
         mock_admin_hook.assert_called_once_with(ozone_conn_id="ozone_admin_default")
-        # Ensure that subprocess.run was called with a snapshot create command that includes
-        # the expected arguments (the OzoneAdminHook may prepend extra flags such as --config).
+        # subprocess.run called with snapshot create; hook may prepend --config etc.
         assert mock_subprocess_run.call_count == 1
         cmd_args, cmd_kwargs = mock_subprocess_run.call_args
         cmd_list = cmd_args[0]
@@ -77,7 +76,7 @@ class TestOzoneBackupOperator:
     def test_execute_idempotent_snapshot_exists(
         self, mock_admin_hook: MagicMock, mock_subprocess_run: MagicMock
     ):
-        """Test that OzoneBackupOperator is idempotent (treats existing snapshot as success)."""
+        """Existing snapshot is treated as success (no exception)."""
 
         mock_hook_instance = mock_admin_hook.return_value
         mock_hook_instance._get_merged_env = MagicMock(return_value=None)

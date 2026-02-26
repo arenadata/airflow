@@ -85,7 +85,7 @@ Key features
 
 * Robust error handling with retries (transient failures) and subprocess timeouts.
 * Security-first: SSL/TLS and Kerberos support for Native CLI, and Secrets Backend integration (``secret://``).
-* Idempotent create/delete operations (treats "already exists" / "not found" as success where appropriate).
+* Create/delete operations treat "already exists" and "not found" as success where applicable.
 * Detailed logging with automatic sensitive-data masking.
 * High-performance transfers (parallel transfers for Ozone → S3).
 

@@ -21,7 +21,6 @@ import logging
 import os
 import subprocess
 from dataclasses import dataclass, field
-from typing import Any
 
 from airflow.providers.arenadata.ozone.utils.security.secret_resolver import get_secret_value
 from airflow.utils.log.secrets_masker import mask_secret
@@ -58,7 +57,7 @@ class KerberosConfig:
 
 
 def _get_core_kerberos_env(
-    extra: dict[str, Any], extra_lower: dict[str, str], conn_id: str | None
+    extra: dict[str, object], extra_lower: dict[str, str], conn_id: str | None
 ) -> dict[str, str]:
     """Kerberos env for Ozone/Hadoop core tools."""
     env_vars: dict[str, str] = {}
@@ -87,7 +86,7 @@ def _get_core_kerberos_env(
 
 
 def _get_hive_kerberos_env(
-    extra: dict[str, Any], extra_lower: dict[str, str], conn_id: str | None
+    extra: dict[str, object], extra_lower: dict[str, str], conn_id: str | None
 ) -> dict[str, str]:
     """Kerberos env for Hive CLI."""
     env_vars: dict[str, str] = {}
@@ -106,7 +105,7 @@ def _get_hive_kerberos_env(
 
 
 def _get_hdfs_kerberos_env(
-    extra: dict[str, Any], extra_lower: dict[str, str], conn_id: str | None
+    extra: dict[str, object], extra_lower: dict[str, str], conn_id: str | None
 ) -> dict[str, str]:
     """Kerberos env for HDFS clients."""
     env_vars: dict[str, str] = {}
@@ -201,13 +200,13 @@ def apply_kerberos_env_vars(
     """
     Build Kerberos environment overrides (delta) for a process.
 
-    This function is PURE относительно внешних эффектов:
-    - НЕ запускает kinit
-    - НЕ создаёт/не модифицирует XML конфиги
+    This function is intentionally pure with respect to side effects:
+    - does NOT run ``kinit``
+    - does NOT create or modify XML config files
 
-    Делает только:
-    - добавляет нужные JVM flags (HADOOP_OPTS/OZONE_OPTS),
-    - гарантирует подсказку конфиг-директории (HADOOP_CONF_DIR/OZONE_CONF_DIR).
+    It only:
+    - adds required JVM flags (HADOOP_OPTS / OZONE_OPTS),
+    - ensures a reasonable config directory hint (HADOOP_CONF_DIR / OZONE_CONF_DIR).
     """
     base_env = (existing_env if existing_env is not None else os.environ).copy()
     overrides: dict[str, str] = env_vars.copy()

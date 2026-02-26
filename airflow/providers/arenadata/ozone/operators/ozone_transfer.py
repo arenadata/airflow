@@ -127,7 +127,6 @@ class OzoneToOzoneOperator(BaseOperator):
 
         hook = OzoneFsHook(ozone_conn_id=self.ozone_conn_id)
 
-        # Handle wildcard patterns in a URI-safe way and filter matches.
         if contains_wildcards(source_use):
             src_scheme, src_netloc, src_path = parse_ozone_uri(source_use)
             pattern = posixpath.basename(src_path)
@@ -138,7 +137,6 @@ class OzoneToOzoneOperator(BaseOperator):
             try:
                 files = hook.list_paths(src_dir)
             except Exception as e:
-                # Fallback to CLI mv (ozone may handle wildcard expansion itself)
                 self.log.warning("Could not list files in %s: %s", src_dir, str(e))
                 dest_dir = dest_use.rstrip("/")
                 if dest_dir and not hook.exists(dest_dir):
@@ -157,7 +155,6 @@ class OzoneToOzoneOperator(BaseOperator):
                 self.log.info("No files matching pattern %s in %s, skipping move operation", pattern, src_dir)
                 return
 
-            # In wildcard mode treat destination as directory and ensure it exists
             dest_dir = dest_use.rstrip("/")
             if dest_dir and not hook.exists(dest_dir):
                 self.log.info("Creating destination directory: %s", dest_dir)
@@ -176,7 +173,6 @@ class OzoneToOzoneOperator(BaseOperator):
             self.log.info("Successfully moved %d file(s) to %s", len(matched), dest_use)
             return
 
-        # Create destination parent directory if it doesn't exist (URI-safe).
         dst_scheme, dst_netloc, dst_path = parse_ozone_uri(dest_use.rstrip("/"))
         dst_parent_path = posixpath.dirname(dst_path) if dst_path else ""
         if dst_scheme and dst_parent_path in ("", "/"):
@@ -187,8 +183,6 @@ class OzoneToOzoneOperator(BaseOperator):
             self.log.info("Creating destination directory: %s", dst_parent)
             hook.mkdir(dst_parent)
 
-        # Single file/directory move (no wildcard)
-        # Check if source exists before moving
         if hook.exists(source_use):
             self.log.debug("Source path exists, proceeding with move operation")
             hook.run_cli(["ozone", "fs", "-mv", source_use, dest_use])
@@ -196,4 +190,3 @@ class OzoneToOzoneOperator(BaseOperator):
             self.log.info("Moved: %s -> %s", source_use, dest_use)
         else:
             self.log.warning("Source path does not exist: %s, skipping move operation", source_use)
-            # Treat as success (idempotent operation - nothing to move)

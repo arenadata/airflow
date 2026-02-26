@@ -33,9 +33,8 @@ Checklist
   * you pass addresses via the Ozone connection Extra (see :ref:`howto/connection:ozone`)
     and the provider configures the environment variables for the CLI.
 
-The provider package itself **does not install** Ozone CLI. It is the responsibility of the
-operator to ensure that the ``ozone`` binary and client configs are present on all Airflow
-workers. In this repository, the helper script ``files/run_af.sh`` is provided to build a CI
+The provider package itself **does not install** Ozone CLI. The ``ozone`` binary and client
+configs must be present on all Airflow workers. In this repository, the helper script ``files/run_af.sh`` is provided to build a CI
 image and install Ozone CLI into the Airflow container for local development only.
 
 Kerberos note

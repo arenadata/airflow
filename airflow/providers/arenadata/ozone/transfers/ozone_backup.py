@@ -19,12 +19,15 @@ from __future__ import annotations
 
 import subprocess
 import time
-from typing import Any
+from typing import TYPE_CHECKING
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.hooks.ozone_admin import OzoneAdminHook
 from airflow.utils.log.secrets_masker import redact
+
+if TYPE_CHECKING:
+    from airflow.utils.context import Context
 
 
 class OzoneBackupOperator(BaseOperator):
@@ -48,12 +51,8 @@ class OzoneBackupOperator(BaseOperator):
         self.snapshot_name = snapshot_name
         self.ozone_conn_id = ozone_conn_id
 
-    def execute(self, context: Any):
-        """
-        Execute the snapshot creation command.
-
-        Idempotent operation: if snapshot already exists, treats it as success.
-        """
+    def execute(self, context: Context):
+        """Create snapshot and treat existing snapshot as success."""
         path = f"/{self.volume}/{self.bucket}"
         snapshot_name_use = self.snapshot_name
 
@@ -67,11 +66,6 @@ class OzoneBackupOperator(BaseOperator):
         hook = OzoneAdminHook(ozone_conn_id=self.ozone_conn_id)
         cmd = ["ozone", "sh", "snapshot", "create", path, snapshot_name_use]
 
-        # Use direct subprocess call instead of run_cli() to handle "already exists" errors
-        # gracefully without triggering retry logic. The run_cli() method has retry decorator
-        # that would retry on AirflowException, but "FILE_ALREADY_EXISTS" is expected and
-        # should be treated as success (idempotent operation).
-        # Get environment variables (SSL + Kerberos) from base hook
         env = hook._build_env()
         start_time = time.time()
         try:

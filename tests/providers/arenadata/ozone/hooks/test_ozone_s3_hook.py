@@ -107,7 +107,7 @@ class TestOzoneS3Hook:
     def test_create_bucket_with_retry_already_exists(
         self, mock_create_bucket: MagicMock, ozone_s3_hook: OzoneS3Hook
     ):
-        """Test that create_bucket_with_retry handles BucketAlreadyExists gracefully."""
+        """create_bucket_with_retry treats BucketAlreadyExists as success (no exception)."""
         error = ClientError(
             {"Error": {"Code": "BucketAlreadyExists", "Message": "Bucket already exists"}}, "CreateBucket"
         )

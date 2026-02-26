@@ -19,18 +19,18 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING
 
 from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
-from airflow.providers.arenadata.ozone.utils.security import (
-    apply_ssl_env_vars,
-    get_ssl_env_vars,
-)
+from airflow.providers.arenadata.ozone.utils.security import apply_ssl_env_vars, get_ssl_env_vars
 from airflow.utils.log.secrets_masker import redact
+
+if TYPE_CHECKING:
+    from airflow.utils.context import Context
 
 try:
     # Import lazily to avoid breaking DAG parsing when the Hive provider
@@ -50,12 +50,12 @@ log = logging.getLogger(__name__)
 
 def _run_hive_cli_with_env(
     *,
-    hive_hook: Any,
+    hive_hook: HiveCliHook,
     hql: str,
     env: dict[str, str],
     schema: str | None = None,
     verbose: bool = True,
-    hive_conf: dict[Any, Any] | None = None,
+    hive_conf: dict[str, str] | None = None,
 ) -> str:
     """
     Run Hive CLI using the HiveCliHook command builder, but with an explicit environment.
@@ -86,7 +86,7 @@ def _run_hive_cli_with_env(
         hive_cmd = hive_hook._prepare_cli_cmd()
 
         # Only extend the hive_conf if it is defined.
-        env_context: dict[Any, Any] = {}
+        env_context: dict[str, str] = {}
         if hive_conf:
             env_context.update(hive_conf)
 
@@ -117,7 +117,7 @@ def _run_hive_cli_with_env(
         if verbose:
             hive_hook.log.info("%s", " ".join(hive_cmd))
 
-        sub_process: Any = subprocess.Popen(
+        sub_process = subprocess.Popen(
             hive_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -165,6 +165,11 @@ class OzoneToHiveOperator(BaseOperator):
         hive_cli_conn_id: str = "hive_cli_default",
         **kwargs,
     ):
+        if HiveCliHook is None:
+            raise ImportError(
+                "HiveCliHook not available. Install apache-airflow-providers-apache-hive"
+            ) from _hive_import_error
+
         super().__init__(**kwargs)
         self.ozone_path = ozone_path
         self.table_name = table_name
@@ -202,7 +207,7 @@ class OzoneToHiveOperator(BaseOperator):
         before_sleep=before_sleep_log(log, logging.WARNING),
         reraise=True,
     )
-    def _execute_hql_with_retry(self, hive_hook: Any, hql: str):
+    def _execute_hql_with_retry(self, hive_hook: HiveCliHook, hql: str):
         """
         Execute HQL statement with retry logic.
 
@@ -224,7 +229,7 @@ class OzoneToHiveOperator(BaseOperator):
             self.log.warning("HQL execution failed (will retry): %s", str(e))
             raise AirflowException(f"HQL execution failed: {str(e)}")
 
-    def execute(self, context: Any):
+    def execute(self, context: Context):
         """Execute the HQL to add the partition."""
         self.log.info("Starting Ozone to Hive partition registration")
         self.log.info("Table: %s, Ozone path: %s", self.table_name, self.ozone_path)

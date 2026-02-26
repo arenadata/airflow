@@ -20,7 +20,8 @@ from __future__ import annotations
 import os
 
 from airflow.exceptions import AirflowException
-from airflow.providers.arenadata.ozone.hooks.ozone import (  # Import the base hook
+from airflow.providers.arenadata.ozone.hooks.ozone import (
+    OzoneCliError,
     OzoneCliTransientError,
     OzoneHook,
 )
@@ -65,8 +66,6 @@ class OzoneFsHook(OzoneHook):  # Inherit from OzoneHook
             remote_path,
         )
 
-        # Fail fast if the local file does not exist, instead of relying on the CLI
-        # to raise a less clear error.
         if not os.path.exists(local_path):
             self.log.error("Local file does not exist: %s", local_path)
             raise AirflowException(f"Local file does not exist: {local_path}")
@@ -100,14 +99,15 @@ class OzoneFsHook(OzoneHook):  # Inherit from OzoneHook
             if any(
                 x in combined for x in ("timed out", "timeout", "connection refused", "service unavailable")
             ):
-                # Treat infrastructure/transient errors differently: callers may want to fail/skip.
                 raise OzoneCliTransientError(f"Transient error while checking path existence: {path}")
 
             self.log.debug("Path does not exist in Ozone: %s", path)
             return False
+        except OzoneCliTransientError:
+            raise
+        except FileNotFoundError as e:
+            raise OzoneCliError("Ozone CLI not found in PATH") from e
         except Exception as e:
-            # Unexpected exceptions (e.g., FileNotFoundError for missing ozone CLI)
-            # should be re-raised as they indicate configuration issues
             self.log.error("Unexpected error while checking path existence: %s (error: %s)", path, str(e))
             raise
 
@@ -119,7 +119,6 @@ class OzoneFsHook(OzoneHook):  # Inherit from OzoneHook
         :return: List of file paths
         """
         self.log.info("Listing paths in Ozone FS: %s", path)
-        # The -C flag returns just the file paths, which is perfect for XComs
         cmd = ["ozone", "fs", "-ls", "-C", path]
         output = self.run_cli(cmd)
 

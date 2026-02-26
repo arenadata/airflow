@@ -56,7 +56,7 @@ class TestOzoneFsOperators:
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneFsHook")
     def test_ozone_delete_key_operator_idempotent(self, mock_ozone_fs_hook: MagicMock):
-        """Test that OzoneDeleteKeyOperator is idempotent (skips deletion if file doesn't exist)."""
+        """DeleteKeyOperator skips run_cli when path does not exist."""
 
         mock_hook_instance = mock_ozone_fs_hook.return_value
         mock_hook_instance.exists.return_value = False

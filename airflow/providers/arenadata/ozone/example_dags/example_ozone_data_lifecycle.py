@@ -92,7 +92,7 @@ with DAG(
     # Base archive path (without date partition)
     ARCHIVE_BASE_PATH = f"ofs://om/{ARCHIVE_VOLUME}/{ARCHIVE_BUCKET}"
 
-    # 0. Ensure required volumes and buckets exist (idempotent operations).
+    # 0. Ensure required volumes and buckets exist.
     create_landing_volume = OzoneCreateVolumeOperator(
         task_id="create_landing_volume",
         volume_name=LANDING_VOLUME,
@@ -124,10 +124,7 @@ with DAG(
         execution_timeout=timedelta(minutes=1),
     )
 
-    # 2. This TaskGroup emulates file processing.
-    # NOTE: In this example we avoid dynamic task mapping via `.expand()` to keep
-    # compatibility with older Airflow versions. Instead, we process/log the list
-    # of files in a single Bash task.
+    # 2. This TaskGroup emulates file processing in a single task.
     with TaskGroup(group_id="dynamic_file_processing") as processing_group:
         process_files = BashOperator(
             task_id="process_files",

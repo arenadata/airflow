@@ -41,12 +41,9 @@ class OzoneAdminHook(OzoneHook):
     Used for managing Volumes, Buckets, Quotas.
     """
 
-    # NOTE: keep separate default name if you really want a separate Airflow connection.
-    # If you want to reuse same conn as FS hooks -> set to "ozone_default".
     default_conn_name = "ozone_admin_default"
     hook_name = "Ozone Admin"
 
-    # CHANGED: single place that prepares cmd/env and runs without retries
     def _exec(
         self,
         cmd: list[str],
@@ -73,7 +70,6 @@ class OzoneAdminHook(OzoneHook):
         )
         return (stdout or ""), (stderr or ""), int(returncode)
 
-    # CHANGED: simplified delete without manual CalledProcessError juggling
     def _delete_resource(
         self,
         *,
