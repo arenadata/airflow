@@ -16,3 +16,20 @@
 # specific language governing permissions and limitations
 # under the License.
 """HBase provider package."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import yaml
+
+
+def get_provider_info():
+    """Return provider metadata from provider.yaml."""
+    provider_yaml_path = Path(__file__).parent / "provider.yaml"
+    with open(provider_yaml_path) as f:
+        return yaml.safe_load(f)
+
+
+__version__ = "1.0.0"
