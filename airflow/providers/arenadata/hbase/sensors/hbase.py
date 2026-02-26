@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from airflow.utils.context import Context
 
 
-class HBaseTableSensor(BaseSensorOperator):
+class HBaseTableSensor(BaseSensorOperator):  # pylint: disable=too-few-public-methods
     """
     Sensor to check if HBase table exists.
 
@@ -48,7 +48,7 @@ class HBaseTableSensor(BaseSensorOperator):
         self.table_name = table_name
         self.hbase_conn_id = hbase_conn_id
 
-    def poke(self, context: Context) -> bool:
+    def poke(self, _context: Context) -> bool:
         """Check if table exists."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         exists = hook.table_exists(self.table_name)
@@ -56,7 +56,7 @@ class HBaseTableSensor(BaseSensorOperator):
         return exists
 
 
-class HBaseRowSensor(BaseSensorOperator):
+class HBaseRowSensor(BaseSensorOperator):  # pylint: disable=too-few-public-methods
     """
     Sensor to check if specific row exists in HBase table.
 
@@ -79,7 +79,7 @@ class HBaseRowSensor(BaseSensorOperator):
         self.row_key = row_key
         self.hbase_conn_id = hbase_conn_id
 
-    def poke(self, context: Context) -> bool:
+    def poke(self, _context: Context) -> bool:
         """Check if row exists."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         row_data = hook.get_row(self.table_name, self.row_key)
