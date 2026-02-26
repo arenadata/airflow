@@ -19,13 +19,17 @@
 
 from __future__ import annotations
 
-import re
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Sequence
 
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
+from airflow.providers.arenadata.hbase.utils.data_conversion import (
+    convert_batch_results_to_serializable,
+    convert_scan_results_to_serializable,
+    extract_backup_id,
+)
 
 if TYPE_CHECKING:
     from airflow.utils.context import Context
@@ -218,16 +222,7 @@ class HBaseScanOperator(BaseOperator):
             columns=self.columns,
             limit=self.limit
         )
-        # Convert bytes to strings for JSON serialization
-        serializable_results = []
-        for row_key, data in results:
-            row_dict = {"row_key": row_key.decode(self.encoding) if isinstance(row_key, bytes) else row_key}
-            for col, val in data.items():
-                col_str = col.decode(self.encoding) if isinstance(col, bytes) else col
-                val_str = val.decode(self.encoding) if isinstance(val, bytes) else val
-                row_dict[col_str] = val_str
-            serializable_results.append(row_dict)
-        return serializable_results
+        return convert_scan_results_to_serializable(results, self.encoding)
 
 
 class HBaseBatchPutOperator(BaseOperator):
@@ -302,16 +297,7 @@ class HBaseBatchGetOperator(BaseOperator):
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         results = hook.batch_get_rows(self.table_name, self.row_keys, self.columns)
-        # Convert bytes to strings for JSON serialization
-        serializable_results = []
-        for data in results:
-            row_dict = {}
-            for col, val in data.items():
-                col_str = col.decode(self.encoding) if isinstance(col, bytes) else col
-                val_str = val.decode(self.encoding) if isinstance(val, bytes) else val
-                row_dict[col_str] = val_str
-            serializable_results.append(row_dict)
-        return serializable_results
+        return convert_batch_results_to_serializable(results, self.encoding)
 
 
 class HBaseBackupSetOperator(BaseOperator):
@@ -419,11 +405,8 @@ class HBaseCreateBackupOperator(BaseOperator):
 
         self.log.info("Backup command output: %s", output)
 
-        # Extract backup_id from output
-        # Output format: "Backup backup_1234567890123 completed."
-        match = re.search(r'backup_(\d+)', output)
-        if match:
-            backup_id = f"backup_{match.group(1)}"
+        backup_id = extract_backup_id(output)
+        if backup_id:
             self.log.info("Extracted backup_id: %s", backup_id)
             return backup_id
         else:
