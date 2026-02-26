@@ -16,29 +16,25 @@
 # specific language governing permissions and limitations
 # under the License.
 """
-Example DAG showing HBase Thrift2 client usage.
+Example DAG showing HBase Hook with Thrift2 mode.
 
 Before running this DAG, create an Airflow Connection:
 
 Connection ID: hbase_thrift2
-Connection Type: Generic
+Connection Type: HBase
 Host: your-hbase-host
 Port: 9090
-
-For Kerberos, add to Extra:
-{
-  "auth_method": "GSSAPI",
-  "kerberos_service_name": "hbase",
-  "use_framed_transport": false,
-  "kerberos_keytab": "/etc/security/keytabs/airflow.service.keytab"
-}
 """
 
 from datetime import datetime, timedelta
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
+from airflow.providers.arenadata.hbase.operators.hbase import (
+    HBaseCreateTableOperator,
+    HBaseDeleteTableOperator,
+    HBasePutOperator,
+)
+from airflow.providers.arenadata.hbase.sensors.hbase import HBaseTableSensor, HBaseRowSensor
 
 default_args = {
     "owner": "airflow",
@@ -51,154 +47,76 @@ default_args = {
 }
 
 dag = DAG(
-    "example_hbase",
+    "example_hbase_hook",
     default_args=default_args,
-    description="Example HBase Thrift2 DAG",
+    description="Example HBase DAG using Hook with Thrift2",
     schedule_interval=None,
     catchup=False,
-    tags=["example", "hbase"],
+    tags=["example", "hbase", "hook"],
 )
 
+# Delete table if exists for idempotency
+delete_table_cleanup = HBaseDeleteTableOperator(
+    task_id="delete_table_cleanup",
+    table_name="test_table_hook_thrift2",
+    hbase_conn_id="hbase_thrift2",
+    dag=dag,
+)
 
-def create_table_task():
-    """Create HBase table using Thrift2."""
-    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
-    
-    # Delete table if exists
-    if hook.table_exists("test_table_thrift2"):
-        hook.delete_table("test_table_thrift2")
-        print("Deleted existing table")
-
-    # Create table
-    hook.create_table(
-        "test_table_thrift2",
-        families={
-            "cf1": {},
-            "cf2": {},
-        }
-    )
-    print("Created table: test_table_thrift2")
-
-
-def put_data_task():
-    """Put data into HBase table using Thrift2."""
-    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
-    
-    # Put single row
-    hook.put_row(
-        "test_table_thrift2",
-        "row1",
-        {
-            "cf1:col1": "value1",
-            "cf1:col2": "value2",
-            "cf2:col1": "value3",
-        }
-    )
-    print("Put data for row1")
-
-    # Put more rows
-    for i in range(2, 6):
-        hook.put_row(
-            "test_table_thrift2",
-            f"row{i}",
-            {
-                "cf1:col1": f"value{i}_1",
-                "cf2:col1": f"value{i}_2",
-            }
-        )
-    print("Put data for rows 2-5")
-
-
-def get_data_task():
-    """Get data from HBase table using Thrift2."""
-    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
-    
-    # Get single row
-    result = hook.get_row("test_table_thrift2", "row1")
-    print(f"Got row1: {result}")
-
-    # Get specific columns
-    result = hook.get_row(
-        "test_table_thrift2",
-        "row1",
-        columns=["cf1:col1", "cf2:col1"]
-    )
-    print(f"Got row1 (specific columns): {result}")
-
-
-def scan_table_task():
-    """Scan HBase table using Thrift2."""
-    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
-    
-    # Scan all rows
-    results = hook.scan_table("test_table_thrift2")
-    print(f"Scanned {len(results)} rows")
-    for row_key, columns in results:
-        print(f"  Row: {row_key}, Columns: {len(columns)}")
-
-    # Scan with limit
-    results = hook.scan_table("test_table_thrift2", limit=3)
-    print(f"Scanned with limit=3: {len(results)} rows")
-
-
-def delete_row_task():
-    """Delete row from HBase table using Thrift2."""
-    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
-    
-    # Delete specific columns
-    hook.delete_row("test_table_thrift2", "row2", columns=["cf1:col1"])
-    print("Deleted cf1:col1 from row2")
-
-    # Delete entire row
-    hook.delete_row("test_table_thrift2", "row3")
-    print("Deleted row3")
-
-
-def cleanup_task():
-    """Delete test table using Thrift2."""
-    hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
-    
-    if hook.table_exists("test_table_thrift2"):
-        hook.delete_table("test_table_thrift2")
-        print("Deleted table: test_table_thrift2")
-
-
-# Define tasks
-create_table = PythonOperator(
+# Create table using Hook with Thrift2
+create_table = HBaseCreateTableOperator(
     task_id="create_table",
-    python_callable=create_table_task,
+    table_name="test_table_hook_thrift2",
+    families={
+        "cf1": {},
+        "cf2": {},
+    },
+    hbase_conn_id="hbase_thrift2",
     dag=dag,
 )
 
-put_data = PythonOperator(
+# Check table exists
+check_table = HBaseTableSensor(
+    task_id="check_table_exists",
+    table_name="test_table_hook_thrift2",
+    hbase_conn_id="hbase_thrift2",
+    timeout=60,
+    poke_interval=10,
+    dag=dag,
+)
+
+# Put data
+put_data = HBasePutOperator(
     task_id="put_data",
-    python_callable=put_data_task,
+    table_name="test_table_hook_thrift2",
+    row_key="row1",
+    data={
+        "cf1:col1": "value1",
+        "cf1:col2": "value2",
+        "cf2:col1": "value3",
+    },
+    hbase_conn_id="hbase_thrift2",
     dag=dag,
 )
 
-get_data = PythonOperator(
-    task_id="get_data",
-    python_callable=get_data_task,
+# Check row exists
+check_row = HBaseRowSensor(
+    task_id="check_row_exists",
+    table_name="test_table_hook_thrift2",
+    row_key="row1",
+    hbase_conn_id="hbase_thrift2",
+    timeout=60,
+    poke_interval=10,
     dag=dag,
 )
 
-scan_table = PythonOperator(
-    task_id="scan_table",
-    python_callable=scan_table_task,
-    dag=dag,
-)
-
-delete_row = PythonOperator(
-    task_id="delete_row",
-    python_callable=delete_row_task,
-    dag=dag,
-)
-
-cleanup = PythonOperator(
-    task_id="cleanup",
-    python_callable=cleanup_task,
+# Delete table
+delete_table = HBaseDeleteTableOperator(
+    task_id="delete_table",
+    table_name="test_table_hook_thrift2",
+    hbase_conn_id="hbase_thrift2",
     dag=dag,
 )
 
 # Set dependencies
-create_table >> put_data >> get_data >> scan_table >> delete_row >> cleanup
+delete_table_cleanup >> create_table >> check_table >> put_data >> check_row >> delete_table
