@@ -74,7 +74,10 @@ def benchmark_single_connection():
         hook.batch_put_rows(TABLE_NAME, rows, batch_size=200, max_workers=1)
         elapsed = time.time() - start
 
-        print(f"Single connection: {len(rows)} rows in {elapsed:.2f}s ({len(rows)/elapsed:.0f} rows/sec)")
+        print(
+            f"Single connection: {len(rows)} rows in {elapsed:.2f}s "
+            f"({len(rows)/elapsed:.0f} rows/sec)"
+        )
         return elapsed
     finally:
         hook.close()
@@ -101,7 +104,10 @@ def benchmark_pooled_connection():
     hook.batch_put_rows(TABLE_NAME, rows, batch_size=200, max_workers=4)
     elapsed = time.time() - start
 
-    print(f"Pooled connection (4 workers): {len(rows)} rows in {elapsed:.2f}s ({len(rows)/elapsed:.0f} rows/sec)")
+    print(
+        f"Pooled connection (4 workers): {len(rows)} rows in {elapsed:.2f}s "
+        f"({len(rows)/elapsed:.0f} rows/sec)"
+    )
     return elapsed
 
 
@@ -126,7 +132,10 @@ def benchmark_large_dataset():
     hook.batch_put_rows(TABLE_NAME, rows, batch_size=250, max_workers=6)
     elapsed = time.time() - start
 
-    print(f"Large dataset (6 workers): {len(rows)} rows in {elapsed:.2f}s ({len(rows)/elapsed:.0f} rows/sec)")
+    print(
+        f"Large dataset (6 workers): {len(rows)} rows in {elapsed:.2f}s "
+        f"({len(rows)/elapsed:.0f} rows/sec)"
+    )
     return elapsed
 
 
@@ -192,4 +201,4 @@ with DAG(
         python_callable=cleanup_table,
     )
 
-    setup >> [bench_single, bench_pooled] >> bench_large >> verify >> cleanup
+    setup >> [bench_single, bench_pooled] >> bench_large >> verify >> cleanup  # pylint: disable=pointless-statement

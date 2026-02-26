@@ -141,4 +141,10 @@ delete_table = HBaseDeleteTableOperator(
 )
 
 # Dependencies
-delete_table_cleanup >> create_table >> [small_batch, medium_batch, large_batch] >> scan_results >> delete_table
+(  # pylint: disable=pointless-statement
+    delete_table_cleanup
+    >> create_table
+    >> [small_batch, medium_batch, large_batch]
+    >> scan_results
+    >> delete_table
+)

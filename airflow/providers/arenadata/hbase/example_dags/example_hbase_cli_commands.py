@@ -27,13 +27,13 @@ from datetime import datetime
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 
 HBASE_CONN_ID = "hbase_thrift2"
 
 
 def describe_backup_set(**context):
     """Describe backup set using execute_command."""
-    from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 
     params = context["params"]
     backup_set_name = params.get("backup_set_name", "test_cli_set")
@@ -43,9 +43,9 @@ def describe_backup_set(**context):
         java_home="/usr/lib/jvm/java-arenadata-openjdk-8",
         hbase_home="/usr/lib/hbase",
     )
-    
+
     command = f"backup set describe {backup_set_name}"
-    
+
     result = hook.execute_command(command)
     print(f"Backup set description:\n{result}")
     return result
@@ -53,7 +53,6 @@ def describe_backup_set(**context):
 
 def get_backup_history(**context):
     """Get backup history for set using execute_command."""
-    from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 
     params = context["params"]
     backup_set_name = params.get("backup_set_name", "test_cli_set")
@@ -63,9 +62,9 @@ def get_backup_history(**context):
         java_home="/usr/lib/jvm/java-arenadata-openjdk-8",
         hbase_home="/usr/lib/hbase",
     )
-    
+
     command = f"backup history -s {backup_set_name}"
-    
+
     result = hook.execute_command(command)
     print(f"Backup history:\n{result}")
     return result
@@ -73,7 +72,6 @@ def get_backup_history(**context):
 
 def delete_backup_set(**context):
     """Delete backup set using execute_command."""
-    from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 
     params = context["params"]
     backup_set_name = params.get("backup_set_name", "test_cli_set")
@@ -83,9 +81,9 @@ def delete_backup_set(**context):
         java_home="/usr/lib/jvm/java-arenadata-openjdk-8",
         hbase_home="/usr/lib/hbase",
     )
-    
+
     command = f"backup set delete {backup_set_name}"
-    
+
     result = hook.execute_command(command)
     print(f"Delete backup set result:\n{result}")
     return result
@@ -93,7 +91,6 @@ def delete_backup_set(**context):
 
 def verify_deletion(**context):
     """Verify backup set was deleted by listing all sets."""
-    from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 
     params = context["params"]
     backup_set_name = params.get("backup_set_name", "test_cli_set")
@@ -103,17 +100,16 @@ def verify_deletion(**context):
         java_home="/usr/lib/jvm/java-arenadata-openjdk-8",
         hbase_home="/usr/lib/hbase",
     )
-    
+
     command = "backup set list"
-    
+
     result = hook.execute_command(command)
     print(f"Backup sets after deletion:\n{result}")
-    
+
     if backup_set_name in result:
         raise ValueError(f"Backup set {backup_set_name} still exists after deletion!")
-    else:
-        print(f"✓ Backup set {backup_set_name} successfully deleted")
-    
+    print(f"Backup set {backup_set_name} successfully deleted")
+
     return result
 
 
@@ -150,4 +146,4 @@ with DAG(
         python_callable=verify_deletion,
     )
 
-    describe_set >> get_history >> delete_set >> verify
+    describe_set >> get_history >> delete_set >> verify  # pylint: disable=pointless-statement

@@ -93,7 +93,7 @@ with DAG(
         }
         for i in range(1000)
     ]
-    
+
     put_data = HBaseBatchPutOperator(
         task_id="put_data",
         table_name="test_table_backup",
@@ -103,4 +103,4 @@ with DAG(
     )
 
     # Define task dependencies
-    delete_table_cleanup >> create_table >> put_data
+    delete_table_cleanup >> create_table >> put_data  # pylint: disable=pointless-statement

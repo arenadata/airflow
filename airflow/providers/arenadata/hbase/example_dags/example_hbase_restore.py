@@ -27,7 +27,8 @@ Workflow:
 3. Verify data was restored correctly
 
 To get backup ID from previous DAG run:
-- Use XCom: {{ ti.xcom_pull(dag_id='example_hbase_backup_consumer', task_ids='create_full_backup') }}
+- Use XCom: {{ ti.xcom_pull(dag_id='example_hbase_backup_consumer',
+task_ids='create_full_backup') }}
 - Or specify manually in backup_id parameter
 """
 
@@ -42,6 +43,7 @@ from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseDeleteTableOperator,
     HBaseRestoreOperator,
 )
+from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
 default_args = {
     "owner": "airflow",
@@ -72,7 +74,6 @@ dag = DAG(
 
 def verify_restored_data(**context):
     """Verify that data was restored correctly."""
-    from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
     hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
     table_name = "test_table_backup"
@@ -83,11 +84,11 @@ def verify_restored_data(**context):
     if restore_output:
         print("\nRestore operation output:")
         print(restore_output)
-        
+
         # Check if backup is not enabled
         if "Backup is not enabled" in restore_output:
             print("\n" + "=" * 60)
-            print("❌ HBASE BACKUP IS NOT ENABLED ON THE CLUSTER")
+            print("HBASE BACKUP IS NOT ENABLED ON THE CLUSTER")
             print("=" * 60)
             print("\nTo enable HBase backup, add to hbase-site.xml:")
             print("")
@@ -104,14 +105,14 @@ def verify_restored_data(**context):
 
     # Check if table exists
     if not hook.table_exists(table_name):
-        print(f"\n❌ Table '{table_name}' does not exist after restore!")
+        print(f"\nTable '{table_name}' does not exist after restore!")
         print("\nPossible reasons:")
         print("  1. Restore operation failed (check restore task logs above)")
         print("  2. Incorrect backup_id specified")
         print("  3. Backup doesn't contain this table")
         print("  4. Insufficient permissions")
         return
-    
+
     print(f"✓ Table '{table_name}' exists")
 
     # Scan table to get row count
@@ -121,7 +122,7 @@ def verify_restored_data(**context):
     print(f"Restored table '{table_name}' contains {row_count} rows")
 
     if row_count == 0:
-        print("\n⚠ WARNING: Table exists but is empty after restore!")
+        print("\nWARNING: Table exists but is empty after restore!")
         print("This could mean:")
         print("  1. The backup was empty")
         print("  2. The backup_id is incorrect")
@@ -133,7 +134,7 @@ def verify_restored_data(**context):
     for i, (row_key, data) in enumerate(rows[:5]):
         print(f"  Row {i+1}: {row_key} -> {data}")
 
-    print(f"\n✓ Restore verification successful: {row_count} rows restored")
+    print(f"\nRestore verification successful: {row_count} rows restored")
 
 
 # Step 1: Delete table to simulate data loss (ignore if not exists)
@@ -165,4 +166,4 @@ verify_data = PythonOperator(
 )
 
 # Define task dependencies
-delete_table >> restore_backup >> verify_data
+delete_table >> restore_backup >> verify_data  # pylint: disable=pointless-statement

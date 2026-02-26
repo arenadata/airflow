@@ -93,4 +93,4 @@ with DAG(
     )
 
     # Define task dependencies
-    create_table >> put_data >> get_data >> delete_table
+    create_table >> put_data >> get_data >> delete_table  # pylint: disable=pointless-statement
