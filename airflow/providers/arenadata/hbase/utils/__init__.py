@@ -16,3 +16,4 @@
 # specific language governing permissions and limitations
 # under the License.
 """HBase utilities."""
+# pylint: disable=duplicate-code,similarities

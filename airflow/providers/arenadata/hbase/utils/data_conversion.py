@@ -25,11 +25,11 @@ from typing import Any
 
 def convert_bytes_to_str(value: bytes | str, encoding: str = 'utf-8') -> str:
     """Convert bytes to string using specified encoding.
-    
+
     Args:
         value: Value to convert
         encoding: Encoding to use (default: utf-8)
-        
+
     Returns:
         String value
     """
@@ -37,15 +37,15 @@ def convert_bytes_to_str(value: bytes | str, encoding: str = 'utf-8') -> str:
 
 
 def convert_scan_results_to_serializable(
-    results: list[tuple[str | bytes, dict[str | bytes, Any]]], 
+    results: list[tuple[str | bytes, dict[str | bytes, Any]]],
     encoding: str = 'utf-8'
 ) -> list[dict[str, Any]]:
     """Convert scan results to JSON-serializable format.
-    
+
     Args:
         results: List of (row_key, data) tuples from scan
         encoding: Encoding to use for bytes conversion
-        
+
     Returns:
         List of dictionaries with string keys and values
     """
@@ -61,15 +61,15 @@ def convert_scan_results_to_serializable(
 
 
 def convert_batch_results_to_serializable(
-    results: list[dict[str | bytes, Any]], 
+    results: list[dict[str | bytes, Any]],
     encoding: str = 'utf-8'
 ) -> list[dict[str, Any]]:
     """Convert batch get results to JSON-serializable format.
-    
+
     Args:
         results: List of data dictionaries from batch get
         encoding: Encoding to use for bytes conversion
-        
+
     Returns:
         List of dictionaries with string keys and values
     """
@@ -86,10 +86,10 @@ def convert_batch_results_to_serializable(
 
 def extract_backup_id(output: str) -> str | None:
     """Extract backup ID from HBase backup command output.
-    
+
     Args:
         output: Command output string
-        
+
     Returns:
         Backup ID (e.g., 'backup_1234567890123') or None if not found
     """

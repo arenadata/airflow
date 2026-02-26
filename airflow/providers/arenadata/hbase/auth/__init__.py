@@ -18,6 +18,8 @@
 """HBase authentication module."""
 
 from airflow.providers.arenadata.hbase.auth.authenticators import AuthenticatorFactory
-from airflow.providers.arenadata.hbase.auth.base import HBaseAuthenticator, KerberosAuthenticator, SimpleAuthenticator
+from airflow.providers.arenadata.hbase.auth.base import (HBaseAuthenticator, KerberosAuthenticator,
+                                                         SimpleAuthenticator)
 
-__all__ = ["AuthenticatorFactory", "HBaseAuthenticator", "SimpleAuthenticator", "KerberosAuthenticator"]
+__all__ = ["AuthenticatorFactory", "HBaseAuthenticator",
+           "SimpleAuthenticator", "KerberosAuthenticator"]

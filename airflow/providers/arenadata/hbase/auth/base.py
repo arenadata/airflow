@@ -32,7 +32,7 @@ from airflow.models import Variable
 log = logging.getLogger(__name__)
 
 
-class HBaseAuthenticator(ABC):
+class HBaseAuthenticator(ABC):  # pylint: disable=too-few-public-methods
     """Base class for HBase authentication methods."""
 
     @abstractmethod
@@ -43,10 +43,9 @@ class HBaseAuthenticator(ABC):
         :param config: Connection configuration from extras
         :return: Additional connection kwargs
         """
-        pass
 
 
-class SimpleAuthenticator(HBaseAuthenticator):
+class SimpleAuthenticator(HBaseAuthenticator):  # pylint: disable=too-few-public-methods
     """Simple authentication (no authentication)."""
 
     def authenticate(self, config: dict[str, Any]) -> dict[str, Any]:
@@ -54,7 +53,7 @@ class SimpleAuthenticator(HBaseAuthenticator):
         return {}
 
 
-class KerberosAuthenticator(HBaseAuthenticator):
+class KerberosAuthenticator(HBaseAuthenticator):  # pylint: disable=too-few-public-methods
     """Kerberos authentication using kinit."""
 
     def authenticate(self, config: dict[str, Any]) -> dict[str, Any]:
@@ -87,10 +86,10 @@ class KerberosAuthenticator(HBaseAuthenticator):
         # Perform kinit
         try:
             cmd = ["kinit", "-kt", keytab_path, principal]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
             # Log success but don't expose sensitive info
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Kerberos authentication failed: {e.stderr}")
+            raise RuntimeError(f"Kerberos authentication failed: {e.stderr}") from e
         finally:
             # Clean up temporary keytab file if created
             if keytab_secret_key and keytab_path:
