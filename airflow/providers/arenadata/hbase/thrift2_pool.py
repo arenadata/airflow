@@ -86,7 +86,7 @@ class Thrift2ConnectionPool:  # pylint: disable=too-many-instance-attributes
         """Cleanup connections when pool is garbage collected."""
         try:
             self.close_all()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
     def _create_connection(self) -> HBaseThrift2Client:
