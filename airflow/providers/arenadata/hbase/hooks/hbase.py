@@ -24,8 +24,13 @@ import os
 from typing import Any
 
 from airflow.hooks.base import BaseHook
+from airflow.providers.openlineage.sqlparser import DatabaseInfo
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
-from airflow.providers.arenadata.hbase.hooks.hbase_strategy import HBaseStrategy, Thrift2Strategy, PooledThrift2Strategy
+from airflow.providers.arenadata.hbase.hooks.hbase_strategy import (
+    HBaseStrategy,
+    Thrift2Strategy,
+    PooledThrift2Strategy,
+)
 from airflow.providers.arenadata.hbase.thrift2_pool import get_or_create_thrift2_pool
 
 
@@ -51,7 +56,7 @@ class HBaseThriftHook(BaseHook):
         self.hbase_conn_id = hbase_conn_id
         self._strategy = None
 
-    def _get_strategy(self) -> HBaseStrategy:
+    def _get_strategy(self) -> HBaseStrategy:  # pylint: disable=too-many-locals
         """Get Thrift2 strategy (single or pooled)."""
         if self._strategy is None:
             conn = self.get_connection(self.hbase_conn_id)
@@ -79,11 +84,17 @@ class HBaseThriftHook(BaseHook):
                 namespace = conn.extra_dejson.get('namespace', 'default')
 
             if ssl_options:
-                self.log.info("SSL/TLS enabled for Thrift2 connection with options: %s",
-                             {k: v for k, v in ssl_options.items() if k != 'key_file'})
+                self.log.info(
+                    "SSL/TLS enabled for Thrift2 connection with options: %s",
+                    {k: v for k, v in ssl_options.items() if k != 'key_file'}
+                )
 
             if auth_method:
-                self.log.info("Authentication enabled: %s (service: %s)", auth_method, kerberos_service_name)
+                self.log.info(
+                    "Authentication enabled: %s (service: %s)",
+                    auth_method,
+                    kerberos_service_name
+                )
 
             pool_config = self._get_pool_config(conn.extra_dejson or {})
 
@@ -178,38 +189,58 @@ class HBaseThriftHook(BaseHook):
         self._get_strategy().put_row(table_name, row_key, data)
         self.log.info("Put row %s into table %s", row_key, table_name)
 
-    def get_row(self, table_name: str, row_key: str, columns: list[str] | None = None) -> dict[str, Any]:
+    def get_row(
+        self, table_name: str, row_key: str, columns: list[str] | None = None
+    ) -> dict[str, Any]:
         """Get row from HBase table."""
         return self._get_strategy().get_row(table_name, row_key, columns)
 
-    def scan_table(
+    def scan_table(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         table_name: str,
         row_start: str | None = None,
         row_stop: str | None = None,
         columns: list[str] | None = None,
-        limit: int | None = None
+        limit: int | None = None,
     ) -> list[tuple[str, dict[str, Any]]]:
         """Scan HBase table."""
-        return self._get_strategy().scan_table(table_name, row_start, row_stop, columns, limit)
+        return self._get_strategy().scan_table(
+            table_name, row_start, row_stop, columns, limit
+        )
 
-    def batch_put_rows(self, table_name: str, rows: list[dict[str, Any]], batch_size: int = 200, max_workers: int = 1) -> None:
+    def batch_put_rows(
+        self,
+        table_name: str,
+        rows: list[dict[str, Any]],
+        batch_size: int = 200,
+        max_workers: int = 1,
+    ) -> None:
         """Insert multiple rows in batch."""
         self._get_strategy().batch_put_rows(table_name, rows, batch_size, max_workers)
-        self.log.info("Batch put %d rows into table %s (batch_size=%d, workers=%d)",
-                     len(rows), table_name, batch_size, max_workers)
+        self.log.info(
+            "Batch put %d rows into table %s (batch_size=%d, workers=%d)",
+            len(rows), table_name, batch_size, max_workers
+        )
 
-    def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
+    def batch_delete_rows(
+        self, table_name: str, row_keys: list[str], batch_size: int = 200
+    ) -> None:
         """Delete multiple rows in batch."""
         self._get_strategy().batch_delete_rows(table_name, row_keys, batch_size)
-        self.log.info("Batch deleted %d rows from table %s (batch_size=%d)",
-                     len(row_keys), table_name, batch_size)
+        self.log.info(
+            "Batch deleted %d rows from table %s (batch_size=%d)",
+            len(row_keys), table_name, batch_size
+        )
 
-    def batch_get_rows(self, table_name: str, row_keys: list[str], columns: list[str] | None = None) -> list[dict[str, Any]]:
+    def batch_get_rows(
+        self, table_name: str, row_keys: list[str], columns: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         """Get multiple rows in batch."""
         return self._get_strategy().batch_get_rows(table_name, row_keys, columns)
 
-    def delete_row(self, table_name: str, row_key: str, columns: list[str] | None = None) -> None:
+    def delete_row(
+        self, table_name: str, row_key: str, columns: list[str] | None = None
+    ) -> None:
         """Delete row or specific columns from HBase table."""
         self._get_strategy().delete_row(table_name, row_key, columns)
         self.log.info("Deleted row %s from table %s", row_key, table_name)
@@ -217,7 +248,6 @@ class HBaseThriftHook(BaseHook):
     def get_openlineage_database_info(self, connection):
         """Return HBase specific information for OpenLineage."""
         try:
-            from airflow.providers.openlineage.sqlparser import DatabaseInfo
             return DatabaseInfo(
                 scheme="hbase",
                 authority=f"{connection.host}:{connection.port or 9090}",
@@ -230,8 +260,10 @@ class HBaseThriftHook(BaseHook):
     def get_ui_field_behaviour(cls) -> dict[str, Any]:
         """Return custom UI field behaviour for HBase connection."""
         # Load extra placeholder from JSON file
-        json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ui_field_behaviour.json')
-        with open(json_path, 'r') as f:
+        json_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), 'ui_field_behaviour.json'
+        )
+        with open(json_path, 'r', encoding='utf-8') as f:
             extra_placeholder = json.load(f)
 
         return {
