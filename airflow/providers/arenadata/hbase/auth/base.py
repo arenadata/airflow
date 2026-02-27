@@ -74,10 +74,13 @@ class KerberosAuthenticator(HBaseAuthenticator):  # pylint: disable=too-few-publ
 
             # Create temporary keytab file
             with tempfile.NamedTemporaryFile(delete=False, suffix=".keytab") as f:
+                keytab_bytes: bytes
                 if isinstance(keytab_content, str):
                     # Assume base64 encoded
-                    keytab_content = base64.b64decode(keytab_content)
-                f.write(keytab_content)
+                    keytab_bytes = base64.b64decode(keytab_content)
+                else:
+                    keytab_bytes = keytab_content
+                f.write(keytab_bytes)
                 keytab_path = f.name
 
         if not keytab_path or not os.path.exists(keytab_path):

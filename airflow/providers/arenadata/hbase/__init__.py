@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import yaml  # pylint: disable=import-error
+import yaml  # type: ignore  # pylint: disable=import-error
 
 
 def get_provider_info():

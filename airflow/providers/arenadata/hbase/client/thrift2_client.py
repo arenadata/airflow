@@ -258,7 +258,8 @@ class HBaseThrift2Client:
         self._transport = self._create_sasl_transport(sock)
         protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
         self._client = THBaseService.Client(protocol)
-        self._transport.open()
+        if self._transport:
+            self._transport.open()
 
     def _setup_simple_transport(self, sock: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
         """Setup simple transport without authentication.
@@ -278,10 +279,12 @@ class HBaseThrift2Client:
 
                 protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
                 self._client = THBaseService.Client(protocol)
-                self._transport.open()
+                if self._transport:
+                    self._transport.open()
 
                 # Test connection
-                self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
+                if self._client:
+                    self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
 
                 logger.info(
                     "Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)",
@@ -307,6 +310,8 @@ class HBaseThrift2Client:
         Raises:
             Exception: If connection test fails
         """
+        if not self._client:
+            raise RuntimeError("Client not connected")
         self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
 
     def open(self) -> None:
@@ -369,11 +374,15 @@ class HBaseThrift2Client:
 
     def list_tables(self) -> list[str]:
         """List all tables."""
+        if not self._client:
+            raise RuntimeError("Client not connected")
         table_names = self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
         return [tn.qualifier.decode() for tn in table_names]
 
     def table_exists(self, table_name: str) -> bool:
         """Check if table exists."""
+        if not self._client:
+            raise RuntimeError("Client not connected")
         table_name_obj = ttypes.TTableName(ns=self.config.namespace.encode(), qualifier=table_name.encode())
         return self._client.tableExists(table_name_obj)
 
@@ -384,6 +393,8 @@ class HBaseThrift2Client:
             table_name: Name of the table
             families: Dictionary of column families
         """
+        if not self._client:
+            raise RuntimeError("Client not connected")
         table_name_obj = ttypes.TTableName(ns=self.config.namespace.encode(), qualifier=table_name.encode())
 
         column_families = []
@@ -401,6 +412,8 @@ class HBaseThrift2Client:
         Args:
             table_name: Name of the table
         """
+        if not self._client:
+            raise RuntimeError("Client not connected")
         table_name_obj = ttypes.TTableName(ns=self.config.namespace.encode(), qualifier=table_name.encode())
 
         # Disable table first
@@ -416,6 +429,8 @@ class HBaseThrift2Client:
             row_key: Row key
             data: Dictionary of column:value pairs (format: "family:qualifier": "value")
         """
+        if not self._client:
+            raise RuntimeError("Client not connected")
         column_values = []
         for column, value in data.items():
             family, qualifier = column.split(":", 1)
@@ -438,6 +453,8 @@ class HBaseThrift2Client:
             table_name: Name of the table
             puts: List of (row_key, data) tuples
         """
+        if not self._client:
+            raise RuntimeError("Client not connected")
         tputs = []
         for row_key, data in puts:
             column_values = []
@@ -466,6 +483,8 @@ class HBaseThrift2Client:
         Returns:
             Dictionary with row data
         """
+        if not self._client:
+            raise RuntimeError("Client not connected")
         tget = ttypes.TGet(row=row_key.encode())
 
         if columns:
@@ -491,6 +510,8 @@ class HBaseThrift2Client:
         Returns:
             List of row data dictionaries
         """
+        if not self._client:
+            raise RuntimeError("Client not connected")
         tgets = []
         for row_key in row_keys:
             tget = ttypes.TGet(row=row_key.encode())
@@ -515,6 +536,8 @@ class HBaseThrift2Client:
             row_key: Row key
             columns: List of columns to delete (if None, deletes entire row)
         """
+        if not self._client:
+            raise RuntimeError("Client not connected")
         tdelete = ttypes.TDelete(row=row_key.encode())
 
         if columns:
@@ -533,6 +556,8 @@ class HBaseThrift2Client:
             table_name: Name of the table
             deletes: List of (row_key, columns) tuples
         """
+        if not self._client:
+            raise RuntimeError("Client not connected")
         tdeletes = []
         for row_key, columns in deletes:
             tdelete = ttypes.TDelete(row=row_key.encode())
@@ -568,6 +593,9 @@ class HBaseThrift2Client:
         Returns:
             List of row data dictionaries
         """
+        if not self._client:
+            raise RuntimeError("Client not connected")
+
         tscan = ttypes.TScan()
 
         if start_row:
@@ -615,7 +643,7 @@ class HBaseThrift2Client:
         if not result or not result.columnValues:
             return {}
 
-        parsed = {"row": result.row.decode() if result.row else None, "columns": {}}
+        parsed: dict[str, Any] = {"row": result.row.decode() if result.row else None, "columns": {}}
 
         for col_val in result.columnValues:
             family = col_val.family.decode()

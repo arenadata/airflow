@@ -42,6 +42,7 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseDeleteTableOperator,
     HBaseRestoreOperator,
+    IfNotExistsAction,
 )
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
@@ -141,7 +142,7 @@ def verify_restored_data(**context):
 delete_table = HBaseDeleteTableOperator(
     task_id="delete_table",
     table_name="test_table_backup",
-    if_not_exists="ignore",
+    if_not_exists=IfNotExistsAction.IGNORE,
     hbase_conn_id="hbase_thrift2",
     dag=dag,
 )

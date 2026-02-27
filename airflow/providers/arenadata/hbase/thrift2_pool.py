@@ -87,7 +87,7 @@ class Thrift2ConnectionPool:
             retry_delay=retry_delay,
             retry_backoff_factor=retry_backoff_factor,
         )
-        self._pool = queue.Queue(maxsize=size)
+        self._pool: queue.Queue[HBaseThrift2Client] = queue.Queue(maxsize=size)
         self._semaphore = threading.Semaphore(size)
 
     def __del__(self):
@@ -161,7 +161,7 @@ class Thrift2ConnectionPool:
                     client = self._pool.get(timeout=timeout)
 
             # Check if connection is alive, reconnect if needed
-            if not self._is_connection_alive(client):
+            if client and not self._is_connection_alive(client):
                 logger.warning("Connection is dead, reconnecting...")
                 try:
                     client.close()

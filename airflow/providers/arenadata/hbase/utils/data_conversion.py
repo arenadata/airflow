@@ -37,7 +37,7 @@ def convert_bytes_to_str(value: bytes | str, encoding: str = "utf-8") -> str:
 
 
 def convert_scan_results_to_serializable(
-    results: list[tuple[str | bytes, dict[str | bytes, Any]]], encoding: str = "utf-8"
+    results: list[tuple[str, dict[str, Any]]], encoding: str = "utf-8"
 ) -> list[dict[str, Any]]:
     """Convert scan results to JSON-serializable format.
 
@@ -60,7 +60,7 @@ def convert_scan_results_to_serializable(
 
 
 def convert_batch_results_to_serializable(
-    results: list[dict[str | bytes, Any]], encoding: str = "utf-8"
+    results: list[dict[str, Any]], encoding: str = "utf-8"
 ) -> list[dict[str, Any]]:
     """Convert batch get results to JSON-serializable format.
 

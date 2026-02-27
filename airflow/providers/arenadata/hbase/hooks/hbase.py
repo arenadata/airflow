@@ -54,7 +54,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
         """
         super().__init__()
         self.hbase_conn_id = hbase_conn_id
-        self._strategy = None
+        self._strategy: HBaseStrategy | None = None
 
     def _get_strategy(self) -> HBaseStrategy:  # pylint: disable=too-many-locals
         """Get Thrift2 strategy (single or pooled)."""

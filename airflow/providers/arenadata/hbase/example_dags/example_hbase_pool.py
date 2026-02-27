@@ -48,7 +48,7 @@ def setup_table(conn_id: str):
         hook.delete_table(TABLE_NAME)
 
     # Create table
-    families = {"cf1": {}, "cf2": {}, "cf3": {}}
+    families: dict[str, dict] = {"cf1": {}, "cf2": {}, "cf3": {}}
     hook.create_table(TABLE_NAME, families)
     print(f"Created table: {TABLE_NAME}")
 

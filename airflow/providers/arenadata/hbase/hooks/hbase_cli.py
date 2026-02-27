@@ -72,8 +72,8 @@ class HBaseCLIHook(BaseHook):
         super().__init__()
         self.hbase_conn_id = hbase_conn_id
         self.hbase_cmd = hbase_cmd or os.getenv("HBASE_CMD", "hbase")
-        self.java_home = java_home or os.getenv("JAVA_HOME", "/usr/lib/jvm/java-arenadata-openjdk-8")
-        self.hbase_home = hbase_home or os.getenv("HBASE_HOME", "/usr/lib/hbase")
+        self.java_home: str = java_home or os.getenv("JAVA_HOME") or "/usr/lib/jvm/java-arenadata-openjdk-8"
+        self.hbase_home: str = hbase_home or os.getenv("HBASE_HOME") or "/usr/lib/hbase"
         self._connection: Connection | None = None
 
     def get_conn(self) -> Connection:
@@ -102,7 +102,7 @@ class HBaseCLIHook(BaseHook):
         if kerberos_keytab:
             # Get hbase service keytab and principal from connection extra
             hbase_keytab = extra.get("hbase_service_keytab", "/etc/security/keytabs/hbase.service.keytab")
-            hbase_principal = extra.get("hbase_service_principal")
+            hbase_principal: str | None = extra.get("hbase_service_principal")
 
             if not hbase_principal:
                 # Construct default principal if not provided
