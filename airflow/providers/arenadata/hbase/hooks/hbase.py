@@ -34,7 +34,7 @@ from airflow.providers.arenadata.hbase.hooks.hbase_strategy import (
 from airflow.providers.arenadata.hbase.thrift2_pool import get_or_create_thrift2_pool
 
 
-class HBaseThriftHook(BaseHook):
+class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
     """
     Wrapper for connection to interact with HBase via Thrift2 protocol.
 
@@ -101,6 +101,7 @@ class HBaseThriftHook(BaseHook):
             if pool_config.get('enabled', False):
                 # Use connection pool for parallel processing
                 pool_size = pool_config.get('size', 10)
+                # pylint: disable=duplicate-code
                 pool = get_or_create_thrift2_pool(
                     self.hbase_conn_id,
                     pool_size,
@@ -115,9 +116,11 @@ class HBaseThriftHook(BaseHook):
                     namespace=namespace,
                     **retry_config
                 )
+                # pylint: enable=duplicate-code
                 self._strategy = PooledThrift2Strategy(pool, self.log)
             else:
                 # Use single connection
+                # pylint: disable=duplicate-code
                 client = HBaseThrift2Client(
                     host=host,
                     port=port,
@@ -130,6 +133,7 @@ class HBaseThriftHook(BaseHook):
                     namespace=namespace,
                     **retry_config
                 )
+                # pylint: enable=duplicate-code
                 client.open()
                 self._strategy = Thrift2Strategy(client, self.log)
         return self._strategy

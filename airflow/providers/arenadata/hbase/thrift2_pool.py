@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client  # pylint: disable=import-error
-from airflow.providers.arenadata.hbase.connection_config import HBaseConnectionConfig
+from airflow.providers.arenadata.hbase.connection_config import create_connection_config
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class Thrift2ConnectionPool:
             retry_backoff_factor: Multiplier for delay after each failed attempt
         """
         self.size = size
-        self.config = HBaseConnectionConfig(
+        self.config = create_connection_config(
             host=host,
             port=port,
             timeout=timeout,
@@ -84,54 +84,6 @@ class Thrift2ConnectionPool:
         )
         self._pool = queue.Queue(maxsize=size)
         self._semaphore = threading.Semaphore(size)
-
-    @property
-    def host(self) -> str:
-        return self.config.host
-
-    @property
-    def port(self) -> int:
-        return self.config.port
-
-    @property
-    def timeout(self) -> int:
-        return self.config.timeout
-
-    @property
-    def ssl_options(self) -> dict[str, Any] | None:
-        return self.config.ssl_options
-
-    @property
-    def auth_method(self) -> str | None:
-        return self.config.auth_method
-
-    @property
-    def kerberos_service_name(self) -> str:
-        return self.config.kerberos_service_name
-
-    @property
-    def kerberos_principal(self) -> str | None:
-        return self.config.kerberos_principal
-
-    @property
-    def kerberos_keytab(self) -> str | None:
-        return self.config.kerberos_keytab
-
-    @property
-    def namespace(self) -> str:
-        return self.config.namespace
-
-    @property
-    def retry_max_attempts(self) -> int:
-        return self.config.retry_max_attempts
-
-    @property
-    def retry_delay(self) -> float:
-        return self.config.retry_delay
-
-    @property
-    def retry_backoff_factor(self) -> float:
-        return self.config.retry_backoff_factor
 
     def __del__(self):
         """Cleanup connections when pool is garbage collected."""

@@ -35,9 +35,9 @@ class TestThrift2ConnectionPool:
         )
         
         assert pool.size == 5
-        assert pool.host == "localhost"
-        assert pool.port == 9090
-        assert pool.timeout == 30000
+        assert pool.config.host == "localhost"
+        assert pool.config.port == 9090
+        assert pool.config.timeout == 30000
 
     @patch("airflow.providers.arenadata.hbase.thrift2_pool.HBaseThrift2Client")
     def test_get_connection_lazy_creation(self, mock_client_class):

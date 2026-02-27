@@ -53,3 +53,37 @@ class HBaseConnectionConfig:  # pylint: disable=too-many-instance-attributes,too
         self.retry_max_attempts = retry_max_attempts
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
+
+
+def create_connection_config(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    host: str,
+    port: int = 9090,
+    timeout: int = 30000,
+    ssl_options: dict[str, Any] | None = None,
+    auth_method: str | None = None,
+    kerberos_service_name: str = 'hbase',
+    kerberos_principal: str | None = None,
+    kerberos_keytab: str | None = None,
+    namespace: str = 'default',
+    retry_max_attempts: int = 3,
+    retry_delay: float = 1.0,
+    retry_backoff_factor: float = 2.0
+) -> HBaseConnectionConfig:
+    """Create HBase connection configuration.
+    
+    Helper function to avoid code duplication.
+    """
+    return HBaseConnectionConfig(
+        host=host,
+        port=port,
+        timeout=timeout,
+        ssl_options=ssl_options,
+        auth_method=auth_method,
+        kerberos_service_name=kerberos_service_name,
+        kerberos_principal=kerberos_principal,
+        kerberos_keytab=kerberos_keytab,
+        namespace=namespace,
+        retry_max_attempts=retry_max_attempts,
+        retry_delay=retry_delay,
+        retry_backoff_factor=retry_backoff_factor
+    )

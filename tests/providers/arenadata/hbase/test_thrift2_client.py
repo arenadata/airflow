@@ -28,13 +28,13 @@ class TestHBaseThrift2Client:
         """Test client initialization with default parameters."""
         client = HBaseThrift2Client(host="localhost", port=9090)
         
-        assert client.host == "localhost"
-        assert client.port == 9090
-        assert client.timeout == 30000
-        assert client.ssl_options is None
-        assert client.retry_max_attempts == 3
-        assert client.retry_delay == 1.0
-        assert client.retry_backoff_factor == 2.0
+        assert client.config.host == "localhost"
+        assert client.config.port == 9090
+        assert client.config.timeout == 30000
+        assert client.config.ssl_options is None
+        assert client.config.retry_max_attempts == 3
+        assert client.config.retry_delay == 1.0
+        assert client.config.retry_backoff_factor == 2.0
 
     def test_client_initialization_with_custom_params(self):
         """Test client initialization with custom parameters."""
@@ -49,13 +49,13 @@ class TestHBaseThrift2Client:
             retry_backoff_factor=3.0
         )
         
-        assert client.host == "hbase.example.com"
-        assert client.port == 9091
-        assert client.timeout == 60000
-        assert client.ssl_options == ssl_options
-        assert client.retry_max_attempts == 5
-        assert client.retry_delay == 2.0
-        assert client.retry_backoff_factor == 3.0
+        assert client.config.host == "hbase.example.com"
+        assert client.config.port == 9091
+        assert client.config.timeout == 60000
+        assert client.config.ssl_options == ssl_options
+        assert client.config.retry_max_attempts == 5
+        assert client.config.retry_delay == 2.0
+        assert client.config.retry_backoff_factor == 3.0
 
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.THBaseService")
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TBinaryProtocol")

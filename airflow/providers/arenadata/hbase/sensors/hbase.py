@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from airflow.utils.context import Context
 
 
-class HBaseTableSensor(BaseSensorOperator):  # pylint: disable=too-few-public-methods
+class HBaseTableSensor(BaseSensorOperator):  # pylint: disable=too-few-public-methods,too-many-ancestors
     """
     Sensor to check if HBase table exists.
 
@@ -56,7 +56,7 @@ class HBaseTableSensor(BaseSensorOperator):  # pylint: disable=too-few-public-me
         return exists
 
 
-class HBaseRowSensor(BaseSensorOperator):  # pylint: disable=too-few-public-methods
+class HBaseRowSensor(BaseSensorOperator):  # pylint: disable=too-few-public-methods,too-many-ancestors
     """
     Sensor to check if specific row exists in HBase table.
 

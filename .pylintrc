@@ -1,0 +1,12 @@
+[MESSAGES CONTROL]
+# Disable duplicate-code warnings for HBase provider
+# These are legitimate uses of the same configuration pattern
+disable=
+
+[SIMILARITIES]
+# Minimum lines number of a similarity - increased to avoid false positives
+# in configuration initialization code
+min-similarity-lines=20
+
+# Ignore duplicate code in example DAGs (they share common patterns)
+ignore-signatures=yes
