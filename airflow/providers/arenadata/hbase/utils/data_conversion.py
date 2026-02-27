@@ -23,7 +23,7 @@ import re
 from typing import Any
 
 
-def convert_bytes_to_str(value: bytes | str, encoding: str = 'utf-8') -> str:
+def convert_bytes_to_str(value: bytes | str, encoding: str = "utf-8") -> str:
     """Convert bytes to string using specified encoding.
 
     Args:
@@ -37,8 +37,7 @@ def convert_bytes_to_str(value: bytes | str, encoding: str = 'utf-8') -> str:
 
 
 def convert_scan_results_to_serializable(
-    results: list[tuple[str | bytes, dict[str | bytes, Any]]],
-    encoding: str = 'utf-8'
+    results: list[tuple[str | bytes, dict[str | bytes, Any]]], encoding: str = "utf-8"
 ) -> list[dict[str, Any]]:
     """Convert scan results to JSON-serializable format.
 
@@ -61,8 +60,7 @@ def convert_scan_results_to_serializable(
 
 
 def convert_batch_results_to_serializable(
-    results: list[dict[str | bytes, Any]],
-    encoding: str = 'utf-8'
+    results: list[dict[str | bytes, Any]], encoding: str = "utf-8"
 ) -> list[dict[str, Any]]:
     """Convert batch get results to JSON-serializable format.
 
@@ -93,7 +91,7 @@ def extract_backup_id(output: str) -> str | None:
     Returns:
         Backup ID (e.g., 'backup_1234567890123') or None if not found
     """
-    match = re.search(r'backup_(\d+)', output)
+    match = re.search(r"backup_(\d+)", output)
     if match:
         return f"backup_{match.group(1)}"
     return None

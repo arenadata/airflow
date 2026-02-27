@@ -72,7 +72,7 @@ def simulate_external_system():
             {
                 "cf1:value": f"data_{i}",
                 "cf2:timestamp": str(datetime.now()),
-            }
+            },
         )
     print("External system wrote 10 data rows")
 
@@ -83,7 +83,7 @@ def simulate_external_system():
         {
             "cf1:status": "complete",
             "cf1:row_count": "10",
-        }
+        },
     )
     print(f"External system wrote control row: {CONTROL_ROW}")
 
@@ -170,10 +170,5 @@ with DAG(
     # and we'd only have:
     # wait_for_table >> wait_for_data_ready >> process >> cleanup
     (  # pylint: disable=pointless-statement
-        cleanup_existing
-        >> simulate_external
-        >> wait_for_table
-        >> wait_for_data_ready
-        >> process
-        >> cleanup
+        cleanup_existing >> simulate_external >> wait_for_table >> wait_for_data_ready >> process >> cleanup
     )

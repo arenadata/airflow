@@ -50,11 +50,7 @@ default_args = {
 }
 
 # Define dataset for the table
-backup_table_dataset = hbase_table_dataset(
-    host="hbase",
-    port=9090,
-    table_name="test_table_backup"
-)
+backup_table_dataset = hbase_table_dataset(host="hbase", port=9090, table_name="test_table_backup")
 
 with DAG(
     "example_hbase_backup_producer",

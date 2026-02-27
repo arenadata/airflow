@@ -66,7 +66,7 @@ dag = DAG(
         "backup_id": Param(
             default="",
             type="string",
-            description="Backup ID to restore (e.g., backup_1770197062556). Required."
+            description="Backup ID to restore (e.g., backup_1770197062556). Required.",
         ),
     },
 )
@@ -79,8 +79,8 @@ def verify_restored_data(**context):
     table_name = "test_table_backup"
 
     # Get restore output from previous task
-    ti = context['ti']
-    restore_output = ti.xcom_pull(task_ids='restore_backup')
+    ti = context["ti"]
+    restore_output = ti.xcom_pull(task_ids="restore_backup")
     if restore_output:
         print("\nRestore operation output:")
         print(restore_output)

@@ -39,7 +39,7 @@ class HBaseAuthenticator(ABC):  # pylint: disable=too-few-public-methods
     def authenticate(self, config: dict[str, Any]) -> dict[str, Any]:
         """
         Perform authentication and return connection kwargs.
-        
+
         :param config: Connection configuration from extras
         :return: Additional connection kwargs
         """
@@ -73,7 +73,7 @@ class KerberosAuthenticator(HBaseAuthenticator):  # pylint: disable=too-few-publ
                 raise ValueError(f"Keytab not found in secrets backend: {keytab_secret_key}")
 
             # Create temporary keytab file
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.keytab') as f:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".keytab") as f:
                 if isinstance(keytab_content, str):
                     # Assume base64 encoded
                     keytab_content = base64.b64decode(keytab_content)

@@ -33,23 +33,28 @@ from airflow.providers.arenadata.hbase.connection_config import create_connectio
 logger = logging.getLogger(__name__)
 
 # Pool connection timeout in seconds
-POOL_CONNECTION_TIMEOUT = float(os.getenv('HBASE_POOL_CONNECTION_TIMEOUT', '30.0'))
+POOL_CONNECTION_TIMEOUT = float(os.getenv("HBASE_POOL_CONNECTION_TIMEOUT", "30.0"))
 
 
 class Thrift2ConnectionPool:
     """Connection pool for HBase Thrift2 clients."""
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-        self, size: int, host: str, port: int = 9090, timeout: int = 30000,
-                 ssl_options: dict[str, Any] | None = None,
-                 auth_method: str | None = None,
-                 kerberos_service_name: str = 'hbase',
-                 kerberos_principal: str | None = None,
-                 kerberos_keytab: str | None = None,
-                 namespace: str = 'default',
-                 retry_max_attempts: int = 3,
-                 retry_delay: float = 1.0,
-                 retry_backoff_factor: float = 2.0):
+        self,
+        size: int,
+        host: str,
+        port: int = 9090,
+        timeout: int = 30000,
+        ssl_options: dict[str, Any] | None = None,
+        auth_method: str | None = None,
+        kerberos_service_name: str = "hbase",
+        kerberos_principal: str | None = None,
+        kerberos_keytab: str | None = None,
+        namespace: str = "default",
+        retry_max_attempts: int = 3,
+        retry_delay: float = 1.0,
+        retry_backoff_factor: float = 2.0,
+    ):
         """Initialize connection pool.
 
         Args:
@@ -80,7 +85,7 @@ class Thrift2ConnectionPool:
             namespace=namespace,
             retry_max_attempts=retry_max_attempts,
             retry_delay=retry_delay,
-            retry_backoff_factor=retry_backoff_factor
+            retry_backoff_factor=retry_backoff_factor,
         )
         self._pool = queue.Queue(maxsize=size)
         self._semaphore = threading.Semaphore(size)
@@ -106,7 +111,7 @@ class Thrift2ConnectionPool:
             namespace=self.config.namespace,
             retry_max_attempts=self.config.retry_max_attempts,
             retry_delay=self.config.retry_delay,
-            retry_backoff_factor=self.config.retry_backoff_factor
+            retry_backoff_factor=self.config.retry_backoff_factor,
         )
         client.open()
         return client
@@ -209,13 +214,13 @@ def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-p
     timeout: int = 30000,
     ssl_options: dict[str, Any] | None = None,
     auth_method: str | None = None,
-    kerberos_service_name: str = 'hbase',
+    kerberos_service_name: str = "hbase",
     kerberos_principal: str | None = None,
     kerberos_keytab: str | None = None,
-    namespace: str = 'default',
+    namespace: str = "default",
     retry_max_attempts: int = 3,
     retry_delay: float = 1.0,
-    retry_backoff_factor: float = 2.0
+    retry_backoff_factor: float = 2.0,
 ) -> Thrift2ConnectionPool:
     """Get existing Thrift2 pool or create new one.
 
@@ -253,7 +258,7 @@ def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-p
                 namespace=namespace,
                 retry_max_attempts=retry_max_attempts,
                 retry_delay=retry_delay,
-                retry_backoff_factor=retry_backoff_factor
+                retry_backoff_factor=retry_backoff_factor,
             )
         return _thrift2_pools[conn_id]
 

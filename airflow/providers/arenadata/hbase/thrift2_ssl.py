@@ -64,7 +64,7 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Call
     if ssl_config.get("ssl_ca_secret"):
         ca_cert_content = Variable.get(ssl_config["ssl_ca_secret"], None)
         if ca_cert_content:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as ca_cert_file:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as ca_cert_file:
                 ca_cert_file.write(ca_cert_content)
                 ca_cert_path = ca_cert_file.name
             ssl_context.load_verify_locations(cafile=ca_cert_path)
@@ -76,11 +76,11 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Call
         key_content = Variable.get(ssl_config["ssl_key_secret"], None)
 
         if cert_content and key_content:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as cert_file:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as cert_file:
                 cert_file.write(cert_content)
                 cert_path = cert_file.name
 
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as key_file:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as key_file:
                 key_file.write(key_content)
                 key_path = key_file.name
 

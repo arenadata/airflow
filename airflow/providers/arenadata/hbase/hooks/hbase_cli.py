@@ -71,11 +71,9 @@ class HBaseCLIHook(BaseHook):
     ) -> None:
         super().__init__()
         self.hbase_conn_id = hbase_conn_id
-        self.hbase_cmd = hbase_cmd or os.getenv('HBASE_CMD', 'hbase')
-        self.java_home = (
-            java_home or os.getenv('JAVA_HOME', '/usr/lib/jvm/java-arenadata-openjdk-8')
-        )
-        self.hbase_home = hbase_home or os.getenv('HBASE_HOME', '/usr/lib/hbase')
+        self.hbase_cmd = hbase_cmd or os.getenv("HBASE_CMD", "hbase")
+        self.java_home = java_home or os.getenv("JAVA_HOME", "/usr/lib/jvm/java-arenadata-openjdk-8")
+        self.hbase_home = hbase_home or os.getenv("HBASE_HOME", "/usr/lib/hbase")
         self._connection: Connection | None = None
 
     def get_conn(self) -> Connection:
@@ -95,7 +93,7 @@ class HBaseCLIHook(BaseHook):
         extra = conn.extra_dejson if conn.extra else {}
 
         # Check if Kerberos authentication is needed
-        kerberos_keytab = extra.get('kerberos_keytab')
+        kerberos_keytab = extra.get("kerberos_keytab")
 
         # Use hbase_home to construct full command path
         hbase_command = f"{self.hbase_home}/bin/{self.hbase_cmd} {command}"
@@ -103,48 +101,35 @@ class HBaseCLIHook(BaseHook):
         # Run as hbase user if Kerberos is enabled (hbase user has access to WALs)
         if kerberos_keytab:
             # Get hbase service keytab and principal from connection extra
-            hbase_keytab = extra.get(
-                'hbase_service_keytab', '/etc/security/keytabs/hbase.service.keytab'
-            )
-            hbase_principal = extra.get('hbase_service_principal')
+            hbase_keytab = extra.get("hbase_service_keytab", "/etc/security/keytabs/hbase.service.keytab")
+            hbase_principal = extra.get("hbase_service_principal")
 
             if not hbase_principal:
                 # Construct default principal if not provided
                 hostname = socket.getfqdn()
-                realm = extra.get('kerberos_realm', 'KRB5-TEST')
+                realm = extra.get("kerberos_realm", "KRB5-TEST")
                 hbase_principal = f"hbase/{hostname}@{realm}"
 
             # Do kinit as hbase user, then run command
             kinit_cmd = f"sudo -u hbase kinit -kt {hbase_keytab} {hbase_principal}"
             full_command = f"{kinit_cmd} && sudo -u hbase {hbase_command}"
-            logger.info(
-                "Running as hbase user with Kerberos: %s", hbase_principal
-            )
+            logger.info("Running as hbase user with Kerberos: %s", hbase_principal)
         else:
             full_command = hbase_command
 
         # Set environment variables
         env = os.environ.copy()
-        env['JAVA_HOME'] = self.java_home
+        env["JAVA_HOME"] = self.java_home
         # Suppress SLF4J internal warnings
-        env['HBASE_OPTS'] = (
-            env.get('HBASE_OPTS', '') + ' -Dslf4j.internal.verbosity=warn'
-        )
+        env["HBASE_OPTS"] = env.get("HBASE_OPTS", "") + " -Dslf4j.internal.verbosity=warn"
 
-        logger.info(
-            "Executing HBase command: %s", self._mask_sensitive(full_command)
-        )
+        logger.info("Executing HBase command: %s", self._mask_sensitive(full_command))
         logger.info("Using JAVA_HOME: %s", self.java_home)
         logger.info("Using HBASE_HOME: %s", self.hbase_home)
 
         try:
             result = subprocess.run(
-                full_command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                check=True,
-                env=env
+                full_command, shell=True, capture_output=True, text=True, check=True, env=env
             )
             logger.info("Command completed successfully")
             return result.stdout.strip()
@@ -153,14 +138,12 @@ class HBaseCLIHook(BaseHook):
             logger.error("Command failed with exit code %d", e.returncode)
             logger.error("Error output: %s", error_msg)
 
-            raise RuntimeError(
-                f"HBase command failed (exit code {e.returncode}): {error_msg}"
-            ) from e
+            raise RuntimeError(f"HBase command failed (exit code {e.returncode}): {error_msg}") from e
 
     def _mask_sensitive(self, text: str) -> str:
         """Mask sensitive information in logs."""
         # Mask potential paths that might contain sensitive info
-        text = re.sub(r'(/[\w/.-]*\.keytab)', '***KEYTAB***', text)
+        text = re.sub(r"(/[\w/.-]*\.keytab)", "***KEYTAB***", text)
         return text
 
     def create_backup_set(self, backup_set_name: str, tables: list[str]) -> str:

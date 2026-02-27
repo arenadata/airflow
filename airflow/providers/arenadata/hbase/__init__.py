@@ -28,7 +28,7 @@ import yaml  # pylint: disable=import-error
 def get_provider_info():
     """Return provider metadata from provider.yaml."""
     provider_yaml_path = Path(__file__).parent / "provider.yaml"
-    with open(provider_yaml_path, encoding='utf-8') as f:
+    with open(provider_yaml_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 

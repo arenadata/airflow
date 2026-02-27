@@ -197,7 +197,7 @@ class HBaseScanOperator(BaseOperator):  # pylint: disable=too-few-public-methods
         row_stop: str | None = None,
         columns: list[str] | None = None,
         limit: int | None = None,
-        encoding: str = 'utf-8',
+        encoding: str = "utf-8",
         hbase_conn_id: str = HBaseThriftHook.default_conn_name,
         **kwargs,
     ) -> None:
@@ -220,7 +220,7 @@ class HBaseScanOperator(BaseOperator):  # pylint: disable=too-few-public-methods
             row_start=self.row_start,
             row_stop=self.row_stop,
             columns=self.columns,
-            limit=self.limit
+            limit=self.limit,
         )
         return convert_scan_results_to_serializable(results, self.encoding)
 
@@ -280,7 +280,7 @@ class HBaseBatchGetOperator(BaseOperator):  # pylint: disable=too-few-public-met
         table_name: str,
         row_keys: list[str],
         columns: list[str] | None = None,
-        encoding: str = 'utf-8',
+        encoding: str = "utf-8",
         hbase_conn_id: str = HBaseThriftHook.default_conn_name,
         **kwargs,
     ) -> None:
@@ -392,14 +392,14 @@ class HBaseCreateBackupOperator(BaseOperator):  # pylint: disable=too-few-public
                 backup_root=self.backup_path,
                 backup_set_name=self.backup_set_name,
                 tables=self.tables,
-                workers=self.workers
+                workers=self.workers,
             )
         else:  # INCREMENTAL
             output = hook.create_incremental_backup(
                 backup_root=self.backup_path,
                 backup_set_name=self.backup_set_name,
                 tables=self.tables,
-                workers=self.workers
+                workers=self.workers,
             )
 
         self.log.info("Backup command output: %s", output)
@@ -454,7 +454,7 @@ class HBaseRestoreOperator(BaseOperator):  # pylint: disable=too-few-public-meth
             backup_root=self.backup_path,
             backup_id=self.backup_id,
             tables=self.tables,
-            overwrite=self.overwrite
+            overwrite=self.overwrite,
         )
 
 
@@ -488,15 +488,15 @@ class HBaseBackupHistoryOperator(BaseOperator):  # pylint: disable=too-few-publi
         history = hook.get_backup_history(backup_set_name=self.backup_set_name)
         self.log.info(
             "Backup history (with filter -s %s):\n%s",
-            self.backup_set_name or "(none)", history if history else "(empty)"
+            self.backup_set_name or "(none)",
+            history if history else "(empty)",
         )
 
         # Also get full history without filter for debugging
         if self.backup_set_name:
             full_history = hook.get_backup_history()
             self.log.info(
-                "Full backup history (without filter):\n%s",
-                full_history if full_history else "(empty)"
+                "Full backup history (without filter):\n%s", full_history if full_history else "(empty)"
             )
 
         return history

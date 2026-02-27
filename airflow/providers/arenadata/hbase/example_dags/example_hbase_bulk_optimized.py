@@ -56,6 +56,7 @@ TABLE_NAME = "bulk_test_table"
 HBASE_CONN_ID = "hbase_thrift2"
 POOLED_CONN_ID = "hbase_thrift2_pooled"
 
+
 # Generate sample data
 def generate_sample_rows(count: int, prefix: str) -> list[dict]:
     """Generate sample rows for testing."""
@@ -69,6 +70,7 @@ def generate_sample_rows(count: int, prefix: str) -> list[dict]:
         }
         for i in range(count)
     ]
+
 
 # Cleanup
 delete_table_cleanup = HBaseDeleteTableOperator(
@@ -118,7 +120,7 @@ large_batch = HBaseBatchPutOperator(
     table_name=TABLE_NAME,
     rows=generate_sample_rows(5000, "large"),
     batch_size=150,  # Smaller batches for large datasets
-    max_workers=6,   # More workers for large data
+    max_workers=6,  # More workers for large data
     hbase_conn_id=POOLED_CONN_ID,  # Use pooled connection
     dag=dag,
 )

@@ -73,9 +73,7 @@ class HBaseStrategy(ABC):
         """Put row data."""
 
     @abstractmethod
-    def get_row(
-        self, table_name: str, row_key: str, columns: list[str] | None = None
-    ) -> dict[str, Any]:
+    def get_row(self, table_name: str, row_key: str, columns: list[str] | None = None) -> dict[str, Any]:
         """Get row data."""
 
     @abstractmethod
@@ -99,9 +97,7 @@ class HBaseStrategy(ABC):
         """Insert multiple rows in batch with chunking and parallel processing."""
 
     @abstractmethod
-    def batch_delete_rows(
-        self, table_name: str, row_keys: list[str], batch_size: int = 200
-    ) -> None:
+    def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
         """Delete multiple rows in batch."""
 
     @abstractmethod
@@ -185,9 +181,7 @@ class Thrift2Strategy(HBaseStrategy):
         """Put row via Thrift2."""
         self.client.put(table_name, row_key, data)
 
-    def get_row(
-        self, table_name: str, row_key: str, columns: list[str] | None = None
-    ) -> dict[str, Any]:
+    def get_row(self, table_name: str, row_key: str, columns: list[str] | None = None) -> dict[str, Any]:
         """Get row via Thrift2."""
         result = self.client.get(table_name, row_key, columns)
         return self._convert_get_result(result)
@@ -213,8 +207,7 @@ class Thrift2Strategy(HBaseStrategy):
         """Insert multiple rows via Thrift2 with batch API (single-threaded)."""
         if max_workers > 1:
             self.log.warning(
-                "Thrift2 doesn't support parallel processing "
-                "(no connection pool). Using single thread."
+                "Thrift2 doesn't support parallel processing " "(no connection pool). Using single thread."
             )
             max_workers = 1
 
@@ -257,9 +250,7 @@ class Thrift2Strategy(HBaseStrategy):
                 raise
 
         chunks = self._create_chunks(rows, batch_size)
-        self.log.info(
-            f"Processing {len(rows)} rows in {len(chunks)} chunks (batch_size={batch_size})"
-        )
+        self.log.info(f"Processing {len(rows)} rows in {len(chunks)} chunks (batch_size={batch_size})")
 
         for chunk in chunks:
             process_chunk(chunk)
@@ -276,9 +267,7 @@ class Thrift2Strategy(HBaseStrategy):
         results = self.client.scan(table_name, row_start, row_stop, columns, limit)
         return [self._convert_scan_result(r) for r in results]
 
-    def batch_delete_rows(
-        self, table_name: str, row_keys: list[str], batch_size: int = 200
-    ) -> None:
+    def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
         """Delete multiple rows in batch via Thrift2."""
 
         def process_chunk(chunk):
@@ -294,9 +283,7 @@ class Thrift2Strategy(HBaseStrategy):
                 raise
 
         chunks = self._create_chunks(row_keys, batch_size)
-        self.log.info(
-            f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})"
-        )
+        self.log.info(f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})")
 
         for chunk in chunks:
             process_chunk(chunk)
@@ -375,9 +362,7 @@ class PooledThrift2Strategy(HBaseStrategy):
         with self.pool.connection() as client:
             client.put(table_name, row_key, data)
 
-    def get_row(
-        self, table_name: str, row_key: str, columns: list[str] | None = None
-    ) -> dict[str, Any]:
+    def get_row(self, table_name: str, row_key: str, columns: list[str] | None = None) -> dict[str, Any]:
         """Get row via pooled Thrift2."""
         with self.pool.connection() as client:
             result = client.get(table_name, row_key, columns)
@@ -462,9 +447,7 @@ class PooledThrift2Strategy(HBaseStrategy):
             results = client.scan(table_name, row_start, row_stop, columns, limit)
             return [self._convert_scan_result(r) for r in results]
 
-    def batch_delete_rows(
-        self, table_name: str, row_keys: list[str], batch_size: int = 200
-    ) -> None:
+    def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
         """Delete multiple rows in batch via pooled Thrift2."""
 
         def process_chunk(chunk):
@@ -481,9 +464,7 @@ class PooledThrift2Strategy(HBaseStrategy):
                 raise
 
         chunks = self._create_chunks(row_keys, batch_size)
-        self.log.info(
-            f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})"
-        )
+        self.log.info(f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})")
 
         for chunk in chunks:
             process_chunk(chunk)

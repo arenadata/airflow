@@ -32,13 +32,13 @@ class HBaseConnectionConfig:  # pylint: disable=too-many-instance-attributes,too
         timeout: int = 30000,
         ssl_options: dict[str, Any] | None = None,
         auth_method: str | None = None,
-        kerberos_service_name: str = 'hbase',
+        kerberos_service_name: str = "hbase",
         kerberos_principal: str | None = None,
         kerberos_keytab: str | None = None,
-        namespace: str = 'default',
+        namespace: str = "default",
         retry_max_attempts: int = 3,
         retry_delay: float = 1.0,
-        retry_backoff_factor: float = 2.0
+        retry_backoff_factor: float = 2.0,
     ):
         """Initialize connection configuration."""
         self.host = host
@@ -61,16 +61,16 @@ def create_connection_config(  # pylint: disable=too-many-arguments,too-many-pos
     timeout: int = 30000,
     ssl_options: dict[str, Any] | None = None,
     auth_method: str | None = None,
-    kerberos_service_name: str = 'hbase',
+    kerberos_service_name: str = "hbase",
     kerberos_principal: str | None = None,
     kerberos_keytab: str | None = None,
-    namespace: str = 'default',
+    namespace: str = "default",
     retry_max_attempts: int = 3,
     retry_delay: float = 1.0,
-    retry_backoff_factor: float = 2.0
+    retry_backoff_factor: float = 2.0,
 ) -> HBaseConnectionConfig:
     """Create HBase connection configuration.
-    
+
     Helper function to avoid code duplication.
     """
     return HBaseConnectionConfig(
@@ -85,5 +85,5 @@ def create_connection_config(  # pylint: disable=too-many-arguments,too-many-pos
         namespace=namespace,
         retry_max_attempts=retry_max_attempts,
         retry_delay=retry_delay,
-        retry_backoff_factor=retry_backoff_factor
+        retry_backoff_factor=retry_backoff_factor,
     )
