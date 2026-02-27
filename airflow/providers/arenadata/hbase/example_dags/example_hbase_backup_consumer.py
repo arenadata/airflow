@@ -91,7 +91,7 @@ def decide_backup_type(**_context) -> str:
 
         # Check if test_table_backup is mentioned in history
         if "test_table_backup" in history:
-            print("Previous backups found for test_table_backup. " "Creating INCREMENTAL backup.")
+            print("Previous backups found for test_table_backup. Creating INCREMENTAL backup.")
             return "create_incremental_backup"
         print("No backups found for test_table_backup. Creating FULL backup.")
         return "create_full_backup"

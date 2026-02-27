@@ -3,6 +3,10 @@
 # These are legitimate uses of the same configuration pattern
 disable=
 
+[FORMAT]
+# Maximum number of characters on a single line (black uses 88 by default)
+max-line-length=120
+
 [SIMILARITIES]
 # Minimum lines number of a similarity - increased to avoid false positives
 # in configuration initialization code

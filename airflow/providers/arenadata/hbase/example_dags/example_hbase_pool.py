@@ -204,6 +204,6 @@ with DAG(
         python_callable=cleanup_table,
     )
 
-    (
+    (  # pylint: disable=pointless-statement
         setup >> [bench_single, bench_pooled] >> bench_large >> verify >> cleanup
-    )  # pylint: disable=pointless-statement
+    )

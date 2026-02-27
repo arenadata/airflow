@@ -194,14 +194,14 @@ class HBaseThrift2Client:
                     result = subprocess.run(kinit_cmd, capture_output=True, text=True, check=False)
                     if result.returncode != 0:
                         logger.error("kinit failed (exit code %d): %s", result.returncode, result.stderr)
-                        raise RuntimeError(
+                        raise RuntimeError(  # pylint: disable=raise-missing-from
                             f"Failed to obtain Kerberos ticket: {result.stderr}"
-                        )  # pylint: disable=raise-missing-from
+                        )
                     logger.info("Successfully obtained Kerberos ticket")
                 else:
-                    raise RuntimeError(
+                    raise RuntimeError(  # pylint: disable=raise-missing-from
                         "Could not determine principal from keytab"
-                    )  # pylint: disable=raise-missing-from
+                    )
             else:
                 logger.error("No Kerberos ticket found and no keytab specified")
                 raise RuntimeError(  # pylint: disable=raise-missing-from
@@ -284,7 +284,7 @@ class HBaseThrift2Client:
                 self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
 
                 logger.info(
-                    "Successfully connected to HBase Thrift2 at %s:%s " "(SSL: %s, Transport: %s)",
+                    "Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)",
                     self.config.host,
                     self.config.port,
                     bool(self.config.ssl_options),
@@ -328,7 +328,7 @@ class HBaseThrift2Client:
                     self._setup_kerberos_transport(sock)
                     self._test_connection()
                     logger.info(
-                        "Successfully connected to HBase Thrift2 at %s:%s " "(SSL: %s, Auth: %s)",
+                        "Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Auth: %s)",
                         self.config.host,
                         self.config.port,
                         bool(self.config.ssl_options),

@@ -94,6 +94,6 @@ with DAG(
         hbase_conn_id=HBASE_CONN_ID,
     )
 
-    (
+    (  # pylint: disable=pointless-statement
         delete_if_exists >> create_table >> batch_put >> scan_table >> batch_get >> delete_table
-    )  # pylint: disable=pointless-statement
+    )

@@ -207,7 +207,7 @@ class Thrift2Strategy(HBaseStrategy):
         """Insert multiple rows via Thrift2 with batch API (single-threaded)."""
         if max_workers > 1:
             self.log.warning(
-                "Thrift2 doesn't support parallel processing " "(no connection pool). Using single thread."
+                "Thrift2 doesn't support parallel processing (no connection pool). Using single thread."
             )
             max_workers = 1
 

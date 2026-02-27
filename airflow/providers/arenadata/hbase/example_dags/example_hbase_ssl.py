@@ -195,6 +195,6 @@ cleanup = PythonOperator(
 )
 
 # Set dependencies
-(
+(  # pylint: disable=pointless-statement
     create_table >> put_data >> get_data >> scan_table >> delete_row >> cleanup
-)  # pylint: disable=pointless-statement
+)
