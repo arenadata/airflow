@@ -40,11 +40,12 @@ except ImportError:
     TSaslClientTransport = None  # type: ignore
 
 from airflow.providers.arenadata.hbase.hbase_thrift2_generated import THBaseService, ttypes
+from airflow.providers.arenadata.hbase.connection_config import HBaseConnectionConfig
 
 logger = logging.getLogger(__name__)
 
 
-class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
+class HBaseThrift2Client:
     """Lightweight HBase Thrift2 client."""
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -75,18 +76,20 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
         """
-        self.host = host
-        self.port = port
-        self.timeout = timeout
-        self.ssl_options = ssl_options
-        self.auth_method = auth_method
-        self.kerberos_service_name = kerberos_service_name
-        self.kerberos_principal = kerberos_principal
-        self.kerberos_keytab = kerberos_keytab
-        self.namespace = namespace
-        self.retry_max_attempts = retry_max_attempts
-        self.retry_delay = retry_delay
-        self.retry_backoff_factor = retry_backoff_factor
+        self.config = HBaseConnectionConfig(
+            host=host,
+            port=port,
+            timeout=timeout,
+            ssl_options=ssl_options,
+            auth_method=auth_method,
+            kerberos_service_name=kerberos_service_name,
+            kerberos_principal=kerberos_principal,
+            kerberos_keytab=kerberos_keytab,
+            namespace=namespace,
+            retry_max_attempts=retry_max_attempts,
+            retry_delay=retry_delay,
+            retry_backoff_factor=retry_backoff_factor
+        )
         self._client = None
         self._transport = None
 
@@ -98,6 +101,54 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
 
         logger.debug("HBaseThrift2Client initialized with ssl_options: %s, auth_method: %s",
                     ssl_options, auth_method)
+
+    @property
+    def host(self) -> str:
+        return self.config.host
+
+    @property
+    def port(self) -> int:
+        return self.config.port
+
+    @property
+    def timeout(self) -> int:
+        return self.config.timeout
+
+    @property
+    def ssl_options(self) -> dict[str, Any] | None:
+        return self.config.ssl_options
+
+    @property
+    def auth_method(self) -> str | None:
+        return self.config.auth_method
+
+    @property
+    def kerberos_service_name(self) -> str:
+        return self.config.kerberos_service_name
+
+    @property
+    def kerberos_principal(self) -> str | None:
+        return self.config.kerberos_principal
+
+    @property
+    def kerberos_keytab(self) -> str | None:
+        return self.config.kerberos_keytab
+
+    @property
+    def namespace(self) -> str:
+        return self.config.namespace
+
+    @property
+    def retry_max_attempts(self) -> int:
+        return self.config.retry_max_attempts
+
+    @property
+    def retry_delay(self) -> float:
+        return self.config.retry_delay
+
+    @property
+    def retry_backoff_factor(self) -> float:
+        return self.config.retry_backoff_factor
 
     def __enter__(self):
         self.open()
@@ -112,29 +163,29 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
         Returns:
             Configured socket instance
         """
-        if self.ssl_options:
+        if self.config.ssl_options:
             # Map our options to TSSLSocket parameters
             ssl_params = {
-                'host': self.host,
-                'port': self.port,
+                'host': self.config.host,
+                'port': self.config.port,
             }
-            if 'ca_certs' in self.ssl_options:
-                ssl_params['ca_certs'] = self.ssl_options['ca_certs']
-            if 'cert_file' in self.ssl_options:
-                ssl_params['certfile'] = self.ssl_options['cert_file']
-            if 'key_file' in self.ssl_options:
-                ssl_params['keyfile'] = self.ssl_options['key_file']
-            if 'validate' in self.ssl_options:
+            if 'ca_certs' in self.config.ssl_options:
+                ssl_params['ca_certs'] = self.config.ssl_options['ca_certs']
+            if 'cert_file' in self.config.ssl_options:
+                ssl_params['certfile'] = self.config.ssl_options['cert_file']
+            if 'key_file' in self.config.ssl_options:
+                ssl_params['keyfile'] = self.config.ssl_options['key_file']
+            if 'validate' in self.config.ssl_options:
                 ssl_params['cert_reqs'] = (
-                    ssl_module.CERT_REQUIRED if self.ssl_options['validate']
+                    ssl_module.CERT_REQUIRED if self.config.ssl_options['validate']
                     else ssl_module.CERT_NONE
                 )
 
             sock = TSSLSocket.TSSLSocket(**ssl_params)
         else:
-            sock = TSocket.TSocket(self.host, self.port)
+            sock = TSocket.TSocket(self.config.host, self.config.port)
 
-        sock.setTimeout(self.timeout)
+        sock.setTimeout(self.config.timeout)
         return sock
 
     def _setup_kerberos(self) -> None:  # pylint: disable=too-many-branches
@@ -160,12 +211,12 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
             logger.info("Using existing Kerberos ticket")
         except subprocess.CalledProcessError:
             # No valid ticket - try to get one with keytab
-            if self.kerberos_keytab:
-                principal = self.kerberos_principal
+            if self.config.kerberos_keytab:
+                principal = self.config.kerberos_principal
                 if not principal:
                     # Try to get principal from keytab
                     result = subprocess.run(
-                        ['klist', '-kt', self.kerberos_keytab],
+                        ['klist', '-kt', self.config.kerberos_keytab],
                         capture_output=True, text=True, check=False
                     )
                     if result.returncode == 0:
@@ -175,10 +226,10 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
                                 break
 
                 if principal:
-                    kinit_cmd = ['kinit', '-kt', self.kerberos_keytab, principal]
+                    kinit_cmd = ['kinit', '-kt', self.config.kerberos_keytab, principal]
                     logger.info(
                         "Getting Kerberos ticket using keytab: %s for principal: %s",
-                        self.kerberos_keytab, principal
+                        self.config.kerberos_keytab, principal
                     )
                     result = subprocess.run(kinit_cmd, capture_output=True, text=True, check=False)
                     if result.returncode != 0:
@@ -208,19 +259,19 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
         """
         def sasl_factory():
             username = None
-            if self.kerberos_principal:
-                username = self.kerberos_principal.split('@')[0].split('/')[0]
+            if self.config.kerberos_principal:
+                username = self.config.kerberos_principal.split('@')[0].split('/')[0]
 
             logger.info("[SASL DEBUG] Creating SASL client")
             logger.info(
                 "[SASL DEBUG] host=%s, service=%s, username=%s",
-                self.host, self.kerberos_service_name, username
+                self.config.host, self.config.kerberos_service_name, username
             )
-            logger.info("[SASL DEBUG] kerberos_principal=%s", self.kerberos_principal)
+            logger.info("[SASL DEBUG] kerberos_principal=%s", self.config.kerberos_principal)
 
             sasl_client = sasl.Client()
-            sasl_client.setAttr('host', self.host)
-            sasl_client.setAttr('service', self.kerberos_service_name)
+            sasl_client.setAttr('host', self.config.host)
+            sasl_client.setAttr('service', self.config.kerberos_service_name)
             if username:
                 sasl_client.setAttr('username', username)
             sasl_client.init()
@@ -270,7 +321,7 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
 
                 logger.info(
                     "Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)",
-                    self.host, self.port, bool(self.ssl_options), transport_type
+                    self.config.host, self.config.port, bool(self.config.ssl_options), transport_type
                 )
                 return
             except (TTransportException, OSError) as transport_error:
@@ -302,16 +353,16 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
         """
         last_exception = None
 
-        for attempt in range(self.retry_max_attempts):
+        for attempt in range(self.config.retry_max_attempts):
             try:
                 sock = self._create_socket()
 
-                if self.auth_method == 'GSSAPI':
+                if self.config.auth_method == 'GSSAPI':
                     self._setup_kerberos_transport(sock)
                     self._test_connection()
                     logger.info(
                         "Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Auth: %s)",
-                        self.host, self.port, bool(self.ssl_options), self.auth_method
+                        self.config.host, self.config.port, bool(self.config.ssl_options), self.config.auth_method
                     )
                 else:
                     self._setup_simple_transport(sock)
@@ -320,17 +371,17 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
 
             except (ConnectionError, TimeoutError, OSError, TTransportException) as e:
                 last_exception = e
-                if attempt == self.retry_max_attempts - 1:
+                if attempt == self.config.retry_max_attempts - 1:
                     logger.error(
                         "All %d connection attempts failed. Last error: %s",
-                        self.retry_max_attempts, e
+                        self.config.retry_max_attempts, e
                     )
                     raise e
 
-                wait_time = self.retry_delay * (self.retry_backoff_factor ** attempt)
+                wait_time = self.config.retry_delay * (self.config.retry_backoff_factor ** attempt)
                 logger.warning(
                     "Connection attempt %d/%d failed: %s. Retrying in %.1fs...",
-                    attempt + 1, self.retry_max_attempts, e, wait_time
+                    attempt + 1, self.config.retry_max_attempts, e, wait_time
                 )
                 time.sleep(wait_time)
 
@@ -352,7 +403,7 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
     def table_exists(self, table_name: str) -> bool:
         """Check if table exists."""
         table_name_obj = ttypes.TTableName(
-            ns=self.namespace.encode(),
+            ns=self.config.namespace.encode(),
             qualifier=table_name.encode()
         )
         return self._client.tableExists(table_name_obj)
@@ -365,7 +416,7 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
             families: Dictionary of column families
         """
         table_name_obj = ttypes.TTableName(
-            ns=self.namespace.encode(),
+            ns=self.config.namespace.encode(),
             qualifier=table_name.encode()
         )
 
@@ -390,7 +441,7 @@ class HBaseThrift2Client:  # pylint: disable=too-many-instance-attributes
             table_name: Name of the table
         """
         table_name_obj = ttypes.TTableName(
-            ns=self.namespace.encode(),
+            ns=self.config.namespace.encode(),
             qualifier=table_name.encode()
         )
 
