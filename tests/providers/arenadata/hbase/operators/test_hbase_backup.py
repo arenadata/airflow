@@ -51,7 +51,7 @@ class TestHBaseBackupSetOperator:
             tables=["table1", "table2"],
         )
 
-        result = operator.execute({})
+        result = operator.execute()
 
         mock_hook.create_backup_set.assert_called_once_with("test_set", ["table1", "table2"])
         assert result == "Backup set created"
@@ -68,7 +68,7 @@ class TestHBaseBackupSetOperator:
             action=BackupSetAction.LIST,
         )
 
-        result = operator.execute({})
+        result = operator.execute()
 
         mock_hook.list_backup_sets.assert_called_once()
         assert result == "test_set\nother_set"
@@ -81,7 +81,7 @@ class TestHBaseBackupSetOperator:
         )
 
         with pytest.raises(ValueError, match="Unsupported action: invalid"):
-            operator.execute({})
+            operator.execute()
 
 
 class TestHBaseCreateBackupOperator:
@@ -102,7 +102,7 @@ class TestHBaseCreateBackupOperator:
             workers=2,
         )
 
-        result = operator.execute({})
+        result = operator.execute()
 
         mock_hook.create_full_backup.assert_called_once_with(
             backup_root="/tmp/backup",
@@ -127,7 +127,7 @@ class TestHBaseCreateBackupOperator:
             tables=["table1", "table2"],
         )
 
-        result = operator.execute({})
+        result = operator.execute()
 
         mock_hook.create_incremental_backup.assert_called_once_with(
             backup_root="/tmp/backup",
@@ -147,7 +147,7 @@ class TestHBaseCreateBackupOperator:
         )
 
         with pytest.raises(ValueError, match="backup_type must be 'full' or 'incremental'"):
-            operator.execute({})
+            operator.execute()
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_create_backup_no_tables_or_set(self, mock_hook_class):
@@ -162,7 +162,7 @@ class TestHBaseCreateBackupOperator:
         )
 
         with pytest.raises(ValueError, match="Either backup_set_name or tables must be specified"):
-            operator.execute({})
+            operator.execute()
 
 
 class TestHBaseRestoreOperator:
@@ -183,7 +183,7 @@ class TestHBaseRestoreOperator:
             overwrite=True,
         )
 
-        result = operator.execute({})
+        result = operator.execute()
 
         mock_hook.restore_backup.assert_called_once_with(
             backup_root="/tmp/backup",
@@ -207,7 +207,7 @@ class TestHBaseRestoreOperator:
             tables=["table1", "table2"],
         )
 
-        result = operator.execute({})
+        result = operator.execute()
 
         mock_hook.restore_backup.assert_called_once_with(
             backup_root="/tmp/backup",
@@ -233,7 +233,7 @@ class TestHBaseBackupHistoryOperator:
             backup_set_name="test_set",
         )
 
-        result = operator.execute({})
+        result = operator.execute()
 
         # Operator calls get_backup_history twice: once with filter, once without
         assert mock_hook.get_backup_history.call_count == 2
@@ -253,7 +253,7 @@ class TestHBaseBackupHistoryOperator:
             backup_path="/tmp/backup",
         )
 
-        result = operator.execute({})
+        result = operator.execute()
 
         mock_hook.get_backup_history.assert_called_once_with(backup_set_name=None)
         assert result == "backup_456 COMPLETE"
@@ -269,7 +269,7 @@ class TestHBaseBackupHistoryOperator:
             task_id="test_task",
         )
 
-        result = operator.execute({})
+        result = operator.execute()
 
         mock_hook.get_backup_history.assert_called_once_with(backup_set_name=None)
         assert result == "All backups"
