@@ -24,12 +24,17 @@ import os
 from typing import Any
 
 from airflow.hooks.base import BaseHook
+from airflow.providers.openlineage.sqlparser import DatabaseInfo
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
-from airflow.providers.arenadata.hbase.hooks.hbase_strategy import HBaseStrategy, Thrift2Strategy, PooledThrift2Strategy
+from airflow.providers.arenadata.hbase.hooks.hbase_strategy import (
+    HBaseStrategy,
+    Thrift2Strategy,
+    PooledThrift2Strategy,
+)
 from airflow.providers.arenadata.hbase.thrift2_pool import get_or_create_thrift2_pool
 
 
-class HBaseThriftHook(BaseHook):
+class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
     """
     Wrapper for connection to interact with HBase via Thrift2 protocol.
 
@@ -49,9 +54,9 @@ class HBaseThriftHook(BaseHook):
         """
         super().__init__()
         self.hbase_conn_id = hbase_conn_id
-        self._strategy = None
+        self._strategy: HBaseStrategy | None = None
 
-    def _get_strategy(self) -> HBaseStrategy:
+    def _get_strategy(self) -> HBaseStrategy:  # pylint: disable=too-many-locals
         """Get Thrift2 strategy (single or pooled)."""
         if self._strategy is None:
             conn = self.get_connection(self.hbase_conn_id)
@@ -65,31 +70,34 @@ class HBaseThriftHook(BaseHook):
             # Get SSL options if configured
             ssl_options = self._get_ssl_options(conn.extra_dejson or {})
             auth_method = None
-            kerberos_service_name = 'hbase'
+            kerberos_service_name = "hbase"
             kerberos_principal = None
             kerberos_keytab = None
-            namespace = 'default'
+            namespace = "default"
 
             if conn.extra_dejson:
                 # Get Kerberos authentication settings
-                auth_method = conn.extra_dejson.get('auth_method')
-                kerberos_service_name = conn.extra_dejson.get('kerberos_service_name', 'hbase')
-                kerberos_principal = conn.extra_dejson.get('kerberos_principal')
-                kerberos_keytab = conn.extra_dejson.get('kerberos_keytab')
-                namespace = conn.extra_dejson.get('namespace', 'default')
+                auth_method = conn.extra_dejson.get("auth_method")
+                kerberos_service_name = conn.extra_dejson.get("kerberos_service_name", "hbase")
+                kerberos_principal = conn.extra_dejson.get("kerberos_principal")
+                kerberos_keytab = conn.extra_dejson.get("kerberos_keytab")
+                namespace = conn.extra_dejson.get("namespace", "default")
 
             if ssl_options:
-                self.log.info("SSL/TLS enabled for Thrift2 connection with options: %s",
-                             {k: v for k, v in ssl_options.items() if k != 'key_file'})
+                self.log.info(
+                    "SSL/TLS enabled for Thrift2 connection with options: %s",
+                    {k: v for k, v in ssl_options.items() if k != "key_file"},
+                )
 
             if auth_method:
                 self.log.info("Authentication enabled: %s (service: %s)", auth_method, kerberos_service_name)
 
             pool_config = self._get_pool_config(conn.extra_dejson or {})
 
-            if pool_config.get('enabled', False):
+            if pool_config.get("enabled", False):
                 # Use connection pool for parallel processing
-                pool_size = pool_config.get('size', 10)
+                pool_size = pool_config.get("size", 10)
+                # pylint: disable=duplicate-code
                 pool = get_or_create_thrift2_pool(
                     self.hbase_conn_id,
                     pool_size,
@@ -102,11 +110,13 @@ class HBaseThriftHook(BaseHook):
                     kerberos_principal=kerberos_principal,
                     kerberos_keytab=kerberos_keytab,
                     namespace=namespace,
-                    **retry_config
+                    **retry_config,
                 )
+                # pylint: enable=duplicate-code
                 self._strategy = PooledThrift2Strategy(pool, self.log)
             else:
                 # Use single connection
+                # pylint: disable=duplicate-code
                 client = HBaseThrift2Client(
                     host=host,
                     port=port,
@@ -117,8 +127,9 @@ class HBaseThriftHook(BaseHook):
                     kerberos_principal=kerberos_principal,
                     kerberos_keytab=kerberos_keytab,
                     namespace=namespace,
-                    **retry_config
+                    **retry_config,
                 )
+                # pylint: enable=duplicate-code
                 client.open()
                 self._strategy = Thrift2Strategy(client, self.log)
         return self._strategy
@@ -144,19 +155,19 @@ class HBaseThriftHook(BaseHook):
 
     def _get_pool_config(self, extra_config: dict[str, Any]) -> dict[str, Any]:
         """Get connection pool configuration from connection extra."""
-        pool_config = extra_config.get('connection_pool', {})
+        pool_config = extra_config.get("connection_pool", {})
         return {
-            'enabled': pool_config.get('enabled', False),
-            'size': pool_config.get('size', 10),
-            'timeout': pool_config.get('timeout', 30),
+            "enabled": pool_config.get("enabled", False),
+            "size": pool_config.get("size", 10),
+            "timeout": pool_config.get("timeout", 30),
         }
 
     def _get_retry_config(self, extra_config: dict[str, Any]) -> dict[str, Any]:
         """Get retry configuration from connection extra."""
         return {
-            'retry_max_attempts': extra_config.get('retry_max_attempts', 3),
-            'retry_delay': extra_config.get('retry_delay', 1.0),
-            'retry_backoff_factor': extra_config.get('retry_backoff_factor', 2.0),
+            "retry_max_attempts": extra_config.get("retry_max_attempts", 3),
+            "retry_delay": extra_config.get("retry_delay", 1.0),
+            "retry_backoff_factor": extra_config.get("retry_backoff_factor", 2.0),
         }
 
     def table_exists(self, table_name: str) -> bool:
@@ -182,30 +193,44 @@ class HBaseThriftHook(BaseHook):
         """Get row from HBase table."""
         return self._get_strategy().get_row(table_name, row_key, columns)
 
-    def scan_table(
+    def scan_table(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         table_name: str,
         row_start: str | None = None,
         row_stop: str | None = None,
         columns: list[str] | None = None,
-        limit: int | None = None
+        limit: int | None = None,
     ) -> list[tuple[str, dict[str, Any]]]:
         """Scan HBase table."""
         return self._get_strategy().scan_table(table_name, row_start, row_stop, columns, limit)
 
-    def batch_put_rows(self, table_name: str, rows: list[dict[str, Any]], batch_size: int = 200, max_workers: int = 1) -> None:
+    def batch_put_rows(
+        self,
+        table_name: str,
+        rows: list[dict[str, Any]],
+        batch_size: int = 200,
+        max_workers: int = 1,
+    ) -> None:
         """Insert multiple rows in batch."""
         self._get_strategy().batch_put_rows(table_name, rows, batch_size, max_workers)
-        self.log.info("Batch put %d rows into table %s (batch_size=%d, workers=%d)",
-                     len(rows), table_name, batch_size, max_workers)
+        self.log.info(
+            "Batch put %d rows into table %s (batch_size=%d, workers=%d)",
+            len(rows),
+            table_name,
+            batch_size,
+            max_workers,
+        )
 
     def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
         """Delete multiple rows in batch."""
         self._get_strategy().batch_delete_rows(table_name, row_keys, batch_size)
-        self.log.info("Batch deleted %d rows from table %s (batch_size=%d)",
-                     len(row_keys), table_name, batch_size)
+        self.log.info(
+            "Batch deleted %d rows from table %s (batch_size=%d)", len(row_keys), table_name, batch_size
+        )
 
-    def batch_get_rows(self, table_name: str, row_keys: list[str], columns: list[str] | None = None) -> list[dict[str, Any]]:
+    def batch_get_rows(
+        self, table_name: str, row_keys: list[str], columns: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         """Get multiple rows in batch."""
         return self._get_strategy().batch_get_rows(table_name, row_keys, columns)
 
@@ -217,7 +242,6 @@ class HBaseThriftHook(BaseHook):
     def get_openlineage_database_info(self, connection):
         """Return HBase specific information for OpenLineage."""
         try:
-            from airflow.providers.openlineage.sqlparser import DatabaseInfo
             return DatabaseInfo(
                 scheme="hbase",
                 authority=f"{connection.host}:{connection.port or 9090}",
@@ -230,8 +254,8 @@ class HBaseThriftHook(BaseHook):
     def get_ui_field_behaviour(cls) -> dict[str, Any]:
         """Return custom UI field behaviour for HBase connection."""
         # Load extra placeholder from JSON file
-        json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ui_field_behaviour.json')
-        with open(json_path, 'r') as f:
+        json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui_field_behaviour.json")
+        with open(json_path, "r", encoding="utf-8") as f:
             extra_placeholder = json.load(f)
 
         return {
@@ -243,7 +267,7 @@ class HBaseThriftHook(BaseHook):
             "placeholders": {
                 "host": "localhost",
                 "port": "9090",
-                "extra": json.dumps(extra_placeholder, indent=2)
+                "extra": json.dumps(extra_placeholder, indent=2),
             },
         }
 
@@ -253,6 +277,6 @@ class HBaseThriftHook(BaseHook):
             if isinstance(self._strategy, PooledThrift2Strategy):
                 # Close all connections in pool
                 self._strategy.pool.close_all()
-            elif hasattr(self._strategy, 'client') and self._strategy.client:
+            elif hasattr(self._strategy, "client") and self._strategy.client:
                 # Close single client connection
                 self._strategy.client.close()

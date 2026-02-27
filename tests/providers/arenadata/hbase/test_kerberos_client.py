@@ -39,10 +39,10 @@ class TestKerberosAuthentication:
             kerberos_service_name="hbase"
         )
         
-        assert client.host == "localhost"
-        assert client.port == 9090
-        assert client.auth_method == "GSSAPI"
-        assert client.kerberos_service_name == "hbase"
+        assert client.config.host == "localhost"
+        assert client.config.port == 9090
+        assert client.config.auth_method == "GSSAPI"
+        assert client.config.kerberos_service_name == "hbase"
 
     def test_client_initialization_with_custom_service_name(self):
         """Test client initialization with custom Kerberos service name."""
@@ -53,7 +53,7 @@ class TestKerberosAuthentication:
             kerberos_service_name="HTTP"
         )
         
-        assert client.kerberos_service_name == "HTTP"
+        assert client.config.kerberos_service_name == "HTTP"
 
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.SASL_AVAILABLE", False)
     def test_kerberos_without_thrift_sasl_raises_error(self):

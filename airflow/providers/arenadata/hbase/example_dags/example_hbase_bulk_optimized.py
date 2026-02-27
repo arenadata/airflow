@@ -53,7 +53,9 @@ dag = DAG(
 )
 
 TABLE_NAME = "bulk_test_table"
-HBASE_CONN_ID = "hbase_thrift"
+HBASE_CONN_ID = "hbase_thrift2"
+POOLED_CONN_ID = "hbase_thrift2_pooled"
+
 
 # Generate sample data
 def generate_sample_rows(count: int, prefix: str) -> list[dict]:
@@ -68,6 +70,7 @@ def generate_sample_rows(count: int, prefix: str) -> list[dict]:
         }
         for i in range(count)
     ]
+
 
 # Cleanup
 delete_table_cleanup = HBaseDeleteTableOperator(
@@ -107,7 +110,7 @@ medium_batch = HBaseBatchPutOperator(
     rows=generate_sample_rows(1000, "medium"),
     batch_size=200,
     max_workers=4,  # Multi-threaded with pool
-    hbase_conn_id="hbase_pooled",  # Use pooled connection
+    hbase_conn_id=POOLED_CONN_ID,  # Use pooled connection
     dag=dag,
 )
 
@@ -117,8 +120,8 @@ large_batch = HBaseBatchPutOperator(
     table_name=TABLE_NAME,
     rows=generate_sample_rows(5000, "large"),
     batch_size=150,  # Smaller batches for large datasets
-    max_workers=6,   # More workers for large data
-    hbase_conn_id="hbase_pooled",  # Use pooled connection
+    max_workers=6,  # More workers for large data
+    hbase_conn_id=POOLED_CONN_ID,  # Use pooled connection
     dag=dag,
 )
 
@@ -140,4 +143,10 @@ delete_table = HBaseDeleteTableOperator(
 )
 
 # Dependencies
-delete_table_cleanup >> create_table >> [small_batch, medium_batch, large_batch] >> scan_results >> delete_table
+(  # pylint: disable=pointless-statement
+    delete_table_cleanup
+    >> create_table
+    >> [small_batch, medium_batch, large_batch]
+    >> scan_results
+    >> delete_table
+)

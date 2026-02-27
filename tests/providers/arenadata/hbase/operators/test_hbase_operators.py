@@ -48,7 +48,7 @@ class TestHBasePutOperator:
             data={"cf1:col1": "value1"}
         )
         
-        operator.execute({})
+        operator.execute()
         
         mock_hook.put_row.assert_called_once_with("test_table", "row1", {"cf1:col1": "value1"})
 
@@ -69,7 +69,7 @@ class TestHBaseCreateTableOperator:
             families={"cf1": {}, "cf2": {}}
         )
         
-        operator.execute({})
+        operator.execute()
         
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_called_once_with("test_table", {"cf1": {}, "cf2": {}})
@@ -87,7 +87,7 @@ class TestHBaseCreateTableOperator:
             families={"cf1": {}, "cf2": {}}
         )
         
-        operator.execute({})
+        operator.execute()
         
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_not_called()
@@ -107,7 +107,7 @@ class TestHBaseCreateTableOperator:
         )
         
         with pytest.raises(ValueError, match="Table test_table already exists"):
-            operator.execute({})
+            operator.execute()
         
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_not_called()
@@ -128,10 +128,10 @@ class TestHBaseDeleteTableOperator:
             table_name="test_table"
         )
         
-        operator.execute({})
+        operator.execute()
         
         mock_hook.table_exists.assert_called_once_with("test_table")
-        mock_hook.delete_table.assert_called_once_with("test_table", True)
+        mock_hook.delete_table.assert_called_once_with("test_table")
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_table_not_exists(self, mock_hook_class):
@@ -145,7 +145,7 @@ class TestHBaseDeleteTableOperator:
             table_name="test_table"
         )
         
-        operator.execute({})
+        operator.execute()
         
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.delete_table.assert_not_called()
@@ -164,7 +164,7 @@ class TestHBaseDeleteTableOperator:
         )
         
         with pytest.raises(ValueError, match="Table test_table does not exist"):
-            operator.execute({})
+            operator.execute()
         
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.delete_table.assert_not_called()
@@ -189,7 +189,7 @@ class TestHBaseScanOperator:
             limit=10
         )
         
-        result = operator.execute({})
+        result = operator.execute()
         
         assert len(result) == 2
         mock_hook.scan_table.assert_called_once_with(
@@ -216,7 +216,7 @@ class TestHBaseScanOperator:
             encoding='latin-1'
         )
         
-        result = operator.execute({})
+        result = operator.execute()
         
         assert len(result) == 2
         assert result[0]["row_key"] == "row1"
@@ -246,7 +246,7 @@ class TestHBaseBatchPutOperator:
             max_workers=2
         )
         
-        operator.execute({})
+        operator.execute()
         
         mock_hook.batch_put_rows.assert_called_once_with("test_table", rows, 500, 2)
 
@@ -267,7 +267,7 @@ class TestHBaseBatchPutOperator:
             rows=rows
         )
         
-        operator.execute({})
+        operator.execute()
         
         mock_hook.batch_put_rows.assert_called_once_with("test_table", rows, 200, 4)
 
@@ -292,7 +292,7 @@ class TestHBaseBatchGetOperator:
             columns=["cf1:col1"]
         )
         
-        result = operator.execute({})
+        result = operator.execute()
         
         assert len(result) == 2
         mock_hook.batch_get_rows.assert_called_once_with(
@@ -318,7 +318,7 @@ class TestHBaseBatchGetOperator:
             encoding='latin-1'
         )
         
-        result = operator.execute({})
+        result = operator.execute()
         
         assert len(result) == 2
         assert result[0]["cf1:col1"] == "résumé"

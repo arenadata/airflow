@@ -50,11 +50,7 @@ default_args = {
 }
 
 # Define dataset for the table
-backup_table_dataset = hbase_table_dataset(
-    host="hbase",
-    port=9090,
-    table_name="test_table_backup"
-)
+backup_table_dataset = hbase_table_dataset(host="hbase", port=9090, table_name="test_table_backup")
 
 with DAG(
     "example_hbase_backup_producer",
@@ -93,7 +89,7 @@ with DAG(
         }
         for i in range(1000)
     ]
-    
+
     put_data = HBaseBatchPutOperator(
         task_id="put_data",
         table_name="test_table_backup",
@@ -103,4 +99,4 @@ with DAG(
     )
 
     # Define task dependencies
-    delete_table_cleanup >> create_table >> put_data
+    delete_table_cleanup >> create_table >> put_data  # pylint: disable=pointless-statement

@@ -32,11 +32,11 @@ To use operators, you must configure an :doc:`HBase Connection <connections/hbas
 Creating a Table
 ^^^^^^^^^^^^^^^^
 
-The :class:`~airflow.providers.apache.hbase.operators.hbase.HBaseCreateTableOperator` operator is used to create a new table in HBase.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseCreateTableOperator` operator is used to create a new table in HBase.
 
 Use the ``table_name`` parameter to specify the table name and ``column_families`` parameter to define the column families for the table.
 
-.. exampleinclude:: /../../airflow/providers/hbase/example_dags/example_hbase.py
+.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase.py
     :language: python
     :start-after: [START howto_operator_hbase_create_table]
     :end-before: [END howto_operator_hbase_create_table]
@@ -46,11 +46,11 @@ Use the ``table_name`` parameter to specify the table name and ``column_families
 Inserting Data
 ^^^^^^^^^^^^^^
 
-The :class:`~airflow.providers.apache.hbase.operators.hbase.HBasePutOperator` operator is used to insert a single row into an HBase table.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBasePutOperator` operator is used to insert a single row into an HBase table.
 
 Use the ``table_name`` parameter to specify the table, ``row_key`` for the row identifier, and ``data`` for the column values.
 
-.. exampleinclude:: /../../airflow/providers/hbase/example_dags/example_hbase.py
+.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase.py
     :language: python
     :start-after: [START howto_operator_hbase_put]
     :end-before: [END howto_operator_hbase_put]
@@ -60,12 +60,12 @@ Use the ``table_name`` parameter to specify the table, ``row_key`` for the row i
 Batch Insert Operations
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-The :class:`~airflow.providers.apache.hbase.operators.hbase.HBaseBatchPutOperator` operator is used to insert multiple rows into an HBase table in a single batch operation.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseBatchPutOperator` operator is used to insert multiple rows into an HBase table in a single batch operation.
 
 Use the ``table_name`` parameter to specify the table and ``rows`` parameter to provide a list of row data.
 For optimal performance, configure ``batch_size`` (default: 200) and ``max_workers`` (default: 4) parameters.
 
-.. exampleinclude:: /../../airflow/providers/hbase/example_dags/example_hbase_advanced.py
+.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase_advanced.py
     :language: python
     :start-after: [START howto_operator_hbase_batch_put]
     :end-before: [END howto_operator_hbase_batch_put]
@@ -96,11 +96,11 @@ For high-throughput batch operations, use connection pooling and configure batch
 Batch Retrieve Operations
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The :class:`~airflow.providers.apache.hbase.operators.hbase.HBaseBatchGetOperator` operator is used to retrieve multiple rows from an HBase table in a single batch operation.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseBatchGetOperator` operator is used to retrieve multiple rows from an HBase table in a single batch operation.
 
 Use the ``table_name`` parameter to specify the table and ``row_keys`` parameter to provide a list of row keys to retrieve.
 
-.. exampleinclude:: /../../airflow/providers/hbase/example_dags/example_hbase_advanced.py
+.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase_advanced.py
     :language: python
     :start-after: [START howto_operator_hbase_batch_get]
     :end-before: [END howto_operator_hbase_batch_get]
@@ -110,11 +110,11 @@ Use the ``table_name`` parameter to specify the table and ``row_keys`` parameter
 Scanning Tables
 ^^^^^^^^^^^^^^^
 
-The :class:`~airflow.providers.apache.hbase.operators.hbase.HBaseScanOperator` operator is used to scan and retrieve multiple rows from an HBase table based on specified criteria.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseScanOperator` operator is used to scan and retrieve multiple rows from an HBase table based on specified criteria.
 
 Use the ``table_name`` parameter to specify the table, and optional parameters like ``row_start``, ``row_stop``, ``columns``, and ``filter`` to control the scan operation.
 
-.. exampleinclude:: /../../airflow/providers/hbase/example_dags/example_hbase_advanced.py
+.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase_advanced.py
     :language: python
     :start-after: [START howto_operator_hbase_scan]
     :end-before: [END howto_operator_hbase_scan]
@@ -124,11 +124,11 @@ Use the ``table_name`` parameter to specify the table, and optional parameters l
 Deleting a Table
 ^^^^^^^^^^^^^^^^
 
-The :class:`~airflow.providers.apache.hbase.operators.hbase.HBaseDeleteTableOperator` operator is used to delete an existing table from HBase.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseDeleteTableOperator` operator is used to delete an existing table from HBase.
 
 Use the ``table_name`` parameter to specify the table to delete.
 
-.. exampleinclude:: /../../airflow/providers/hbase/example_dags/example_hbase.py
+.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase.py
     :language: python
     :start-after: [START howto_operator_hbase_delete_table]
     :end-before: [END howto_operator_hbase_delete_table]
@@ -143,7 +143,7 @@ HBase provides built-in backup and restore functionality for data protection and
 Managing Backup Sets
 """"""""""""""""""""
 
-The :class:`~airflow.providers.apache.hbase.operators.hbase.HBaseBackupSetOperator` operator is used to manage backup sets containing one or more tables.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase_backup.HBaseBackupSetOperator` operator is used to manage backup sets containing one or more tables.
 
 Supported actions:
 - ``add``: Create a new backup set with specified tables
@@ -176,7 +176,7 @@ Use the ``action`` parameter to specify the operation, ``backup_set_name`` for t
 Creating Backups
 """"""""""""""""
 
-The :class:`~airflow.providers.apache.hbase.operators.hbase.HBaseCreateBackupOperator` operator is used to create full or incremental backups of HBase tables.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase_backup.HBaseCreateBackupOperator` operator is used to create full or incremental backups of HBase tables.
 
 Use the ``backup_type`` parameter to specify 'full' or 'incremental', ``backup_path`` for the HDFS storage location, and either ``backup_set_name`` or ``tables`` to specify what to backup.
 
@@ -207,7 +207,7 @@ Use the ``backup_type`` parameter to specify 'full' or 'incremental', ``backup_p
 Restoring from Backup
 """""""""""""""""""""
 
-The :class:`~airflow.providers.apache.hbase.operators.hbase.HBaseRestoreOperator` operator is used to restore tables from a backup to a specific point in time.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase_backup.HBaseRestoreOperator` operator is used to restore tables from a backup to a specific point in time.
 
 Use the ``backup_path`` parameter for the backup location, ``backup_id`` for the specific backup to restore, and either ``backup_set_name`` or ``tables`` to specify what to restore.
 

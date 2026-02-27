@@ -152,9 +152,9 @@ class TestRetryLogic:
         )
         
         # Verify retry parameters are set
-        assert client.retry_max_attempts == 3
-        assert client.retry_delay == 0.01
-        assert client.retry_backoff_factor == 1.0
+        assert client.config.retry_max_attempts == 3
+        assert client.config.retry_delay == 0.01
+        assert client.config.retry_backoff_factor == 1.0
 
 
 class TestHBaseThriftHookMethods:
@@ -325,8 +325,8 @@ class TestSSLConfiguration:
         strategy = hook._get_strategy()
         
         # Verify client was created with SSL options
-        assert strategy.client.ssl_options is not None
-        assert strategy.client.ssl_options["ca_certs"] == "/path/to/ca.crt"
+        assert strategy.client.config.ssl_options is not None
+        assert strategy.client.config.ssl_options["ca_certs"] == "/path/to/ca.crt"
 
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.HBaseThrift2Client.open")
     @patch.object(HBaseThriftHook, "get_connection")
@@ -344,7 +344,7 @@ class TestSSLConfiguration:
         strategy = hook._get_strategy()
         
         # Verify client was created without SSL
-        assert strategy.client.ssl_options is None
+        assert strategy.client.config.ssl_options is None
 
 
 class TestPoolConfiguration:

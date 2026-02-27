@@ -15,13 +15,5 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""HBase authentication module."""
-
-from airflow.providers.arenadata.hbase.auth.authenticators import AuthenticatorFactory
-from airflow.providers.arenadata.hbase.auth.base import (
-    HBaseAuthenticator,
-    KerberosAuthenticator,
-    SimpleAuthenticator,
-)
-
-__all__ = ["AuthenticatorFactory", "HBaseAuthenticator", "SimpleAuthenticator", "KerberosAuthenticator"]
+"""HBase utilities."""
+# pylint: disable=duplicate-code,similarities

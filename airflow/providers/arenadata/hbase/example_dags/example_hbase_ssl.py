@@ -61,7 +61,7 @@ dag = DAG(
 def create_table_task():
     """Create HBase table using Hook."""
     hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2_ssl_mtls")
-    
+
     # Delete table if exists
     if hook.table_exists("test_table_ssl"):
         hook.delete_table("test_table_ssl")
@@ -73,7 +73,7 @@ def create_table_task():
         families={
             "cf1": {},
             "cf2": {},
-        }
+        },
     )
     print("Created table: test_table_ssl")
 
@@ -81,7 +81,7 @@ def create_table_task():
 def put_data_task():
     """Put data into HBase table using Hook."""
     hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2_ssl_mtls")
-    
+
     # Put single row
     hook.put_row(
         "test_table_ssl",
@@ -90,7 +90,7 @@ def put_data_task():
             "cf1:col1": "value1",
             "cf1:col2": "value2",
             "cf2:col1": "value3",
-        }
+        },
     )
     print("Put data for row1")
 
@@ -102,7 +102,7 @@ def put_data_task():
             {
                 "cf1:col1": f"value{i}_1",
                 "cf2:col1": f"value{i}_2",
-            }
+            },
         )
     print("Put data for rows 2-5")
 
@@ -110,24 +110,20 @@ def put_data_task():
 def get_data_task():
     """Get data from HBase table using Hook."""
     hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2_ssl_mtls")
-    
+
     # Get single row
     result = hook.get_row("test_table_ssl", "row1")
     print(f"Got row1: {result}")
 
     # Get specific columns
-    result = hook.get_row(
-        "test_table_ssl",
-        "row1",
-        columns=["cf1:col1", "cf2:col1"]
-    )
+    result = hook.get_row("test_table_ssl", "row1", columns=["cf1:col1", "cf2:col1"])
     print(f"Got row1 (specific columns): {result}")
 
 
 def scan_table_task():
     """Scan HBase table using Hook."""
     hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2_ssl_mtls")
-    
+
     # Scan all rows
     results = hook.scan_table("test_table_ssl")
     print(f"Scanned {len(results)} rows")
@@ -142,7 +138,7 @@ def scan_table_task():
 def delete_row_task():
     """Delete row from HBase table using Hook."""
     hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2_ssl_mtls")
-    
+
     # Delete specific columns
     hook.delete_row("test_table_ssl", "row2", columns=["cf1:col1"])
     print("Deleted cf1:col1 from row2")
@@ -155,7 +151,7 @@ def delete_row_task():
 def cleanup_task():
     """Delete test table using Hook."""
     hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2_ssl_mtls")
-    
+
     if hook.table_exists("test_table_ssl"):
         hook.delete_table("test_table_ssl")
         print("Deleted table: test_table_ssl")
@@ -199,4 +195,6 @@ cleanup = PythonOperator(
 )
 
 # Set dependencies
-create_table >> put_data >> get_data >> scan_table >> delete_row >> cleanup
+(  # pylint: disable=pointless-statement
+    create_table >> put_data >> get_data >> scan_table >> delete_row >> cleanup
+)

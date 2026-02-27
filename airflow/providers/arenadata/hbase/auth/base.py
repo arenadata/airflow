@@ -32,21 +32,20 @@ from airflow.models import Variable
 log = logging.getLogger(__name__)
 
 
-class HBaseAuthenticator(ABC):
+class HBaseAuthenticator(ABC):  # pylint: disable=too-few-public-methods
     """Base class for HBase authentication methods."""
 
     @abstractmethod
     def authenticate(self, config: dict[str, Any]) -> dict[str, Any]:
         """
         Perform authentication and return connection kwargs.
-        
+
         :param config: Connection configuration from extras
         :return: Additional connection kwargs
         """
-        pass
 
 
-class SimpleAuthenticator(HBaseAuthenticator):
+class SimpleAuthenticator(HBaseAuthenticator):  # pylint: disable=too-few-public-methods
     """Simple authentication (no authentication)."""
 
     def authenticate(self, config: dict[str, Any]) -> dict[str, Any]:
@@ -54,7 +53,7 @@ class SimpleAuthenticator(HBaseAuthenticator):
         return {}
 
 
-class KerberosAuthenticator(HBaseAuthenticator):
+class KerberosAuthenticator(HBaseAuthenticator):  # pylint: disable=too-few-public-methods
     """Kerberos authentication using kinit."""
 
     def authenticate(self, config: dict[str, Any]) -> dict[str, Any]:
@@ -74,11 +73,14 @@ class KerberosAuthenticator(HBaseAuthenticator):
                 raise ValueError(f"Keytab not found in secrets backend: {keytab_secret_key}")
 
             # Create temporary keytab file
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.keytab') as f:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".keytab") as f:
+                keytab_bytes: bytes
                 if isinstance(keytab_content, str):
                     # Assume base64 encoded
-                    keytab_content = base64.b64decode(keytab_content)
-                f.write(keytab_content)
+                    keytab_bytes = base64.b64decode(keytab_content)
+                else:
+                    keytab_bytes = keytab_content
+                f.write(keytab_bytes)
                 keytab_path = f.name
 
         if not keytab_path or not os.path.exists(keytab_path):
@@ -87,10 +89,10 @@ class KerberosAuthenticator(HBaseAuthenticator):
         # Perform kinit
         try:
             cmd = ["kinit", "-kt", keytab_path, principal]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
             # Log success but don't expose sensitive info
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Kerberos authentication failed: {e.stderr}")
+            raise RuntimeError(f"Kerberos authentication failed: {e.stderr}") from e
         finally:
             # Clean up temporary keytab file if created
             if keytab_secret_key and keytab_path:

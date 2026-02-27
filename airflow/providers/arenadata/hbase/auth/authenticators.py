@@ -38,7 +38,7 @@ class AuthenticatorFactory:
     def create(cls, auth_method: str) -> HBaseAuthenticator:
         """
         Create authenticator instance.
-        
+
         :param auth_method: Authentication method name
         :return: Authenticator instance
         """
@@ -53,7 +53,7 @@ class AuthenticatorFactory:
     def register(cls, name: str, authenticator_class: type[HBaseAuthenticator]) -> None:
         """
         Register custom authenticator.
-        
+
         :param name: Authentication method name
         :param authenticator_class: Authenticator class
         """

@@ -25,12 +25,12 @@ import tempfile
 from collections.abc import Callable
 from typing import Any
 
-from airflow.models import Variable
+from airflow.models import Variable  # pylint: disable=import-error
 
 
 def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Callable[[], None]]:
     """Create SSL context from configuration.
-    
+
     Args:
         ssl_config: SSL configuration dictionary with keys:
             - ssl_verify_mode: CERT_NONE, CERT_OPTIONAL, or CERT_REQUIRED (default)
@@ -38,18 +38,18 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Call
             - ssl_cert_secret: Airflow Variable name for client certificate
             - ssl_key_secret: Airflow Variable name for client key
             - ssl_min_version: Minimum TLS version (e.g., TLSv1_2)
-    
+
     Warning:
         Storing certificates in Airflow Variables is not recommended for production
         unless using external Secret Backend (AWS Secrets Manager, HashiCorp Vault, etc.).
         Consider using file paths instead for better security.
-            
+
     Returns:
         Tuple of (ssl_context, cleanup_function)
     """
     ssl_context = ssl.create_default_context()
     temp_files = []
-    
+
     # Configure verification mode
     verify_mode = ssl_config.get("ssl_verify_mode", "CERT_REQUIRED")
     if verify_mode == "CERT_NONE":
@@ -59,46 +59,46 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Call
         ssl_context.verify_mode = ssl.CERT_OPTIONAL
     else:  # CERT_REQUIRED (default)
         ssl_context.verify_mode = ssl.CERT_REQUIRED
-    
+
     # Load CA certificate
     if ssl_config.get("ssl_ca_secret"):
         ca_cert_content = Variable.get(ssl_config["ssl_ca_secret"], None)
         if ca_cert_content:
-            ca_cert_file = tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False)
-            ca_cert_file.write(ca_cert_content)
-            ca_cert_file.close()
-            ssl_context.load_verify_locations(cafile=ca_cert_file.name)
-            temp_files.append(ca_cert_file.name)
-    
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as ca_cert_file:
+                ca_cert_file.write(ca_cert_content)
+                ca_cert_path = ca_cert_file.name
+            ssl_context.load_verify_locations(cafile=ca_cert_path)
+            temp_files.append(ca_cert_path)
+
     # Load client certificates
     if ssl_config.get("ssl_cert_secret") and ssl_config.get("ssl_key_secret"):
         cert_content = Variable.get(ssl_config["ssl_cert_secret"], None)
         key_content = Variable.get(ssl_config["ssl_key_secret"], None)
-        
+
         if cert_content and key_content:
-            cert_file = tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False)
-            cert_file.write(cert_content)
-            cert_file.close()
-            
-            key_file = tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False)
-            key_file.write(key_content)
-            key_file.close()
-            
-            ssl_context.load_cert_chain(certfile=cert_file.name, keyfile=key_file.name)
-            temp_files.extend([cert_file.name, key_file.name])
-    
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as cert_file:
+                cert_file.write(cert_content)
+                cert_path = cert_file.name
+
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as key_file:
+                key_file.write(key_content)
+                key_path = key_file.name
+
+            ssl_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+            temp_files.extend([cert_path, key_path])
+
     # Configure minimum TLS version
     if ssl_config.get("ssl_min_version"):
         min_version = getattr(ssl.TLSVersion, ssl_config["ssl_min_version"], None)
         if min_version:
             ssl_context.minimum_version = min_version
-    
+
     def cleanup():
         """Cleanup temporary files."""
         for filepath in temp_files:
             try:
                 os.unlink(filepath)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
-    
+
     return ssl_context, cleanup

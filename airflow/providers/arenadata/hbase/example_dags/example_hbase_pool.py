@@ -48,7 +48,7 @@ def setup_table(conn_id: str):
         hook.delete_table(TABLE_NAME)
 
     # Create table
-    families = {"cf1": {}, "cf2": {}, "cf3": {}}
+    families: dict[str, dict] = {"cf1": {}, "cf2": {}, "cf3": {}}
     hook.create_table(TABLE_NAME, families)
     print(f"Created table: {TABLE_NAME}")
 
@@ -61,20 +61,22 @@ def benchmark_single_connection():
         # Generate 10,000 rows
         rows = []
         for i in range(10000):
-            rows.append({
-                "row_key": f"single_{i:06d}",
-                "cf1:col1": f"value1_{i}",
-                "cf1:col2": f"value2_{i}",
-                "cf2:col1": f"value3_{i}",
-                "cf2:col2": f"value4_{i}",
-                "cf3:col1": f"value5_{i}",
-            })
+            rows.append(
+                {
+                    "row_key": f"single_{i:06d}",
+                    "cf1:col1": f"value1_{i}",
+                    "cf1:col2": f"value2_{i}",
+                    "cf2:col1": f"value3_{i}",
+                    "cf2:col2": f"value4_{i}",
+                    "cf3:col1": f"value5_{i}",
+                }
+            )
 
         start = time.time()
         hook.batch_put_rows(TABLE_NAME, rows, batch_size=200, max_workers=1)
         elapsed = time.time() - start
 
-        print(f"Single connection: {len(rows)} rows in {elapsed:.2f}s ({len(rows)/elapsed:.0f} rows/sec)")
+        print(f"Single connection: {len(rows)} rows in {elapsed:.2f}s " f"({len(rows)/elapsed:.0f} rows/sec)")
         return elapsed
     finally:
         hook.close()
@@ -87,21 +89,26 @@ def benchmark_pooled_connection():
     # Generate 10,000 rows
     rows = []
     for i in range(10000):
-        rows.append({
-            "row_key": f"pooled_{i:06d}",
-            "cf1:col1": f"value1_{i}",
-            "cf1:col2": f"value2_{i}",
-            "cf2:col1": f"value3_{i}",
-            "cf2:col2": f"value4_{i}",
-            "cf3:col1": f"value5_{i}",
-        })
+        rows.append(
+            {
+                "row_key": f"pooled_{i:06d}",
+                "cf1:col1": f"value1_{i}",
+                "cf1:col2": f"value2_{i}",
+                "cf2:col1": f"value3_{i}",
+                "cf2:col2": f"value4_{i}",
+                "cf3:col1": f"value5_{i}",
+            }
+        )
 
     start = time.time()
     # Use 4 workers (less than pool size of 10)
     hook.batch_put_rows(TABLE_NAME, rows, batch_size=200, max_workers=4)
     elapsed = time.time() - start
 
-    print(f"Pooled connection (4 workers): {len(rows)} rows in {elapsed:.2f}s ({len(rows)/elapsed:.0f} rows/sec)")
+    print(
+        f"Pooled connection (4 workers): {len(rows)} rows in {elapsed:.2f}s "
+        f"({len(rows)/elapsed:.0f} rows/sec)"
+    )
     return elapsed
 
 
@@ -112,21 +119,26 @@ def benchmark_large_dataset():
     # Generate 50,000 rows
     rows = []
     for i in range(50000):
-        rows.append({
-            "row_key": f"large_{i:06d}",
-            "cf1:col1": f"value1_{i}",
-            "cf1:col2": f"value2_{i}",
-            "cf2:col1": f"value3_{i}",
-            "cf2:col2": f"value4_{i}",
-            "cf3:col1": f"value5_{i}",
-        })
+        rows.append(
+            {
+                "row_key": f"large_{i:06d}",
+                "cf1:col1": f"value1_{i}",
+                "cf1:col2": f"value2_{i}",
+                "cf2:col1": f"value3_{i}",
+                "cf2:col2": f"value4_{i}",
+                "cf3:col1": f"value5_{i}",
+            }
+        )
 
     start = time.time()
     # Use 6 workers (less than pool size of 10)
     hook.batch_put_rows(TABLE_NAME, rows, batch_size=250, max_workers=6)
     elapsed = time.time() - start
 
-    print(f"Large dataset (6 workers): {len(rows)} rows in {elapsed:.2f}s ({len(rows)/elapsed:.0f} rows/sec)")
+    print(
+        f"Large dataset (6 workers): {len(rows)} rows in {elapsed:.2f}s "
+        f"({len(rows)/elapsed:.0f} rows/sec)"
+    )
     return elapsed
 
 
@@ -192,4 +204,6 @@ with DAG(
         python_callable=cleanup_table,
     )
 
-    setup >> [bench_single, bench_pooled] >> bench_large >> verify >> cleanup
+    (  # pylint: disable=pointless-statement
+        setup >> [bench_single, bench_pooled] >> bench_large >> verify >> cleanup
+    )

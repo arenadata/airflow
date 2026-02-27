@@ -39,10 +39,10 @@ class TestKerberosPool:
         )
         
         assert pool.size == 5
-        assert pool.host == "localhost"
-        assert pool.port == 9090
-        assert pool.auth_method == "GSSAPI"
-        assert pool.kerberos_service_name == "hbase"
+        assert pool.config.host == "localhost"
+        assert pool.config.port == 9090
+        assert pool.config.auth_method == "GSSAPI"
+        assert pool.config.kerberos_service_name == "hbase"
 
     def test_pool_initialization_with_custom_service_name(self):
         """Test pool initialization with custom Kerberos service name."""
@@ -54,7 +54,7 @@ class TestKerberosPool:
             kerberos_service_name="HTTP"
         )
         
-        assert pool.kerberos_service_name == "HTTP"
+        assert pool.config.kerberos_service_name == "HTTP"
 
     @patch("airflow.providers.arenadata.hbase.thrift2_pool.HBaseThrift2Client")
     def test_pool_creates_client_with_kerberos(self, mock_client):
@@ -122,8 +122,8 @@ class TestKerberosPool:
             kerberos_service_name="hbase"
         )
         
-        assert pool.auth_method == "GSSAPI"
-        assert pool.kerberos_service_name == "hbase"
+        assert pool.config.auth_method == "GSSAPI"
+        assert pool.config.kerberos_service_name == "hbase"
         assert pool.size == 10
 
     def test_get_or_create_pool_returns_existing_pool(self):
@@ -176,5 +176,5 @@ class TestKerberosPool:
             port=9090
         )
         
-        assert pool.auth_method is None
-        assert pool.kerberos_service_name == "hbase"  # Default value
+        assert pool.config.auth_method is None
+        assert pool.config.kerberos_service_name == "hbase"  # Default value

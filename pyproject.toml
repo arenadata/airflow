@@ -607,6 +607,10 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
+module="airflow.utils.context"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
 module="airflow.config_templates.default_webserver_config"
 disable_error_code = [
     "var-annotated",

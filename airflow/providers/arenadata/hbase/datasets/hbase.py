@@ -31,7 +31,7 @@ def hbase_table_dataset(
 ) -> Dataset:
     """
     Create a Dataset for HBase table.
-    
+
     :param host: HBase Thrift server host
     :param port: HBase Thrift server port
     :param table_name: Name of the HBase table
@@ -40,12 +40,14 @@ def hbase_table_dataset(
     if not table_name:
         raise ValueError("table_name cannot be empty")
     return Dataset(
-        uri=urlunparse((
-            "hbase",
-            f"{host}:{port}",
-            f"/{table_name}",
-            None,
-            None,
-            None,
-        ))
+        uri=urlunparse(
+            (
+                "hbase",
+                f"{host}:{port}",
+                f"/{table_name}",
+                None,
+                None,
+                None,
+            )
+        )
     )

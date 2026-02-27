@@ -26,7 +26,8 @@ This DAG demonstrates data-aware scheduling with incremental backups:
 
 Prerequisites:
 - HBase must be running in distributed mode with HDFS
-- Create backup directory in HDFS: hdfs dfs -mkdir -p /hbase/backup && hdfs dfs -chmod 777 /hbase/backup
+- Create backup directory in HDFS:
+  hdfs dfs -mkdir -p /hbase/backup && hdfs dfs -chmod 777 /hbase/backup
 - Producer DAG must run first to generate data
 """
 
@@ -58,13 +59,10 @@ default_args = {
 }
 
 # Define dataset - same as in producer
-backup_table_dataset = hbase_table_dataset(
-    host="hbase",
-    port=9090,
-    table_name="test_table_backup"
-)
+backup_table_dataset = hbase_table_dataset(host="hbase", port=9090, table_name="test_table_backup")
 
-def decide_backup_type(**context) -> str:
+
+def decide_backup_type(**_context) -> str:
     """
     Decide whether to create FULL or INCREMENTAL backup.
 
@@ -95,10 +93,9 @@ def decide_backup_type(**context) -> str:
         if "test_table_backup" in history:
             print("Previous backups found for test_table_backup. Creating INCREMENTAL backup.")
             return "create_incremental_backup"
-        else:
-            print("No backups found for test_table_backup. Creating FULL backup.")
-            return "create_full_backup"
-    except Exception as e:
+        print("No backups found for test_table_backup. Creating FULL backup.")
+        return "create_full_backup"
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"Error getting backup history: {e}")
         print("Defaulting to FULL backup.")
         return "create_full_backup"
@@ -116,7 +113,8 @@ with DAG(
     # Cleanup any stuck backup sessions before starting
     cleanup_stuck_sessions = BashOperator(
         task_id="cleanup_stuck_sessions",
-        bash_command="/usr/lib/hbase/bin/hbase backup repair || true",  # || true to not fail if nothing to repair
+        # || true to not fail if nothing to repair
+        bash_command=("/usr/lib/hbase/bin/hbase backup repair || true"),
     )
 
     # Create backup set
@@ -166,10 +164,12 @@ with DAG(
         task_id="get_backup_history",
         backup_set_name="test_backup_set",
         hbase_conn_id="hbase_thrift2",
-        trigger_rule="none_failed_min_one_success",  # Run if either backup succeeds
+        trigger_rule="none_failed_min_one_success",
     )
 
     # Define task dependencies
-    cleanup_stuck_sessions >> create_backup_set >> decide_backup
-    decide_backup >> [create_full_backup, create_incremental_backup]
-    [create_full_backup, create_incremental_backup] >> get_backup_history
+    (cleanup_stuck_sessions >> create_backup_set >> decide_backup)  # pylint: disable=pointless-statement
+    (decide_backup >> [create_full_backup, create_incremental_backup])  # pylint: disable=pointless-statement
+    (  # pylint: disable=pointless-statement
+        [create_full_backup, create_incremental_backup] >> get_backup_history
+    )

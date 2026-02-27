@@ -86,7 +86,7 @@ This provider package contains operators, hooks, and sensors for interacting wit
 - **Performance**: Connection pooling and optimized batch operations
 - **Integration**: Seamless integration with Airflow Secrets Backend
 
-Release: 1.2.0
+Release: 1.0.0
 
 Provider package
 ----------------
@@ -97,39 +97,14 @@ All classes for this package are included in the ``airflow.providers.hbase`` pyt
 Installation
 ------------
 
-This provider is included as part of Apache Airflow starting from version 2.7.0.
-No separate installation is required - the HBase provider and its dependencies are automatically installed when you install Airflow.
-
-For backup and restore operations, you'll also need access to HBase shell commands on your system or via SSH.
+You can install this package on top of an existing Airflow installation via
+``pip install apache-airflow-providers-apache-hbase``
 
 Configuration
 -------------
 
 To use this provider, you need to configure an HBase connection in Airflow.
-The provider supports multiple connection types:
-
-**Basic Thrift Connection**
-
-- **Host**: HBase Thrift server hostname
-- **Port**: HBase Thrift server port (default: 9090 for Thrift1, 9091 for Thrift2)
-- **Extra**: Additional connection parameters in JSON format
-
-**SSL/TLS Connection**
-
-- **Host**: SSL proxy hostname (e.g., stunnel)
-- **Port**: SSL proxy port (e.g., 9092)
-- **Extra**: SSL configuration including certificate validation settings
-
-**Kerberos Authentication**
-
-- **Extra**: Kerberos principal, keytab path or secret key for authentication
-
-**SSH Connection (for backup operations)**
-
-- **Host**: HBase cluster node hostname
-- **Username**: SSH username
-- **Password/Key**: SSH authentication credentials
-- **Extra**: Required ``hbase_home`` and ``java_home`` paths
+The provider supports Thrift2 protocol connections with optional Kerberos authentication and connection pooling.
 
 For detailed connection configuration examples, see the :doc:`connections guide <connections/hbase>`.
 
@@ -138,12 +113,13 @@ Requirements
 
 The minimum Apache Airflow version supported by this provider package is ``2.7.0``.
 
-==================  ==================
-PIP package         Version required
-==================  ==================
-``apache-airflow``  ``>=2.7.0``
-``happybase``       ``>=1.2.0``
-==================  ==================
+=========================  ==================
+PIP package                Version required
+=========================  ==================
+``apache-airflow``         ``>=2.7.0``
+``thrift``                 ``>=0.16.0``
+``kerberos``               ``>=1.3.0``
+=========================  ==================
 
 Features
 --------
@@ -174,13 +150,6 @@ Features
 
 **Security Features**
 
-- **SSL/TLS Support** - Secure connections with certificate validation
 - **Kerberos Authentication** - Enterprise authentication with keytab support
-- **Secrets Integration** - Certificate and credential management via Airflow Secrets Backend
-- **Data Protection** - Automatic masking of sensitive information in logs
-
-**Connection Modes**
-
-- **Thrift API** - Direct connection to HBase Thrift servers (Thrift1/Thrift2)
-- **SSH Mode** - Remote execution via SSH for backup operations and shell commands
-- **SSL Proxy** - Encrypted connections through SSL proxies (e.g., stunnel)
+- **Secrets Integration** - Keytab management via Airflow Secrets Backend
+- **Connection Pooling** - Efficient connection reuse for high-performance operations

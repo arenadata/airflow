@@ -35,12 +35,9 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.providers.arenadata.hbase.operators.hbase import (
-    HBaseCreateTableOperator,
-    HBaseDeleteTableOperator,
-    HBasePutOperator,
-)
+from airflow.providers.arenadata.hbase.operators.hbase import HBaseDeleteTableOperator
 from airflow.providers.arenadata.hbase.sensors.hbase import HBaseTableSensor, HBaseRowSensor
+from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
 default_args = {
     "owner": "airflow",
@@ -59,15 +56,14 @@ CONTROL_ROW = "data_ready"  # Marker row indicating data is complete
 
 def simulate_external_system():
     """Simulate external system creating table and writing data."""
-    from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
-    
+
     hook = HBaseThriftHook(hbase_conn_id=HBASE_CONN_ID)
-    
+
     # Create table (simulating external ETL)
     if not hook.table_exists(TABLE_NAME):
         hook.create_table(TABLE_NAME, {"cf1": {}, "cf2": {}})
         print(f"External system created table: {TABLE_NAME}")
-    
+
     # Write some data rows
     for i in range(10):
         hook.put_row(
@@ -76,10 +72,10 @@ def simulate_external_system():
             {
                 "cf1:value": f"data_{i}",
                 "cf2:timestamp": str(datetime.now()),
-            }
+            },
         )
     print("External system wrote 10 data rows")
-    
+
     # Write control row to signal completion
     hook.put_row(
         TABLE_NAME,
@@ -87,28 +83,26 @@ def simulate_external_system():
         {
             "cf1:status": "complete",
             "cf1:row_count": "10",
-        }
+        },
     )
     print(f"External system wrote control row: {CONTROL_ROW}")
 
 
 def process_data():
     """Process data once it's available."""
-    from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
-    
     hook = HBaseThriftHook(hbase_conn_id=HBASE_CONN_ID)
-    
+
     # Read control row to get metadata
     control_data = hook.get_row(TABLE_NAME, CONTROL_ROW)
     print(f"Control row data: {control_data}")
-    
+
     # Scan and process data rows
     rows = hook.scan_table(TABLE_NAME, row_start="data_row_", row_stop="data_row_~")
     print(f"Processing {len(rows)} data rows:")
-    
+
     for row_key, data in rows:
         print(f"  Processing {row_key}: {data}")
-    
+
     print("Data processing complete!")
 
 
@@ -173,5 +167,8 @@ with DAG(
 
     # Define dependencies
     # In real scenario, simulate_external would be a separate DAG
-    # and we'd only have: wait_for_table >> wait_for_data_ready >> process >> cleanup
-    cleanup_existing >> simulate_external >> wait_for_table >> wait_for_data_ready >> process >> cleanup
+    # and we'd only have:
+    # wait_for_table >> wait_for_data_ready >> process >> cleanup
+    (  # pylint: disable=pointless-statement
+        cleanup_existing >> simulate_external >> wait_for_table >> wait_for_data_ready >> process >> cleanup
+    )

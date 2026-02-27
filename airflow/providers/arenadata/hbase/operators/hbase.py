@@ -19,13 +19,17 @@
 
 from __future__ import annotations
 
-import re
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Sequence
 
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
+from airflow.providers.arenadata.hbase.utils.data_conversion import (
+    convert_batch_results_to_serializable,
+    convert_scan_results_to_serializable,
+    extract_backup_id,
+)
 
 if TYPE_CHECKING:
     from airflow.utils.context import Context
@@ -59,7 +63,7 @@ class IfNotExistsAction(str, Enum):
     ERROR = "error"
 
 
-class HBasePutOperator(BaseOperator):
+class HBasePutOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     """
     Operator to put data into HBase table.
 
@@ -87,13 +91,13 @@ class HBasePutOperator(BaseOperator):
         self.data = data
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> None:
+    def execute(self, **kwargs) -> None:
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         hook.put_row(self.table_name, self.row_key, self.data)
 
 
-class HBaseCreateTableOperator(BaseOperator):
+class HBaseCreateTableOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     """
     Operator to create HBase table.
 
@@ -121,7 +125,7 @@ class HBaseCreateTableOperator(BaseOperator):
         self.if_exists = if_exists
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> None:
+    def execute(self, **kwargs) -> None:
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         if not hook.table_exists(self.table_name):
@@ -132,7 +136,7 @@ class HBaseCreateTableOperator(BaseOperator):
             self.log.info("Table %s already exists", self.table_name)
 
 
-class HBaseDeleteTableOperator(BaseOperator):
+class HBaseDeleteTableOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     """
     Operator to delete HBase table.
 
@@ -160,18 +164,18 @@ class HBaseDeleteTableOperator(BaseOperator):
         self.if_not_exists = if_not_exists
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> None:
+    def execute(self, **kwargs) -> None:
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         if hook.table_exists(self.table_name):
-            hook.delete_table(self.table_name, self.disable)
+            hook.delete_table(self.table_name)
         else:
             if self.if_not_exists == IfNotExistsAction.ERROR:
                 raise ValueError(f"Table {self.table_name} does not exist")
             self.log.info("Table %s does not exist", self.table_name)
 
 
-class HBaseScanOperator(BaseOperator):
+class HBaseScanOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     """
     Operator to scan HBase table.
 
@@ -186,14 +190,14 @@ class HBaseScanOperator(BaseOperator):
 
     template_fields: Sequence[str] = ("table_name", "row_start", "row_stop", "columns")
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         table_name: str,
         row_start: str | None = None,
         row_stop: str | None = None,
         columns: list[str] | None = None,
         limit: int | None = None,
-        encoding: str = 'utf-8',
+        encoding: str = "utf-8",
         hbase_conn_id: str = HBaseThriftHook.default_conn_name,
         **kwargs,
     ) -> None:
@@ -208,7 +212,7 @@ class HBaseScanOperator(BaseOperator):
         self.encoding = encoding
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> list:
+    def execute(self, **kwargs) -> list:
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         results = hook.scan_table(
@@ -216,21 +220,12 @@ class HBaseScanOperator(BaseOperator):
             row_start=self.row_start,
             row_stop=self.row_stop,
             columns=self.columns,
-            limit=self.limit
+            limit=self.limit,
         )
-        # Convert bytes to strings for JSON serialization
-        serializable_results = []
-        for row_key, data in results:
-            row_dict = {"row_key": row_key.decode(self.encoding) if isinstance(row_key, bytes) else row_key}
-            for col, val in data.items():
-                col_str = col.decode(self.encoding) if isinstance(col, bytes) else col
-                val_str = val.decode(self.encoding) if isinstance(val, bytes) else val
-                row_dict[col_str] = val_str
-            serializable_results.append(row_dict)
-        return serializable_results
+        return convert_scan_results_to_serializable(results, self.encoding)
 
 
-class HBaseBatchPutOperator(BaseOperator):
+class HBaseBatchPutOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     """
     Operator to insert multiple rows into HBase table in batch with optimization.
 
@@ -243,7 +238,7 @@ class HBaseBatchPutOperator(BaseOperator):
 
     template_fields: Sequence[str] = ("table_name", "rows")
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         table_name: str,
         rows: list[dict[str, Any]],
@@ -261,13 +256,13 @@ class HBaseBatchPutOperator(BaseOperator):
         self.max_workers = max_workers
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> None:
+    def execute(self, **kwargs) -> None:
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         hook.batch_put_rows(self.table_name, self.rows, self.batch_size, self.max_workers)
 
 
-class HBaseBatchGetOperator(BaseOperator):
+class HBaseBatchGetOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     """
     Operator to get multiple rows from HBase table in batch.
 
@@ -280,12 +275,12 @@ class HBaseBatchGetOperator(BaseOperator):
 
     template_fields: Sequence[str] = ("table_name", "row_keys", "columns")
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         table_name: str,
         row_keys: list[str],
         columns: list[str] | None = None,
-        encoding: str = 'utf-8',
+        encoding: str = "utf-8",
         hbase_conn_id: str = HBaseThriftHook.default_conn_name,
         **kwargs,
     ) -> None:
@@ -298,23 +293,14 @@ class HBaseBatchGetOperator(BaseOperator):
         self.encoding = encoding
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> list:
+    def execute(self, **kwargs) -> list:
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         results = hook.batch_get_rows(self.table_name, self.row_keys, self.columns)
-        # Convert bytes to strings for JSON serialization
-        serializable_results = []
-        for data in results:
-            row_dict = {}
-            for col, val in data.items():
-                col_str = col.decode(self.encoding) if isinstance(col, bytes) else col
-                val_str = val.decode(self.encoding) if isinstance(val, bytes) else val
-                row_dict[col_str] = val_str
-            serializable_results.append(row_dict)
-        return serializable_results
+        return convert_batch_results_to_serializable(results, self.encoding)
 
 
-class HBaseBackupSetOperator(BaseOperator):
+class HBaseBackupSetOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     """
     Operator to manage HBase backup sets.
 
@@ -326,7 +312,7 @@ class HBaseBackupSetOperator(BaseOperator):
 
     template_fields: Sequence[str] = ("backup_set_name", "tables")
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         action: BackupSetAction,
         backup_set_name: str | None = None,
@@ -340,7 +326,7 @@ class HBaseBackupSetOperator(BaseOperator):
         self.tables = tables or []
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> str:
+    def execute(self, **kwargs) -> str:
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
@@ -350,15 +336,14 @@ class HBaseBackupSetOperator(BaseOperator):
             result = hook.create_backup_set(self.backup_set_name, self.tables)
             self.log.info("Backup set operation result:\n%s", result if result else "(empty)")
             return result
-        elif self.action == BackupSetAction.LIST:
+        if self.action == BackupSetAction.LIST:
             result = hook.list_backup_sets()
             self.log.info("Backup sets:\n%s", result if result else "(empty)")
             return result
-        else:
-            raise ValueError(f"Unsupported action: {self.action}")
+        raise ValueError(f"Unsupported action: {self.action}")
 
 
-class HBaseCreateBackupOperator(BaseOperator):
+class HBaseCreateBackupOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     """
     Operator to create HBase backup.
 
@@ -372,7 +357,7 @@ class HBaseCreateBackupOperator(BaseOperator):
 
     template_fields: Sequence[str] = ("backup_path", "backup_set_name", "tables")
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         backup_type: BackupType,
         backup_path: str,
@@ -392,7 +377,7 @@ class HBaseCreateBackupOperator(BaseOperator):
         self.ignore_checksum = ignore_checksum
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> str:
+    def execute(self, **kwargs) -> str:
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
@@ -407,31 +392,27 @@ class HBaseCreateBackupOperator(BaseOperator):
                 backup_root=self.backup_path,
                 backup_set_name=self.backup_set_name,
                 tables=self.tables,
-                workers=self.workers
+                workers=self.workers,
             )
         else:  # INCREMENTAL
             output = hook.create_incremental_backup(
                 backup_root=self.backup_path,
                 backup_set_name=self.backup_set_name,
                 tables=self.tables,
-                workers=self.workers
+                workers=self.workers,
             )
 
         self.log.info("Backup command output: %s", output)
 
-        # Extract backup_id from output
-        # Output format: "Backup backup_1234567890123 completed."
-        match = re.search(r'backup_(\d+)', output)
-        if match:
-            backup_id = f"backup_{match.group(1)}"
+        backup_id = extract_backup_id(output)
+        if backup_id:
             self.log.info("Extracted backup_id: %s", backup_id)
             return backup_id
-        else:
-            self.log.warning("Could not extract backup_id from output")
-            return output
+        self.log.warning("Could not extract backup_id from output")
+        return output
 
 
-class HBaseRestoreOperator(BaseOperator):
+class HBaseRestoreOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     """
     Operator to restore HBase backup.
 
@@ -445,7 +426,7 @@ class HBaseRestoreOperator(BaseOperator):
 
     template_fields: Sequence[str] = ("backup_path", "backup_id", "backup_set_name", "tables")
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         backup_path: str,
         backup_id: str,
@@ -465,7 +446,7 @@ class HBaseRestoreOperator(BaseOperator):
         self.ignore_checksum = ignore_checksum
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> str:
+    def execute(self, **kwargs) -> str:
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
@@ -473,11 +454,11 @@ class HBaseRestoreOperator(BaseOperator):
             backup_root=self.backup_path,
             backup_id=self.backup_id,
             tables=self.tables,
-            overwrite=self.overwrite
+            overwrite=self.overwrite,
         )
 
 
-class HBaseBackupHistoryOperator(BaseOperator):
+class HBaseBackupHistoryOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     """
     Operator to get HBase backup history.
 
@@ -500,16 +481,22 @@ class HBaseBackupHistoryOperator(BaseOperator):
         self.backup_path = backup_path
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> str:
+    def execute(self, **kwargs) -> str:
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
         history = hook.get_backup_history(backup_set_name=self.backup_set_name)
-        self.log.info("Backup history (with filter -s %s):\n%s", self.backup_set_name or "(none)", history if history else "(empty)")
+        self.log.info(
+            "Backup history (with filter -s %s):\n%s",
+            self.backup_set_name or "(none)",
+            history if history else "(empty)",
+        )
 
         # Also get full history without filter for debugging
         if self.backup_set_name:
             full_history = hook.get_backup_history()
-            self.log.info("Full backup history (without filter):\n%s", full_history if full_history else "(empty)")
+            self.log.info(
+                "Full backup history (without filter):\n%s", full_history if full_history else "(empty)"
+            )
 
         return history
