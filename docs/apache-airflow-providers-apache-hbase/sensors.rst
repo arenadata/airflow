@@ -32,13 +32,13 @@ To use sensors, you must configure an :doc:`HBase Connection <connections/hbase>
 Waiting for a Table to Exist
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The :class:`~airflow.providers.apache.hbase.sensors.hbase.HBaseTableSensor` sensor is used to check for the existence of a table in HBase.
+The :class:`~airflow.providers.arenadata.hbase.sensors.hbase.HBaseTableSensor` sensor is used to check for the existence of a table in HBase.
 
 Use the ``table_name`` parameter to specify the table to monitor.
 
 .. code-block:: python
 
-    from airflow.providers.hbase.sensors.hbase import HBaseTableSensor
+    from airflow.providers.arenadata.hbase.sensors.hbase import HBaseTableSensor
 
     wait_for_table = HBaseTableSensor(
         task_id="wait_for_table",
@@ -53,13 +53,13 @@ Use the ``table_name`` parameter to specify the table to monitor.
 Waiting for a Row to Exist
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The :class:`~airflow.providers.apache.hbase.sensors.hbase.HBaseRowSensor` sensor is used to check for the existence of a specific row in an HBase table.
+The :class:`~airflow.providers.arenadata.hbase.sensors.hbase.HBaseRowSensor` sensor is used to check for the existence of a specific row in an HBase table.
 
 Use the ``table_name`` parameter to specify the table and ``row_key`` parameter to specify the row to monitor.
 
 .. code-block:: python
 
-    from airflow.providers.hbase.sensors.hbase import HBaseRowSensor
+    from airflow.providers.arenadata.hbase.sensors.hbase import HBaseRowSensor
 
     wait_for_row = HBaseRowSensor(
         task_id="wait_for_row",
@@ -75,13 +75,13 @@ Use the ``table_name`` parameter to specify the table and ``row_key`` parameter 
 Waiting for Row Count Threshold
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The :class:`~airflow.providers.apache.hbase.sensors.hbase.HBaseRowCountSensor` sensor is used to check if the number of rows in an HBase table meets a specified threshold.
+The :class:`~airflow.providers.arenadata.hbase.sensors.hbase.HBaseRowCountSensor` sensor is used to check if the number of rows in an HBase table meets a specified threshold.
 
 Use the ``table_name`` parameter to specify the table, ``expected_count`` for the threshold, and ``comparison`` to specify the comparison operator ('>=', '>', '==', '<', '<=').
 
 .. code-block:: python
 
-    from airflow.providers.hbase.sensors.hbase import HBaseRowCountSensor
+    from airflow.providers.arenadata.hbase.sensors.hbase import HBaseRowCountSensor
 
     # Wait for at least 1000 rows
     wait_for_rows = HBaseRowCountSensor(
@@ -108,13 +108,13 @@ Use the ``table_name`` parameter to specify the table, ``expected_count`` for th
 Waiting for Column Value
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The :class:`~airflow.providers.apache.hbase.sensors.hbase.HBaseColumnValueSensor` sensor is used to check if a specific column in a row contains an expected value.
+The :class:`~airflow.providers.arenadata.hbase.sensors.hbase.HBaseColumnValueSensor` sensor is used to check if a specific column in a row contains an expected value.
 
 Use the ``table_name`` parameter to specify the table, ``row_key`` for the row, ``column`` for the column to check, and ``expected_value`` for the value to match.
 
 .. code-block:: python
 
-    from airflow.providers.hbase.sensors.hbase import HBaseColumnValueSensor
+    from airflow.providers.arenadata.hbase.sensors.hbase import HBaseColumnValueSensor
 
     # Wait for a specific status value
     wait_for_status = HBaseColumnValueSensor(

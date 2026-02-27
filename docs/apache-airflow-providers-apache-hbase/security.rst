@@ -18,44 +18,7 @@
 Security
 --------
 
-The Apache HBase provider uses the HappyBase library to connect to HBase via the Thrift protocol with comprehensive security features including SSL/TLS encryption and Kerberos authentication.
-
-SSL/TLS Encryption
-~~~~~~~~~~~~~~~~~~
-
-The HBase provider supports SSL/TLS encryption for secure communication with HBase Thrift servers:
-
-**SSL Connection Types:**
-
-* **Direct SSL**: Connect directly to SSL-enabled Thrift servers
-* **SSL Proxy**: Use stunnel or similar SSL proxy for legacy Thrift servers
-* **Certificate Validation**: Full certificate chain validation with custom CA support
-
-**Certificate Management:**
-
-* Store SSL certificates in Airflow Variables or Secrets Backend
-* Support for client certificates for mutual TLS authentication
-* Automatic certificate validation and hostname verification
-* Custom CA certificate support for private PKI
-
-**Configuration Example:**
-
-.. code-block:: python
-
-    # SSL connection with certificates from Airflow Variables
-    ssl_connection = Connection(
-        conn_id="hbase_ssl",
-        conn_type="hbase",
-        host="hbase-ssl.example.com",
-        port=9091,
-        extra={
-            "use_ssl": True,
-            "ssl_cert_var": "hbase_client_cert",
-            "ssl_key_var": "hbase_client_key",
-            "ssl_ca_var": "hbase_ca_cert",
-            "ssl_verify": True
-        }
-    )
+The Apache HBase provider uses the Thrift2 protocol to connect to HBase with Kerberos authentication support.
 
 Kerberos Authentication
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -67,7 +30,7 @@ The provider supports Kerberos authentication for secure access to HBase cluster
 * SASL/GSSAPI authentication mechanism
 * Keytab-based authentication
 * Principal and realm configuration
-* Integration with system Kerberos configuration
+* Integration with Airflow Secrets Backend for keytab storage
 
 **Configuration Example:**
 
@@ -82,34 +45,59 @@ The provider supports Kerberos authentication for secure access to HBase cluster
         extra={
             "use_kerberos": True,
             "kerberos_principal": "airflow@EXAMPLE.COM",
-            "kerberos_keytab": "/etc/security/keytabs/airflow.keytab"
+            "kerberos_keytab_path": "/etc/security/keytabs/airflow.keytab"
         }
     )
 
-Data Protection
-~~~~~~~~~~~~~~~
+    # Kerberos with keytab from Secrets Backend
+    kerberos_secrets_connection = Connection(
+        conn_id="hbase_kerberos_secrets",
+        conn_type="hbase",
+        host="hbase-kerb.example.com",
+        port=9090,
+        extra={
+            "use_kerberos": True,
+            "kerberos_principal": "airflow@EXAMPLE.COM",
+            "kerberos_keytab_secret_key": "hbase_keytab"
+        }
+    )
 
-**Sensitive Data Masking:**
+Connection Pooling
+~~~~~~~~~~~~~~~~~~
 
-* Automatic masking of sensitive data in logs and error messages
-* Protection of authentication credentials and certificates
-* Secure handling of connection parameters
+The provider supports connection pooling for improved performance:
 
-**Secrets Management:**
+**Pooling Features:**
 
-* Integration with Airflow Secrets Backend
-* Support for external secret management systems
-* Secure storage of certificates and keys
+* Configurable pool size for concurrent connections
+* Automatic connection lifecycle management
+* Thread-safe connection reuse
+* Reduced connection overhead for batch operations
+
+**Configuration Example:**
+
+.. code-block:: python
+
+    # Connection with pooling
+    pooled_connection = Connection(
+        conn_id="hbase_pooled",
+        conn_type="hbase",
+        host="hbase.example.com",
+        port=9090,
+        extra={
+            "pool_size": 5
+        }
+    )
 
 Security Best Practices
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 **Connection Security:**
 
-* Always use SSL/TLS encryption in production environments
-* Implement proper certificate validation and hostname verification
-* Use strong authentication mechanisms (Kerberos, client certificates)
-* Regularly rotate certificates and keys
+* Use Kerberos authentication in production environments
+* Store keytabs securely using Airflow Secrets Backend
+* Regularly rotate Kerberos principals and keytabs
+* Use connection pooling to minimize authentication overhead
 
 **Access Control:**
 
@@ -122,7 +110,7 @@ Security Best Practices
 
 * Store sensitive information in Airflow's connection management system
 * Avoid hardcoding credentials in DAG files
-* Use Airflow's secrets backend for enhanced security
+* Use Airflow's secrets backend for keytab storage
 * Regularly update HBase and Airflow to latest security patches
 
 **Network Security:**
@@ -131,23 +119,6 @@ Security Best Practices
 * Use VPNs or private networks for HBase communication
 * Implement proper DNS security and hostname verification
 * Monitor network traffic for anomalies
-
-Compliance and Auditing
-~~~~~~~~~~~~~~~~~~~~~~~
-
-**Security Compliance:**
-
-* The provider supports enterprise security requirements
-* Compatible with SOC 2, HIPAA, and other compliance frameworks
-* Comprehensive logging and audit trail capabilities
-* Support for security scanning and vulnerability assessment
-
-**Monitoring and Alerting:**
-
-* Integration with Airflow's monitoring and alerting systems
-* Security event logging and notification
-* Connection health monitoring and failure detection
-* Performance monitoring for security overhead assessment
 
 For comprehensive security configuration, consult:
 
