@@ -18,10 +18,17 @@
 
 from __future__ import annotations
 
-from airflow.configuration import conf
-from airflow.providers.arenadata.ozone.hooks.ozone import OzoneCliTransientError
-from airflow.providers.arenadata.ozone.hooks.ozone_fs import OzoneFsHook
+import fnmatch
+import re
+from typing import Sequence
+from urllib.parse import urlsplit
+
+from airflow.exceptions import AirflowException
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneCliTransientError, OzoneFsHook
+from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
+from airflow.providers.arenadata.ozone.utils.common import contains_wildcards
 from airflow.sensors.base import BaseSensorOperator
+from airflow.utils.context import Context  # noqa: TCH001
 
 
 class OzoneKeySensor(BaseSensorOperator):
@@ -37,20 +44,15 @@ class OzoneKeySensor(BaseSensorOperator):
         self,
         path: str,
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
-        deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
         **kwargs,
     ):
         super().__init__(**kwargs)
-        if not path or not path.strip():
-            raise ValueError("path parameter cannot be empty")
-        if not ozone_conn_id or not ozone_conn_id.strip():
-            raise ValueError("ozone_conn_id parameter cannot be empty")
-        self.path = path.strip()
-        self.ozone_conn_id = ozone_conn_id.strip()
-        self.deferrable = deferrable
+        self.path = path
+        self.ozone_conn_id = ozone_conn_id
         self.log.debug("OzoneKeySensor initialized (path=%s, conn_id=%s)", self.path, self.ozone_conn_id)
 
-    def poke(self, context):
+    def poke(self, context: Context) -> bool:
+        """Return True when the target path appears in Ozone."""
         self.log.debug("Checking if key exists in Ozone: %s", self.path)
         hook = OzoneFsHook(self.ozone_conn_id)
         try:
@@ -61,8 +63,87 @@ class OzoneKeySensor(BaseSensorOperator):
         except OzoneCliTransientError as e:
             self.log.warning("Transient error while checking key existence (will retry): %s", str(e))
             return False
-        except Exception as e:
-            # Unexpected exceptions (e.g., FileNotFoundError for missing ozone CLI)
-            # should be re-raised as they indicate configuration issues
-            self.log.error("Unexpected error while checking key existence: %s (error: %s)", self.path, str(e))
-            raise
+
+
+class OzoneS3KeySensor(BaseSensorOperator):
+    """Waits for a key (or keys) to be present in an Ozone S3 bucket."""
+
+    template_fields: Sequence[str] = ("bucket_key", "bucket_name", "ozone_conn_id")
+
+    def __init__(
+        self,
+        *,
+        bucket_key: str | list[str],
+        bucket_name: str | None = None,
+        ozone_conn_id: str = OzoneS3Hook.default_conn_name,
+        wildcard_match: bool = False,
+        use_regex: bool = False,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.bucket_name = bucket_name
+        self.bucket_key = bucket_key
+        self.ozone_conn_id = ozone_conn_id
+        self.wildcard_match = wildcard_match
+        self.use_regex = use_regex
+
+    def _parse_bucket_and_key(self, key: str) -> tuple[str, str]:
+        """Split full s3:// URL or combine plain key with bucket_name."""
+        bucket_name = self.bucket_name
+        key_use = key
+
+        if not bucket_name:
+            parsed = urlsplit(key)
+            if parsed.scheme != "s3":
+                raise AirflowException(
+                    "bucket_name is required when bucket_key is not a full s3://bucket/key URL."
+                )
+            bucket_name = parsed.netloc
+            key_use = parsed.path.lstrip("/")
+            if not bucket_name or not key_use:
+                raise AirflowException(
+                    f"Invalid s3 URL for OzoneS3KeySensor: {key!r}. Expected s3://bucket/key."
+                )
+
+        return bucket_name, key_use
+
+    def _check_key(self, key: str, hook: OzoneS3Hook) -> bool:
+        """Check key existence with exact, wildcard, or regex matching."""
+        bucket_name, key_use = self._parse_bucket_and_key(key)
+
+        if not self.wildcard_match and not self.use_regex and contains_wildcards(key_use):
+            self.log.warning(
+                "bucket_key %r contains wildcard characters, but wildcard_match=False and use_regex=False. "
+                "Key will be treated as literal. If you expect glob matching, set wildcard_match=True.",
+                key_use,
+            )
+
+        if self.wildcard_match:
+            prefix = re.split(r"[\[*?]", key_use, 1)[0]
+            files = hook.get_file_metadata(prefix, bucket_name)
+            return bool(fnmatch.filter([f["Key"] for f in files], key_use))
+
+        if self.use_regex:
+            meta_split = re.split(r"[\\\[\]\^\$\*\+\?\|\(\)]", key_use, 1)
+            prefix = meta_split[0] if meta_split else ""
+            files = hook.get_file_metadata(prefix, bucket_name)
+            try:
+                pattern = re.compile(key_use)
+            except re.error as e:
+                raise AirflowException(f"Invalid regex pattern for bucket_key: {key_use!r} ({e})")
+            return any(pattern.match(f["Key"]) for f in files)
+
+        return hook.check_for_key(key_use, bucket_name)
+
+    def poke(self, context: Context) -> bool:
+        """Return True when all requested S3 keys are found."""
+        hook = OzoneS3Hook(ozone_conn_id=self.ozone_conn_id)
+        if isinstance(self.bucket_key, str):
+            result = self._check_key(self.bucket_key, hook)
+        else:
+            result = all(self._check_key(k, hook) for k in self.bucket_key)
+        if result:
+            self.log.info("S3 key(s) found in Ozone: %s", self.bucket_key)
+        else:
+            self.log.debug("S3 key(s) not found yet in Ozone: %s", self.bucket_key)
+        return result

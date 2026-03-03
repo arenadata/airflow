@@ -32,17 +32,33 @@ Design goals:
 
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
+from enum import Enum
 from io import BytesIO
-from typing import TYPE_CHECKING
 
 import boto3
+from boto3.s3.transfer import TransferConfig  # noqa: TCH002
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from airflow.providers.arenadata.ozone.utils.security import get_secret_value
+from airflow.models.connection import Connection  # noqa: TCH001
+from airflow.providers.arenadata.ozone.utils.common import get_connection_extra
+from airflow.providers.arenadata.ozone.utils.security import get_secret_value, is_secret_ref
 
-if TYPE_CHECKING:
-    from airflow.models.connection import Connection
+log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class S3ConnectionConfig:
+    """Normalized S3 connection settings derived from Airflow connection extra."""
+
+    endpoint_url: str | None
+    verify: bool | str
+    addressing_style: str
+    retries_mode: str
+    max_attempts: int
+    region_name: str
 
 
 class S3KeyWrapper:
@@ -59,6 +75,30 @@ class S3KeyWrapper:
 
     def get(self) -> dict[str, object]:
         return {"Body": self._body}
+
+
+class S3ErrorCode(str, Enum):
+    """Known S3 error codes used by the Ozone provider."""
+
+    NO_SUCH_BUCKET = "NoSuchBucket"
+    NO_SUCH_KEY = "NoSuchKey"
+    ACCESS_DENIED = "AccessDenied"
+    BUCKET_ALREADY_EXISTS = "BucketAlreadyExists"
+    BUCKET_ALREADY_OWNED_BY_YOU = "BucketAlreadyOwnedByYou"
+
+
+def map_s3_error_to_ozone(error: ClientError) -> str:
+    """Translate a boto3 ClientError into an Ozone-specific, readable message."""
+    error_code = error.response.get("Error", {}).get("Code", "Unknown")
+
+    if error_code == S3ErrorCode.NO_SUCH_BUCKET:
+        return "Ozone S3 Gateway Error: The specified bucket does not exist."
+    if error_code == S3ErrorCode.NO_SUCH_KEY:
+        return "Ozone S3 Gateway Error: The specified key does not exist."
+    if error_code == S3ErrorCode.ACCESS_DENIED:
+        return "Ozone S3 Gateway Error: Access Denied. Check Ozone ACLs or Ranger policies."
+
+    return f"Ozone S3 Gateway reported an unhandled error: {error_code}"
 
 
 def _as_bool_or_str(value: object, default: object) -> object:
@@ -92,12 +132,42 @@ def _resolve_secret_maybe(value: str) -> str:
 
     If resolution fails, return the original string (do not swallow non-string values).
     """
-    if isinstance(value, str) and value.startswith("secret://"):
+    if is_secret_ref(value):
         try:
             return str(get_secret_value(value))
-        except Exception:
+        except ValueError as err:
+            log.warning("Could not resolve secret reference %s (%s); using original value", value, err)
             return value
     return value
+
+
+def parse_s3_connection_config(conn: Connection, region_name: str | None = None) -> S3ConnectionConfig:
+    """Build normalized S3 client configuration from Airflow connection and overrides."""
+    extra = get_connection_extra(conn)
+    endpoint_url_raw = extra.get("endpoint_url")
+    endpoint_url = str(endpoint_url_raw).strip() if endpoint_url_raw else None
+    verify = _as_bool_or_str(extra.get("verify"), default=True)
+
+    addressing_style_raw = str(extra.get("addressing_style") or "auto").strip().lower()
+    addressing_style = addressing_style_raw if addressing_style_raw in {"auto", "path", "virtual"} else "auto"
+
+    retries_mode = str(extra.get("retries_mode") or "standard").strip().lower()
+    max_attempts_raw = extra.get("max_attempts") or 3
+    try:
+        max_attempts = int(max_attempts_raw)
+    except (TypeError, ValueError):
+        max_attempts = 3
+
+    normalized_region = str(region_name or (extra.get("region_name") or "us-east-1")).strip() or "us-east-1"
+
+    return S3ConnectionConfig(
+        endpoint_url=endpoint_url,
+        verify=verify,
+        addressing_style=addressing_style,
+        retries_mode=retries_mode,
+        max_attempts=max_attempts,
+        region_name=normalized_region,
+    )
 
 
 def get_s3_client(conn: Connection, region_name: str | None = None):
@@ -115,40 +185,23 @@ def get_s3_client(conn: Connection, region_name: str | None = None):
     - max_attempts: int (default: 3)
     - retries_mode: "standard" | "adaptive" | "legacy" (default: "standard")
     """
-    extra = conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
-
-    endpoint_url = extra.get("endpoint_url") or None
-    verify = _as_bool_or_str(extra.get("verify"), default=True)
-
-    addressing_style = (extra.get("addressing_style") or "auto").strip().lower()
-    if addressing_style not in {"auto", "path", "virtual"}:
-        addressing_style = "auto"
-
-    retries_mode = (extra.get("retries_mode") or "standard").strip().lower()
-    max_attempts = extra.get("max_attempts") or 3
-    try:
-        max_attempts = int(max_attempts)
-    except Exception:
-        max_attempts = 3
+    config_data = parse_s3_connection_config(conn, region_name=region_name)
 
     config = Config(
-        retries={"mode": retries_mode, "max_attempts": max_attempts},
-        s3={"addressing_style": addressing_style},
+        retries={"mode": config_data.retries_mode, "max_attempts": config_data.max_attempts},
+        s3={"addressing_style": config_data.addressing_style},
     )
 
     access_key = _resolve_secret_maybe(conn.login or "")
     secret_key = _resolve_secret_maybe(conn.password or "")
 
-    # For custom endpoints region is usually irrelevant, but boto3 likes having one.
-    region = region_name or (extra.get("region_name") or "us-east-1")
-
     return boto3.client(
         "s3",
-        endpoint_url=endpoint_url,
-        verify=verify,
+        endpoint_url=config_data.endpoint_url,
+        verify=config_data.verify,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
-        region_name=region,
+        region_name=config_data.region_name,
         config=config,
     )
 
@@ -175,21 +228,20 @@ def check_key_exists(client, bucket_name: str, key: str) -> bool:
 
 def list_keys(client, bucket_name: str, prefix: str = "") -> list[str]:
     """List object keys under prefix."""
-    paginator = client.get_paginator("list_objects_v2")
-    keys: list[str] = []
-    for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
-        for obj in page.get("Contents") or []:
-            keys.append(obj["Key"])
-    return keys
+    return [obj["Key"] for obj in _iter_s3_objects(client, bucket_name, prefix)]
 
 
 def get_file_metadata(client, bucket_name: str, prefix: str = "") -> list[dict]:
     """List metadata for objects under prefix (raw Contents dicts)."""
+    return list(_iter_s3_objects(client, bucket_name, prefix))
+
+
+def _iter_s3_objects(client, bucket_name: str, prefix: str = ""):
+    """Yield raw objects from list_objects_v2 paginator."""
     paginator = client.get_paginator("list_objects_v2")
-    files: list[dict] = []
-    for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
-        files.extend(page.get("Contents") or [])
-    return files
+    pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+    for page in pages:
+        yield from page.get("Contents") or []
 
 
 def create_bucket(client, bucket_name: str) -> None:
@@ -203,11 +255,12 @@ def load_file_obj(
     key: str,
     bucket_name: str,
     replace: bool = False,
+    transfer_config: TransferConfig | None = None,
 ) -> None:
     """Upload a file-like object to S3."""
     if not replace and check_key_exists(client, bucket_name, key):
         raise ValueError(f"The key {key} already exists.")
-    client.upload_fileobj(file_obj, bucket_name, key)
+    client.upload_fileobj(file_obj, bucket_name, key, Config=transfer_config)
 
 
 def load_string(
@@ -216,9 +269,8 @@ def load_string(
     key: str,
     bucket_name: str,
     replace: bool = False,
+    transfer_config: TransferConfig | None = None,
 ) -> None:
     """Upload string data to S3."""
-    if not replace and check_key_exists(client, bucket_name, key):
-        raise ValueError(f"The key {key} already exists.")
     buf = BytesIO(string_data.encode("utf-8"))
-    client.upload_fileobj(buf, bucket_name, key)
+    load_file_obj(client, buf, key, bucket_name, replace=replace, transfer_config=transfer_config)

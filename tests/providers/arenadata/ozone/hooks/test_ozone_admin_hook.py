@@ -21,10 +21,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from airflow.providers.arenadata.ozone.hooks.ozone_admin import OzoneAdminHook
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminHook
 
 # The path to the mocked method is in the base class
-MOCK_CLI_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.OzoneHook.run_cli"
+MOCK_CLI_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliHook.run_cli"
 
 
 @pytest.fixture
@@ -37,7 +37,7 @@ def admin_hook():
 class TestOzoneAdminHook:
     """Unit tests for OzoneAdminHook."""
 
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_admin.subprocess.run")
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone.subprocess.run")
     def test_create_volume(self, mock_subprocess_run: MagicMock, admin_hook: OzoneAdminHook):
         """Test that `create_volume` calls the correct CLI command without a quota."""
 
@@ -47,7 +47,7 @@ class TestOzoneAdminHook:
         call_args = mock_subprocess_run.call_args[0][0]
         assert call_args == ["ozone", "sh", "volume", "create", "/test_vol"]
 
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_admin.subprocess.run")
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone.subprocess.run")
     def test_create_volume_with_quota(self, mock_subprocess_run: MagicMock, admin_hook: OzoneAdminHook):
         """Test that `create_volume` correctly adds the --quota argument."""
 
@@ -57,7 +57,7 @@ class TestOzoneAdminHook:
         call_args = mock_subprocess_run.call_args[0][0]
         assert call_args == ["ozone", "sh", "volume", "create", "/test_vol_quota", "--quota", "100GB"]
 
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_admin.subprocess.run")
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone.subprocess.run")
     def test_create_bucket(self, mock_subprocess_run: MagicMock, admin_hook: OzoneAdminHook):
         """Test the `create_bucket` command."""
 

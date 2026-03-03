@@ -19,19 +19,21 @@
 """
 Complete Data Lifecycle Management Example DAG
 
-This DAG demonstrates advanced data lifecycle management with dynamic task generation:
+This DAG demonstrates a complete data lifecycle workflow:
 1. Lists all files in a landing directory (OzoneListOperator)
-2. Dynamically creates processing tasks for each file found (fan-out pattern)
+2. Runs a processing step over the discovered list of files
 3. Archives processed files to a new location (OzoneToOzoneOperator)
 4. Registers archived data as a Hive table partition (OzoneToHiveOperator)
 5. Creates a disaster-recovery snapshot (OzoneBackupOperator)
 6. Cleans up original files from the landing zone
 
 This example showcases:
-- Dynamic task generation based on discovered files
 - Data archiving and lifecycle management
 - Integration with Hive for data lake queries
 - Backup and disaster recovery workflows
+
+Requirements:
+- apache-airflow-providers-apache-hive must be installed.
 """
 
 from __future__ import annotations
@@ -42,17 +44,14 @@ import pendulum
 
 from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
-from airflow.operators.python import ShortCircuitOperator
-from airflow.providers.arenadata.ozone.operators.ozone_admin import (
+from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
     OzoneCreateVolumeOperator,
-)
-from airflow.providers.arenadata.ozone.operators.ozone_fs import (
     OzoneDeleteKeyOperator,
     OzoneFsMkdirOperator,
     OzoneListOperator,
+    OzoneToOzoneOperator,
 )
-from airflow.providers.arenadata.ozone.operators.ozone_transfer import OzoneToOzoneOperator
 from airflow.providers.arenadata.ozone.transfers.ozone_backup import OzoneBackupOperator
 from airflow.providers.arenadata.ozone.transfers.ozone_to_hive import OzoneToHiveOperator
 from airflow.utils.task_group import TaskGroup
@@ -64,15 +63,17 @@ with DAG(
     schedule=None,
     tags=["ozone", "example"],
     doc_md="""
-    ### Advanced Data Lifecycle and Dynamic Processing Example
+    ### Data Lifecycle Example (with Hive Registration)
 
     This DAG demonstrates a complete data lifecycle management workflow:
     1. **List**: Finds all files in a landing directory using `OzoneListOperator`.
-    2. **Dynamic Processing**: For each file found, it dynamically spawns a processing task (fan-out).
+    2. **Process**: Runs a processing step over the file list from XCom.
     3. **Archive**: Moves the processed source files to an archive path using `OzoneToOzoneOperator`.
     4. **Register**: Registers the archived data as a new partition in Hive with `OzoneToHiveOperator`.
     5. **Backup**: Creates a disaster-recovery snapshot of the bucket using `OzoneBackupOperator`.
     6. **Cleanup**: Deletes the original files from the landing directory.
+
+    **Requirement**: `apache-airflow-providers-apache-hive` must be installed.
     """,
 ) as dag:
     # Assume we have some files in this landing path.
@@ -149,28 +150,7 @@ with DAG(
         execution_timeout=timedelta(minutes=5),
     )
 
-    def check_hive_available(**context):
-        """Check if Hive provider is installed."""
-
-        try:
-            from airflow.providers.apache.hive.hooks.hive import HiveCliHook  # noqa: F401
-
-            context["ti"].log.info("Hive provider is available, will register partition")
-            return True
-        except ModuleNotFoundError:
-            context["ti"].log.warning(
-                "Hive provider not installed. Skipping partition registration. "
-                "Install 'apache-airflow-providers-apache-hive' to enable this feature."
-            )
-            return False
-
-    check_hive = ShortCircuitOperator(
-        task_id="check_hive_available",
-        python_callable=check_hive_available,
-        execution_timeout=timedelta(minutes=1),
-    )
-
-    # 5a. Register the new archive path as a partition in a Hive table (only if Hive is available)
+    # 5a. Register the new archive path as a partition in a Hive table.
     register_hive_partition = OzoneToHiveOperator(
         task_id="register_hive_partition",
         ozone_path=ARCHIVE_BASE_PATH + "/ds={{ ds }}",
@@ -203,6 +183,6 @@ with DAG(
     list_files_in_landing_zone >> processing_group
     create_archive_bucket >> create_archive_dir
     processing_group >> create_archive_dir >> archive_files
-    archive_files >> check_hive >> register_hive_partition
+    archive_files >> register_hive_partition
     archive_files >> backup_archive
     backup_archive >> cleanup_landing_zone

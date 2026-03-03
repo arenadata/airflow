@@ -36,12 +36,12 @@ from datetime import timedelta
 import pendulum
 
 from airflow.models.dag import DAG
-from airflow.providers.arenadata.ozone.operators.ozone_admin import (
+from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
     OzoneCreateVolumeOperator,
+    OzoneFsMkdirOperator,
     OzoneSetQuotaOperator,
 )
-from airflow.providers.arenadata.ozone.operators.ozone_fs import OzoneFsMkdirOperator
 
 # Define a project name, which could come from a Trigger UI config
 # Note: Ozone volume and bucket names must match the pattern `[a-z0-9.-]+`

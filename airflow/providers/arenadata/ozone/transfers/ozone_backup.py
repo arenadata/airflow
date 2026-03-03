@@ -17,17 +17,10 @@
 
 from __future__ import annotations
 
-import subprocess
-import time
-from typing import TYPE_CHECKING
-
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
-from airflow.providers.arenadata.ozone.hooks.ozone_admin import OzoneAdminHook
-from airflow.utils.log.secrets_masker import redact
-
-if TYPE_CHECKING:
-    from airflow.utils.context import Context
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminHook, OzoneCliError
+from airflow.utils.context import Context  # noqa: TCH001
 
 
 class OzoneBackupOperator(BaseOperator):
@@ -45,43 +38,29 @@ class OzoneBackupOperator(BaseOperator):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        # Template fields must be assigned directly from __init__ args
         self.volume = volume
         self.bucket = bucket
         self.snapshot_name = snapshot_name
         self.ozone_conn_id = ozone_conn_id
 
+        # Template fields must be assigned directly from __init__ args
+
     def execute(self, context: Context):
         """Create snapshot and treat existing snapshot as success."""
         path = f"/{self.volume}/{self.bucket}"
-        snapshot_name_use = self.snapshot_name
-
-        self.log.info("Starting Ozone snapshot creation operation")
-        self.log.info(
-            "Volume: %s, Bucket: %s, Snapshot name: %s", self.volume, self.bucket, self.snapshot_name
-        )
-        self.log.info("Target path: %s", path)
-        self.log.debug("Using connection: %s", self.ozone_conn_id)
+        cmd = ["ozone", "sh", "snapshot", "create", path, self.snapshot_name]
 
         hook = OzoneAdminHook(ozone_conn_id=self.ozone_conn_id)
-        cmd = ["ozone", "sh", "snapshot", "create", path, snapshot_name_use]
-
-        env = hook._build_env()
-        start_time = time.time()
         try:
-            subprocess.run(cmd, capture_output=True, text=True, check=True, env=env, timeout=300)
-            execution_time = time.time() - start_time
-            self.log.info(
-                "Successfully created snapshot: %s in %.2f seconds", self.snapshot_name, execution_time
-            )
-            self.log.info("Snapshot path: %s, Volume: %s, Bucket: %s", path, self.volume, self.bucket)
-        except subprocess.CalledProcessError as e:
-            error_message = e.stderr.strip() if e.stderr else "No error message provided"
-            if "FILE_ALREADY_EXISTS" in error_message or "Snapshot already exists" in error_message:
+            hook.run_cli(cmd)
+            self.log.info("Snapshot created: %s (path=%s)", self.snapshot_name, path)
+        except OzoneCliError as e:
+            error_stderr = (e.stderr or "").strip()
+            stderr_upper = error_stderr.upper()
+            if "FILE_ALREADY_EXISTS" in stderr_upper or "SNAPSHOT ALREADY EXISTS" in stderr_upper:
                 self.log.info(
                     "Snapshot %s already exists, treating as success (idempotent operation).",
                     self.snapshot_name,
                 )
                 return
-            masked_error = redact(error_message)
-            raise AirflowException(f"Ozone command failed (return code: {e.returncode}): {masked_error}")
+            raise AirflowException(str(e)) from e

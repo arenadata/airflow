@@ -19,14 +19,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from airflow.providers.arenadata.ozone.hooks.ozone_fs import OzoneFsHook
-from airflow.providers.arenadata.ozone.operators.ozone_fs import OzoneDeleteKeyOperator, OzoneListOperator
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneFsHook
+from airflow.providers.arenadata.ozone.operators.ozone import OzoneDeleteKeyOperator, OzoneListOperator
 
 
 class TestOzoneFsOperators:
     """Unit tests for File System Operators."""
 
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneFsHook")
+    @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_ozone_list_operator(self, mock_ozone_fs_hook: MagicMock):
         """Test that OzoneListOperator calls the hook and returns its result via XCom."""
 
@@ -41,7 +41,7 @@ class TestOzoneFsOperators:
         mock_hook_instance.list_paths.assert_called_once_with("ofs://vol1/b1/")
         assert result == expected_files
 
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneFsHook")
+    @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_ozone_delete_key_operator(self, mock_ozone_fs_hook: MagicMock):
         """Test that OzoneDeleteKeyOperator calls the correct run_cli command."""
 
@@ -54,7 +54,7 @@ class TestOzoneFsOperators:
         mock_hook_instance.exists.assert_called_once_with("ofs://vol1/b1/f1")
         mock_hook_instance.run_cli.assert_called_once_with(["ozone", "fs", "-rm", "ofs://vol1/b1/f1"])
 
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneFsHook")
+    @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_ozone_delete_key_operator_idempotent(self, mock_ozone_fs_hook: MagicMock):
         """DeleteKeyOperator skips run_cli when path does not exist."""
 
@@ -67,7 +67,7 @@ class TestOzoneFsOperators:
         mock_hook_instance.exists.assert_called_once_with("ofs://vol1/b1/f1")
         mock_hook_instance.run_cli.assert_not_called()
 
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneFsHook")
+    @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_ozone_delete_key_operator_wildcard(self, mock_ozone_fs_hook: MagicMock):
         """Test that OzoneDeleteKeyOperator handles wildcard patterns."""
 

@@ -18,20 +18,22 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Lock
-from typing import TYPE_CHECKING
+from concurrent.futures import ThreadPoolExecutor
+from functools import cached_property, partial
+
+from boto3.s3.transfer import TransferConfig
+from botocore.exceptions import BotoCoreError, ClientError
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
 from airflow.providers.arenadata.ozone.utils import s3_client
-
-if TYPE_CHECKING:
-    from airflow.utils.context import Context
+from airflow.utils.context import Context  # noqa: TCH001
 
 log = logging.getLogger(__name__)
+KEY_LOG_PREVIEW_LIMIT = 10
+PROGRESS_LOG_STEPS = 10
 
 
 class OzoneToS3Operator(BaseOperator):
@@ -64,28 +66,15 @@ class OzoneToS3Operator(BaseOperator):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        if not ozone_bucket or not ozone_bucket.strip():
-            raise ValueError("ozone_bucket parameter cannot be empty")
-        if not s3_bucket or not s3_bucket.strip():
-            raise ValueError("s3_bucket parameter cannot be empty")
-        if ozone_prefix is None:
-            raise ValueError("ozone_prefix parameter cannot be None (use empty string instead)")
-        if s3_prefix is None:
-            raise ValueError("s3_prefix parameter cannot be None (use empty string instead)")
-        if not ozone_conn_id or not ozone_conn_id.strip():
-            raise ValueError("ozone_conn_id parameter cannot be empty")
-        if not s3_conn_id or not s3_conn_id.strip():
-            raise ValueError("s3_conn_id parameter cannot be empty")
-        if not isinstance(max_workers, int) or max_workers <= 0:
-            raise ValueError("max_workers parameter must be a positive integer")
-
         self.ozone_bucket = ozone_bucket
         self.s3_bucket = s3_bucket
-        self.ozone_prefix = ozone_prefix
-        self.s3_prefix = s3_prefix
         self.ozone_conn_id = ozone_conn_id
         self.s3_conn_id = s3_conn_id
+        if max_workers <= 0:
+            raise ValueError("max_workers parameter must be a positive integer")
 
+        self.ozone_prefix = ozone_prefix
+        self.s3_prefix = s3_prefix
         self.max_workers = max_workers
 
         self.log.debug(
@@ -97,6 +86,107 @@ class OzoneToS3Operator(BaseOperator):
             self.max_workers,
         )
 
+    def _init_clients(self) -> tuple[OzoneS3Hook, object]:
+        """Initialize source Ozone hook and destination S3 client."""
+        self.log.debug("Initializing connection pools for Ozone and destination S3")
+        ozone_hook = OzoneS3Hook(ozone_conn_id=self.ozone_conn_id)
+        ozone_hook.get_conn()
+        dest_conn = BaseHook.get_connection(self.s3_conn_id)
+        dest_client = s3_client.get_s3_client(dest_conn)
+        self.log.debug("Connection pools initialized and ready for parallel operations")
+        return ozone_hook, dest_client
+
+    @cached_property
+    def _parallel_transfer_config(self) -> TransferConfig:
+        """Disable boto3 internal transfer threading for external parallel mode."""
+        return TransferConfig(use_threads=False)
+
+    def _build_dest_key(self, key: str) -> str:
+        """Build destination key by replacing source prefix only at the start."""
+        if not self.ozone_prefix:
+            return f"{self.s3_prefix}{key}"
+
+        if not key.startswith(self.ozone_prefix):
+            raise AirflowException(
+                f"Source key '{key}' does not start with ozone_prefix '{self.ozone_prefix}'"
+            )
+
+        relative_key = key[len(self.ozone_prefix) :]
+        return f"{self.s3_prefix}{relative_key}"
+
+    def _copy_single_key(
+        self,
+        key: str,
+        ozone_hook: OzoneS3Hook,
+        dest_client: object,
+    ) -> bool:
+        """Copy one key and return True on success."""
+        try:
+            dest_key = self._build_dest_key(key)
+            source_path = f"ozone://{self.ozone_bucket}/{key}"
+            dest_path = f"s3://{self.s3_bucket}/{dest_key}"
+            self.log.debug("Copying key: %s -> %s", source_path, dest_path)
+            source_obj = ozone_hook.get_key_with_retry(key, self.ozone_bucket)
+            s3_client.load_file_obj(
+                dest_client,
+                source_obj.get()["Body"],
+                dest_key,
+                self.s3_bucket,
+                replace=True,
+                transfer_config=self._parallel_transfer_config,
+            )
+            self.log.debug("Successfully copied key: %s", key)
+            return True
+        except (AirflowException, ClientError, BotoCoreError, OSError, ValueError) as err:
+            self.log.error(
+                "Failed to copy key: %s (error_type=%s, error=%s)",
+                key,
+                type(err).__name__,
+                str(err),
+            )
+            return False
+
+    def _transfer_keys_parallel(
+        self,
+        keys_to_copy: list[str],
+        ozone_hook: OzoneS3Hook,
+        dest_client: object,
+    ) -> tuple[int, int]:
+        """Transfer keys with optional parallel execution and return (transferred, failed)."""
+        if len(keys_to_copy) == 1:
+            self.log.debug("Single key transfer, using sequential mode")
+            return (1, 0) if self._copy_single_key(keys_to_copy[0], ozone_hook, dest_client) else (0, 1)
+
+        self.log.info(
+            "Starting parallel bulk transfer of %d key(s) using %d worker(s)",
+            len(keys_to_copy),
+            self.max_workers,
+        )
+        transferred_count = 0
+        failed_count = 0
+
+        copy_key = partial(self._copy_single_key, ozone_hook=ozone_hook, dest_client=dest_client)
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            for completed, is_success in enumerate(executor.map(copy_key, keys_to_copy), start=1):
+                if is_success:
+                    transferred_count += 1
+                else:
+                    failed_count += 1
+
+                if (
+                    len(keys_to_copy) > KEY_LOG_PREVIEW_LIMIT
+                    and completed % max(1, len(keys_to_copy) // PROGRESS_LOG_STEPS) == 0
+                ):
+                    progress = (completed / len(keys_to_copy)) * 100
+                    self.log.info(
+                        "Transfer progress: %.1f%% (%d/%d keys completed)",
+                        progress,
+                        completed,
+                        len(keys_to_copy),
+                    )
+
+        return transferred_count, failed_count
+
     def execute(self, context: Context):
         self.log.info("Starting Ozone to S3 data transfer operation")
         self.log.info("Source: ozone://%s/%s", self.ozone_bucket, self.ozone_prefix)
@@ -104,13 +194,7 @@ class OzoneToS3Operator(BaseOperator):
         self.log.debug("Ozone connection: %s, S3 connection: %s", self.ozone_conn_id, self.s3_conn_id)
         self.log.info("Using parallel transfer with %d worker(s) for bulk operations", self.max_workers)
 
-        self.log.debug("Initializing connection pools for Ozone and destination S3")
-        ozone_hook = OzoneS3Hook(ozone_conn_id=self.ozone_conn_id)
-        dest_conn = BaseHook().get_connection(self.s3_conn_id)
-        dest_client = s3_client.get_s3_client(dest_conn)
-
-        ozone_hook.get_conn()
-        self.log.debug("Connection pools initialized and ready for parallel operations")
+        ozone_hook, dest_client = self._init_clients()
 
         self.log.info("Listing keys in Ozone bucket: %s (prefix: %s)", self.ozone_bucket, self.ozone_prefix)
         keys_to_copy = ozone_hook.list_keys_with_retry(self.ozone_bucket, prefix=self.ozone_prefix)
@@ -121,81 +205,23 @@ class OzoneToS3Operator(BaseOperator):
                 self.ozone_bucket,
                 self.ozone_prefix,
             )
-            return
+            return {"transferred": 0, "failed": 0, "total": 0}
 
         self.log.info("Found %d key(s) to transfer from Ozone to S3", len(keys_to_copy))
-        self.log.debug("Keys to transfer: %s", keys_to_copy[:10])  # Log first 10 keys
-        if len(keys_to_copy) > 10:
-            self.log.debug("... and %d more keys", len(keys_to_copy) - 10)
+        self.log.debug("Keys to transfer: %s", keys_to_copy[:KEY_LOG_PREVIEW_LIMIT])
+        if len(keys_to_copy) > KEY_LOG_PREVIEW_LIMIT:
+            self.log.debug("... and %d more keys", len(keys_to_copy) - KEY_LOG_PREVIEW_LIMIT)
 
-        transferred_count = 0
-        failed_count = 0
-        count_lock = Lock()
-
-        def copy_single_key(key: str) -> tuple[str, bool, str]:
-            dest_key = key.replace(self.ozone_prefix, self.s3_prefix, 1)
-            source_path = f"ozone://{self.ozone_bucket}/{key}"
-            dest_path = f"s3://{self.s3_bucket}/{dest_key}"
-
-            try:
-                self.log.debug("Copying key: %s -> %s", source_path, dest_path)
-                source_obj = ozone_hook.get_key_with_retry(key, self.ozone_bucket)
-                s3_client.load_file_obj(
-                    dest_client, source_obj.get()["Body"], dest_key, self.s3_bucket, replace=True
-                )
-                self.log.debug("Successfully copied key: %s", key)
-                return (key, True, "")
-            except Exception as e:
-                error_msg = str(e)
-                self.log.error("Failed to copy key: %s (error: %s)", key, error_msg)
-                return (key, False, error_msg)
-
-        if len(keys_to_copy) == 1:
-            self.log.debug("Single key transfer, using sequential mode")
-            _, success, _ = copy_single_key(keys_to_copy[0])
-            if success:
-                transferred_count += 1
-            else:
-                failed_count += 1
-        else:
-            self.log.info(
-                "Starting parallel bulk transfer of %d key(s) using %d worker(s)",
-                len(keys_to_copy),
-                self.max_workers,
-            )
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                future_to_key = {executor.submit(copy_single_key, key): key for key in keys_to_copy}
-
-                completed = 0
-                for future in as_completed(future_to_key):
-                    completed += 1
-                    _, success, _ = future.result()
-
-                    with count_lock:
-                        if success:
-                            transferred_count += 1
-                        else:
-                            failed_count += 1
-
-                    if len(keys_to_copy) > 10 and completed % max(1, len(keys_to_copy) // 10) == 0:
-                        progress = (completed / len(keys_to_copy)) * 100
-                        self.log.info(
-                            "Transfer progress: %.1f%% (%d/%d keys completed)",
-                            progress,
-                            completed,
-                            len(keys_to_copy),
-                        )
-
-            self.log.info("Transfer operation completed")
-            self.log.info(
-                "Successfully transferred: %d key(s), Failed: %d key(s)", transferred_count, failed_count
-            )
+        transferred_count, failed_count = self._transfer_keys_parallel(keys_to_copy, ozone_hook, dest_client)
+        self.log.info("Transfer operation completed")
+        self.log.info(
+            "Successfully transferred: %d key(s), Failed: %d key(s)", transferred_count, failed_count
+        )
 
         if failed_count > 0:
-            self.log.warning("Some keys failed to transfer. Check logs above for details.")
-
-        if failed_count > 0 and transferred_count == 0:
-            raise AirflowException(f"All {failed_count} key(s) failed to transfer. Check logs for details.")
+            raise AirflowException(
+                f"Failed to transfer {failed_count} of {len(keys_to_copy)} key(s). Check logs for details."
+            )
 
         return {
             "transferred": transferred_count,

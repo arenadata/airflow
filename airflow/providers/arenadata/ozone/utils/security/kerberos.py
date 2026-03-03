@@ -21,11 +21,14 @@ import logging
 import os
 import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 
+from airflow.providers.arenadata.ozone.utils.common import run_subprocess
 from airflow.providers.arenadata.ozone.utils.security.secret_resolver import get_secret_value
 from airflow.utils.log.secrets_masker import mask_secret
 
 log = logging.getLogger(__name__)
+DEFAULT_OZONE_CONF_DIR = "ozone-conf"
 
 
 def _kerberos_principal_keytab_from_extra(
@@ -148,17 +151,22 @@ def kinit_with_keytab(principal: str, keytab: str, krb5_conf: str | None = None)
         log.warning("Kerberos principal or keytab not provided, skipping kinit")
         return False
 
-    if not os.path.exists(keytab):
+    if not Path(keytab).exists():
         log.error("Keytab file not found: %s", keytab)
         return False
 
     try:
         cmd = ["kinit", "-kt", keytab, principal]
-        env = os.environ.copy()
-        if krb5_conf and os.path.exists(krb5_conf):
-            env["KRB5_CONFIG"] = krb5_conf
+        env_overrides: dict[str, str] = {}
+        if krb5_conf and Path(krb5_conf).exists():
+            env_overrides["KRB5_CONFIG"] = krb5_conf
 
-        subprocess.run(cmd, capture_output=True, text=True, check=True, env=env, timeout=30)
+        run_subprocess(
+            cmd,
+            env_overrides=env_overrides or None,
+            timeout=30,
+            check=True,
+        )
         log.info("Successfully authenticated with Kerberos: %s", principal)
         return True
     except subprocess.CalledProcessError as e:
@@ -170,8 +178,8 @@ def kinit_with_keytab(principal: str, keytab: str, krb5_conf: str | None = None)
     except FileNotFoundError:
         log.error("kinit command not found. Ensure Kerberos client tools are installed.")
         return False
-    except Exception as e:
-        log.error("Unexpected error during kinit: %s", str(e))
+    except OSError as e:
+        log.error("OS error during kinit: %s", str(e))
         return False
 
 
@@ -240,7 +248,7 @@ def apply_kerberos_env_vars(
             or overrides.get("HADOOP_CONF_DIR")
             or base_env.get("OZONE_CONF_DIR")
             or base_env.get("HADOOP_CONF_DIR")
-            or "/opt/airflow/ozone-conf"
+            or DEFAULT_OZONE_CONF_DIR
         )
         overrides.setdefault("HADOOP_CONF_DIR", conf_dir)
         overrides.setdefault("OZONE_CONF_DIR", conf_dir)

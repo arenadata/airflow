@@ -18,8 +18,11 @@
 Ozone snapshot backup
 ====================
 
-``OzoneBackupOperator`` creates an Ozone snapshot of a bucket using the Native CLI.
-The operation is idempotent: if the snapshot already exists, it is treated as success.
+``OzoneBackupOperator`` creates an Ozone snapshot of a bucket using the Native CLI hook
+(``OzoneAdminHook.run_cli``).
+The operation is idempotent: if Ozone returns ``FILE_ALREADY_EXISTS`` in CLI stderr,
+or a human-readable ``snapshot already exists`` marker (case-insensitive),
+the snapshot is treated as already created and the task succeeds.
 
 Operator
 --------

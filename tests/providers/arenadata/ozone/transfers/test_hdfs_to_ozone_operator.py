@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
 
 
@@ -48,3 +50,13 @@ class TestHdfsToOzoneOperator:
         mock_execute_distcp.assert_called_once()
         call_args = mock_execute_distcp.call_args[0][0]
         assert call_args == expected_cmd
+
+    def test_init_invalid_optional_conn_type(self):
+        """hdfs_conn_id should reject non-string values when provided."""
+        with pytest.raises(ValueError, match="hdfs_conn_id parameter cannot be an empty string"):
+            HdfsToOzoneOperator(
+                task_id="hdfs_to_ozone_test_invalid",
+                source_path="hdfs://nn:8020/user/data",
+                dest_path="ofs://om:9862/vol1/bucket1/data",
+                hdfs_conn_id=123,  # type: ignore[arg-type]
+            )

@@ -34,7 +34,7 @@ its client configuration on all Airflow workers before running Ozone DAGs.
 Default Connection IDs
 ----------------------
 
-* ``ozone_default`` is used by ``OzoneHook`` / ``OzoneFsHook`` by default.
+* ``ozone_default`` is used by ``OzoneCliHook`` / ``OzoneFsHook`` by default.
 * ``ozone_admin_default`` is used by ``OzoneAdminHook`` by default.
 
 Configuring the Connection
@@ -89,7 +89,7 @@ Ozone S3 Gateway connection
 
 S3 Gateway operations use the dedicated ``ozone_s3`` connection type. The provider does **not**
 depend on the Amazon S3 hook; instead, it builds a boto3 S3 client directly from the connection
-via the internal ``hooks/_s3_client.py`` layer.
+via the internal ``utils/s3_client.py`` layer.
 
 Default Connection ID used by this provider:
 
@@ -103,3 +103,11 @@ Configure the connection fields as:
 
   * ``endpoint_url``: e.g. ``"http://s3g:9878"`` or ``"https://s3g:9879"``.
   * ``verify``: ``false`` (development only), ``true`` (default), or a path to a CA bundle.
+
+Testing connections in Airflow UI
+---------------------------------
+
+Both connection types implement ``test_connection()`` and can be checked from the Airflow UI:
+
+* ``ozone``: runs a minimal CLI command against Ozone Manager.
+* ``ozone_s3``: performs a minimal S3 API call to the configured endpoint.

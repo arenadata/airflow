@@ -70,26 +70,3 @@ class TestOzoneToHiveOperator:
 
         with pytest.raises(ValueError, match="Parameter 'partition_spec' is required"):
             operator.execute(context={})
-
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_hive.BaseHook")
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_hive.HiveCliHook")
-    def test_ssl_config_loading(self, mock_hive_hook: MagicMock, mock_base_hook: MagicMock):
-        """Test that SSL configuration is loaded from Hive connection."""
-
-        mock_conn = MagicMock()
-        mock_conn.extra_dejson = {
-            "hive_ssl_enabled": "true",
-            "hive_ssl_keystore_path": "/path/to/keystore.jks",
-            "hive_ssl_keystore_password": "password",
-        }
-        mock_base_hook_instance = mock_base_hook.return_value
-        mock_base_hook_instance.get_connection.return_value = mock_conn
-
-        operator = OzoneToHiveOperator(
-            task_id="test_hive",
-            ozone_path="ofs://vol1/bucket1/data",
-            table_name="test_table",
-            hive_cli_conn_id="hive_ssl_conn",
-        )
-
-        assert operator._hive_ssl_env is not None

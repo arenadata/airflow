@@ -20,6 +20,10 @@ Ozone to S3 (parallel backup)
 
 ``OzoneToS3Operator`` copies objects from an Ozone S3 bucket to an external S3 bucket.
 It uses parallel workers to speed up bulk transfers.
+The task fails if at least one object transfer fails (strict consistency mode).
+
+When ``ozone_prefix`` is set, each discovered source key must start with this prefix.
+If at least one key violates this contract, the task fails (no implicit mid-string replacement).
 
 Operator
 --------
@@ -30,7 +34,16 @@ Connections
 -----------
 
 * Source (Ozone S3 Gateway): ``ozone_s3`` connection id (default ``ozone_s3_default``) with ``endpoint_url`` pointing to S3G.
-* Target (external S3): AWS connection id (default ``aws_default``).
+* Target (external S3-compatible storage): connection id (default ``aws_default``) with access key, secret key and optional ``endpoint_url`` in Extra.
+
+Result contract
+---------------
+
+The operator returns a dict in XCom with a stable schema:
+
+* ``transferred``: number of successfully copied keys
+* ``failed``: number of failed keys
+* ``total``: total number of discovered source keys
 
 Example
 -------

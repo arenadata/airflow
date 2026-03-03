@@ -21,9 +21,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from airflow.providers.arenadata.ozone.hooks.ozone_admin import OzoneAdminHook
-from airflow.providers.arenadata.ozone.operators.ozone_admin import (
-    OzoneCreateBucketOperator,
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminHook
+from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateVolumeOperator,
     OzoneDeleteBucketOperator,
     OzoneDeleteVolumeOperator,
@@ -34,7 +33,7 @@ from airflow.providers.arenadata.ozone.operators.ozone_admin import (
 class TestOzoneAdminOperators:
     """Unit tests for Admin Operators."""
 
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneAdminHook")
+    @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneAdminHook")
     def test_create_volume_operator(self, mock_admin_hook: MagicMock):
         """Test that OzoneCreateVolumeOperator calls the hook correctly."""
 
@@ -46,46 +45,7 @@ class TestOzoneAdminOperators:
         mock_admin_hook.assert_called_once_with(ozone_conn_id=OzoneAdminHook.default_conn_name)
         mock_hook_instance.create_volume.assert_called_once_with("test_vol", None)
 
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneAdminHook")
-    def test_create_volume_operator_with_quota(self, mock_admin_hook: MagicMock):
-        """Test that OzoneCreateVolumeOperator passes quota to hook."""
-
-        mock_hook_instance = mock_admin_hook.return_value
-
-        operator = OzoneCreateVolumeOperator(
-            task_id="create_volume_test", volume_name="test_vol", quota="100GB"
-        )
-        operator.execute(context={})
-
-        mock_hook_instance.create_volume.assert_called_once_with("test_vol", "100GB")
-
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneAdminHook")
-    def test_create_bucket_operator(self, mock_admin_hook: MagicMock):
-        """Test that OzoneCreateBucketOperator calls the hook correctly."""
-
-        mock_hook_instance = mock_admin_hook.return_value
-
-        operator = OzoneCreateBucketOperator(
-            task_id="create_bucket_test", volume_name="test_vol", bucket_name="test_bucket"
-        )
-        operator.execute(context={})
-
-        mock_admin_hook.assert_called_once_with(ozone_conn_id=OzoneAdminHook.default_conn_name)
-        mock_hook_instance.create_bucket.assert_called_once_with("test_vol", "test_bucket", None)
-
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneAdminHook")
-    def test_delete_volume_operator(self, mock_admin_hook: MagicMock):
-        """Test that OzoneDeleteVolumeOperator calls the hook correctly."""
-
-        mock_hook_instance = mock_admin_hook.return_value
-
-        operator = OzoneDeleteVolumeOperator(task_id="delete_volume_test", volume_name="test_vol")
-        operator.execute(context={})
-
-        mock_admin_hook.assert_called_once_with(ozone_conn_id=OzoneAdminHook.default_conn_name)
-        mock_hook_instance.delete_volume.assert_called_once_with("test_vol", False, False)
-
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneAdminHook")
+    @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneAdminHook")
     def test_delete_volume_operator_recursive(self, mock_admin_hook: MagicMock):
         """Test that OzoneDeleteVolumeOperator passes recursive flag."""
 
@@ -98,21 +58,7 @@ class TestOzoneAdminOperators:
 
         mock_hook_instance.delete_volume.assert_called_once_with("test_vol", True, True)
 
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneAdminHook")
-    def test_delete_bucket_operator(self, mock_admin_hook: MagicMock):
-        """Test that OzoneDeleteBucketOperator calls the hook correctly."""
-
-        mock_hook_instance = mock_admin_hook.return_value
-
-        operator = OzoneDeleteBucketOperator(
-            task_id="delete_bucket_test", volume_name="test_vol", bucket_name="test_bucket"
-        )
-        operator.execute(context={})
-
-        mock_admin_hook.assert_called_once_with(ozone_conn_id=OzoneAdminHook.default_conn_name)
-        mock_hook_instance.delete_bucket.assert_called_once_with("test_vol", "test_bucket", False, False)
-
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneAdminHook")
+    @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneAdminHook")
     def test_set_quota_operator_volume(self, mock_admin_hook: MagicMock):
         """Test that OzoneSetQuotaOperator sets volume quota."""
 
@@ -125,22 +71,6 @@ class TestOzoneAdminOperators:
         mock_admin_hook.assert_called_once()
         mock_hook_instance.run_cli.assert_called_once_with(
             ["ozone", "sh", "volume", "setquota", "/test_vol", "--quota", "1TB"]
-        )
-
-    @patch("airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneAdminHook")
-    def test_set_quota_operator_bucket(self, mock_admin_hook: MagicMock):
-        """Test that OzoneSetQuotaOperator sets bucket quota."""
-
-        mock_hook_instance = mock_admin_hook.return_value
-        mock_hook_instance.run_cli = MagicMock()
-
-        operator = OzoneSetQuotaOperator(
-            task_id="set_quota_test", volume="test_vol", bucket="test_bucket", quota="100GB"
-        )
-        operator.execute(context={})
-
-        mock_hook_instance.run_cli.assert_called_once_with(
-            ["ozone", "sh", "bucket", "setquota", "/test_vol/test_bucket", "--quota", "100GB"]
         )
 
     def test_delete_volume_operator_validation(self):

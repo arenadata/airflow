@@ -15,3 +15,11 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+
+"""Ozone sensors."""
+
+from __future__ import annotations
+
+from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor, OzoneS3KeySensor
+
+__all__ = ["OzoneKeySensor", "OzoneS3KeySensor"]

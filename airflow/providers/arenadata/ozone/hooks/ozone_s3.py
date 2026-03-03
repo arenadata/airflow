@@ -18,6 +18,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from functools import cached_property
 
 from botocore.exceptions import BotoCoreError, ClientError
 from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -25,7 +27,8 @@ from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_afte
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.providers.arenadata.ozone.utils import s3_client
-from airflow.providers.arenadata.ozone.utils.s3_compat import S3ErrorCode, map_s3_error_to_ozone
+from airflow.providers.arenadata.ozone.utils.s3_client import S3ErrorCode, map_s3_error_to_ozone
+from airflow.providers.arenadata.ozone.utils.security import is_secret_ref
 
 # Get the logger for tenacity to use
 log = logging.getLogger(__name__)
@@ -50,33 +53,86 @@ class OzoneS3Hook(BaseHook):
 
     def __init__(self, ozone_conn_id: str = default_conn_name, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._ozone_conn_id = ozone_conn_id.strip()
-        self._client = None
-        self._verify = None
-        self._security_details_logged = False
-
+        self._ozone_conn_id = ozone_conn_id
         self.log.debug("Initializing OzoneS3Hook with connection ID: %s", self._ozone_conn_id)
+
+    @classmethod
+    def get_ui_field_behaviour(cls) -> dict[str, object]:
+        """Describe Ozone S3 connection extras in Airflow UI."""
+        return {
+            "hidden_fields": ["schema"],
+            "relabeling": {"host": "S3 Endpoint Host", "port": "S3 Endpoint Port"},
+            "placeholders": {
+                "login": "access-key",
+                "password": "secret-key or secret://kv/ozone/secret-key",
+                "extra": (
+                    '{"endpoint_url": "https://ozone-s3g:9879", "verify": true, '
+                    '"addressing_style": "path", "max_attempts": 3, "retries_mode": "standard"}'
+                ),
+            },
+        }
+
+    def test_connection(self) -> tuple[bool, str]:
+        """Run a minimal S3 call to verify endpoint reachability and credentials."""
         try:
-            conn = self.get_connection(self._ozone_conn_id)
-            extra = conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
-            self._verify = extra.get("verify")
-        except Exception:
-            self._verify = None
+            client = self.get_conn()
+            client.list_buckets()
+            return True, "Ozone S3 connection test succeeded."
+        except ClientError as err:
+            return False, map_s3_error_to_ozone(err)
+        except BotoCoreError as err:
+            return False, f"Ozone S3 connection test failed: {err}"
+        except Exception as err:
+            return False, f"Ozone S3 connection test failed: {err}"
+
+    @cached_property
+    def _connection(self):
+        conn = self.get_connection(self._ozone_conn_id)
+        self._log_connection_security_details(conn)
+        return conn
+
+    @cached_property
+    def _client(self):
+        return s3_client.get_s3_client(self._connection)
+
+    def _raise_retryable_s3_error(self, err: Exception, action: str) -> None:
+        """Normalize boto errors into AirflowException so tenacity can retry consistently."""
+        if isinstance(err, ClientError):
+            human_msg = map_s3_error_to_ozone(err)
+            self.log.warning("Failed to %s (will retry): %s", action, human_msg)
+            raise AirflowException(human_msg)
+        if isinstance(err, BotoCoreError):
+            self.log.warning("Failed to %s (will retry, boto error): %s", action, str(err))
+            raise AirflowException(f"Failed to {action} due to boto error: {str(err)}")
+        raise err
+
+    def _run_retryable_s3_operation(
+        self,
+        *,
+        action: str,
+        operation: Callable[[], object],
+        success_message: str | None = None,
+    ) -> object | None:
+        """Run one S3 operation with unified retryable error handling."""
+        try:
+            result = operation()
+            if success_message:
+                self.log.debug("%s", success_message)
+            return result
+        except (ClientError, BotoCoreError) as err:
+            self._raise_retryable_s3_error(err, action)
+        return None
 
     def _log_connection_security_details(self, conn) -> None:
         """Log secrets backend and SSL details lazily after connection resolution."""
-        if self._security_details_logged:
-            return
-
-        if conn.login and str(conn.login).startswith("secret://"):
+        if is_secret_ref(conn.login):
             self.log.info("Using Secrets Backend for S3 access key (conn_id=%s)", self._ozone_conn_id)
-        if conn.password and str(conn.password).startswith("secret://"):
+        if is_secret_ref(conn.password):
             self.log.info("Using Secrets Backend for S3 secret key (conn_id=%s)", self._ozone_conn_id)
 
-        extra = conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
-        endpoint_url = str(extra.get("endpoint_url", "") or "")
-        verify = extra.get("verify")
-        self._verify = verify
+        parsed_config = s3_client.parse_s3_connection_config(conn)
+        endpoint_url = parsed_config.endpoint_url or ""
+        verify = parsed_config.verify
 
         if endpoint_url.startswith("https://"):
             self.log.info("SSL/TLS enabled: Using HTTPS endpoint: %s", endpoint_url)
@@ -92,14 +148,8 @@ class OzoneS3Hook(BaseHook):
         elif endpoint_url.startswith("http://"):
             self.log.warning("Using unencrypted HTTP connection. Consider using HTTPS for production.")
 
-        self._security_details_logged = True
-
     def get_conn(self):
         """Return cached boto3 S3 client (built from connection)."""
-        if self._client is None:
-            conn = self.get_connection(self._ozone_conn_id)
-            self._log_connection_security_details(conn)
-            self._client = s3_client.get_s3_client(conn)
         return self._client
 
     def get_key(self, key: str, bucket_name: str):
@@ -159,71 +209,31 @@ class OzoneS3Hook(BaseHook):
     def get_key_with_retry(self, key: str, bucket_name: str):
         """Get S3 key with retry logic for transient network errors."""
         self.log.debug("Getting S3 key with retry: s3://%s/%s", bucket_name, key)
-        try:
-            key_obj = self.get_key(key, bucket_name)
-            self.log.debug("Successfully retrieved S3 key: s3://%s/%s", bucket_name, key)
-            return key_obj
-        except ClientError as e:
-            human_msg = map_s3_error_to_ozone(e)
-            self.log.warning(
-                "Failed to get S3 key (will retry): s3://%s/%s - %s", bucket_name, key, human_msg
-            )
-            raise AirflowException(human_msg)
-        except BotoCoreError as e:
-            self.log.warning(
-                "Failed to get S3 key (will retry, low-level boto error): s3://%s/%s - %s",
-                bucket_name,
-                key,
-                str(e),
-            )
-            raise AirflowException(f"Failed to get S3 key due to boto error: {str(e)}")
+        return self._run_retryable_s3_operation(
+            action=f"get S3 key s3://{bucket_name}/{key}",
+            operation=lambda: self.get_key(key, bucket_name),
+            success_message=f"Successfully retrieved S3 key: s3://{bucket_name}/{key}",
+        )
 
     @_s3_retryable
     def load_file_obj_with_retry(self, file_obj, key: str, bucket_name: str, replace: bool = False):
         """Load file object to S3 with retry logic."""
         self.log.debug("Loading file object to S3 with retry: s3://%s/%s", bucket_name, key)
-        try:
-            self.load_file_obj(file_obj, key, bucket_name, replace=replace)
-            self.log.debug("Successfully loaded file object to S3: s3://%s/%s", bucket_name, key)
-        except ClientError as e:
-            human_msg = map_s3_error_to_ozone(e)
-            self.log.warning(
-                "Failed to load file object to S3 (will retry): s3://%s/%s - %s",
-                bucket_name,
-                key,
-                human_msg,
-            )
-            raise AirflowException(human_msg)
-        except BotoCoreError as e:
-            self.log.warning(
-                "Failed to load file object to S3 (will retry, boto error): s3://%s/%s - %s",
-                bucket_name,
-                key,
-                str(e),
-            )
-            raise AirflowException(f"Failed to load file object to S3: {str(e)}")
+        self._run_retryable_s3_operation(
+            action=f"upload file object to s3://{bucket_name}/{key}",
+            operation=lambda: self.load_file_obj(file_obj, key, bucket_name, replace=replace),
+            success_message=f"Successfully loaded file object to S3: s3://{bucket_name}/{key}",
+        )
 
     @_s3_retryable
     def load_string_with_retry(self, string_data: str, key: str, bucket_name: str, replace: bool = False):
         """Load string to S3 with retry logic."""
         self.log.debug("Loading string to S3 with retry: s3://%s/%s", bucket_name, key)
-        try:
-            self.load_string(string_data, key, bucket_name, replace=replace)
-            self.log.debug("Successfully loaded string to S3: s3://%s/%s", bucket_name, key)
-        except ClientError as e:
-            human_msg = map_s3_error_to_ozone(e)
-            self.log.warning(
-                "Failed to load string to S3 (will retry): s3://%s/%s - %s", bucket_name, key, human_msg
-            )
-            raise AirflowException(human_msg)
-        except BotoCoreError as e:
-            self.log.warning(
-                "Failed to load string to S3 (will retry, boto error): s3://%s/%s - %s",
-                bucket_name,
-                key,
-                str(e),
-            )
-            raise AirflowException(f"Failed to load string to S3: {str(e)}")
+        self._run_retryable_s3_operation(
+            action=f"upload string to s3://{bucket_name}/{key}",
+            operation=lambda: self.load_string(string_data, key, bucket_name, replace=replace),
+            success_message=f"Successfully loaded string to S3: s3://{bucket_name}/{key}",
+        )
 
     @_s3_retryable
     def create_bucket_with_retry(self, bucket_name: str):
@@ -232,44 +242,26 @@ class OzoneS3Hook(BaseHook):
         try:
             self.create_bucket(bucket_name=bucket_name)
             self.log.debug("Successfully created S3 bucket: %s", bucket_name)
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "") if hasattr(e, "response") else ""
+        except ClientError as err:
+            error_code = err.response.get("Error", {}).get("Code", "") if hasattr(err, "response") else ""
             if error_code in (S3ErrorCode.BUCKET_ALREADY_EXISTS, S3ErrorCode.BUCKET_ALREADY_OWNED_BY_YOU) or (
-                error_code == "" and S3ErrorCode.BUCKET_ALREADY_OWNED_BY_YOU.value in str(e)
+                error_code == "" and S3ErrorCode.BUCKET_ALREADY_OWNED_BY_YOU.value in str(err)
             ):
                 self.log.info("Bucket already exists: %s", bucket_name)
                 return
-            human_msg = map_s3_error_to_ozone(e)
-            self.log.warning("Failed to create S3 bucket (will retry): %s - %s", bucket_name, human_msg)
-            raise AirflowException(human_msg)
-        except BotoCoreError as e:
-            self.log.warning(
-                "Failed to create S3 bucket (will retry, boto error): %s - %s", bucket_name, str(e)
-            )
-            raise AirflowException(f"Failed to create S3 bucket due to boto error: {str(e)}")
+            self._raise_retryable_s3_error(err, f"create S3 bucket {bucket_name}")
+        except BotoCoreError as err:
+            self._raise_retryable_s3_error(err, f"create S3 bucket {bucket_name}")
 
     @_s3_retryable
     def list_keys_with_retry(self, bucket_name: str, prefix: str = ""):
         """List S3 keys with retry logic."""
         self.log.debug("Listing S3 keys with retry: bucket=%s, prefix=%s", bucket_name, prefix)
-        try:
-            keys = self.list_keys(bucket_name=bucket_name, prefix=prefix)
-            self.log.debug("Successfully listed %d key(s) from S3 bucket: %s", len(keys), bucket_name)
-            return keys
-        except ClientError as e:
-            human_msg = map_s3_error_to_ozone(e)
-            self.log.warning(
-                "Failed to list S3 keys (will retry): bucket=%s, prefix=%s - %s",
-                bucket_name,
-                prefix,
-                human_msg,
-            )
-            raise AirflowException(human_msg)
-        except BotoCoreError as e:
-            self.log.warning(
-                "Failed to list S3 keys (will retry, boto error): bucket=%s, prefix=%s - %s",
-                bucket_name,
-                prefix,
-                str(e),
-            )
-            raise AirflowException(f"Failed to list S3 keys due to boto error: {str(e)}")
+        keys = self._run_retryable_s3_operation(
+            action=f"list S3 keys in bucket={bucket_name}, prefix={prefix}",
+            operation=lambda: self.list_keys(bucket_name=bucket_name, prefix=prefix),
+        )
+        if keys is None:
+            return []
+        self.log.debug("Successfully listed %d key(s) from S3 bucket: %s", len(keys), bucket_name)
+        return keys

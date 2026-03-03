@@ -34,6 +34,7 @@ versions:
 dependencies:
   - apache-airflow>=2.10.3
   - apache-airflow-providers-apache-hdfs
+  - apache-airflow-providers-apache-hive
   - boto3>=1.35.0
 
 integrations:
@@ -45,23 +46,17 @@ hooks:
   - integration-name: Apache Ozone
     python-modules:
       - airflow.providers.arenadata.ozone.hooks.ozone
-      - airflow.providers.arenadata.ozone.hooks.ozone_admin
-      - airflow.providers.arenadata.ozone.hooks.ozone_fs
       - airflow.providers.arenadata.ozone.hooks.ozone_s3
 
 operators:
   - integration-name: Apache Ozone
     python-modules:
-      - airflow.providers.arenadata.ozone.operators.ozone_admin
-      - airflow.providers.arenadata.ozone.operators.ozone_fs
-      - airflow.providers.arenadata.ozone.operators.ozone_s3
-      - airflow.providers.arenadata.ozone.operators.ozone_transfer
+      - airflow.providers.arenadata.ozone.operators.ozone
 
 sensors:
   - integration-name: Apache Ozone
     python-modules:
       - airflow.providers.arenadata.ozone.sensors.ozone
-      - airflow.providers.arenadata.ozone.sensors.ozone_s3
 
 transfers:
   - source-integration-name: Hadoop Distributed File System (HDFS)
@@ -78,7 +73,7 @@ transfers:
     python-module: airflow.providers.arenadata.ozone.transfers.ozone_to_s3
 
 connection-types:
-  - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone.OzoneHook
+  - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliHook
     connection-type: ozone
   - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone_s3.OzoneS3Hook
     connection-type: ozone_s3

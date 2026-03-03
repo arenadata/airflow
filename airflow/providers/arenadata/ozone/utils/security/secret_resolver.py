@@ -25,6 +25,11 @@ from airflow.utils.log.secrets_masker import mask_secret
 log = logging.getLogger(__name__)
 
 
+def is_secret_ref(value: object) -> bool:
+    """Return True when value is a secret:// reference."""
+    return isinstance(value, str) and value.startswith("secret://")
+
+
 def get_secret_value(value: str, conn_id: str | None = None) -> str:
     """
     Resolve secret from Airflow Secrets Backend or return value as-is.
@@ -43,24 +48,23 @@ def get_secret_value(value: str, conn_id: str | None = None) -> str:
     if not value:
         return value
 
-    if not isinstance(value, str) or not value.startswith("secret://"):
+    if not is_secret_ref(value):
         return value
 
-    try:
-        for backend in ensure_secrets_loaded():
+    for backend in ensure_secrets_loaded():
+        try:
             secret_value = backend.get_config(value)
-            if secret_value is not None:
-                if conn_id:
-                    log.debug(
-                        "Resolved secret from Secrets Backend for connection %s: %s",
-                        conn_id,
-                        value.split("/")[-1] if "/" in value else value,
-                    )
-                mask_secret(secret_value)
-                return secret_value
-        raise ValueError(f"Secret not found: {value}")
-    except ValueError:
-        raise
-    except Exception as e:
-        log.error("Failed to retrieve secret from Secrets Backend: %s - %s", value, str(e))
-        raise ValueError(f"Failed to retrieve secret '{value}': {str(e)}") from e
+        except (AttributeError, TypeError) as err:
+            log.error("Secrets Backend returned invalid response for %s: %s", value, str(err))
+            raise ValueError(f"Failed to retrieve secret '{value}': {err}") from err
+
+        if secret_value is not None:
+            if conn_id:
+                log.debug(
+                    "Resolved secret from Secrets Backend for connection %s: %s",
+                    conn_id,
+                    value.split("/")[-1] if "/" in value else value,
+                )
+            mask_secret(secret_value)
+            return secret_value
+    raise ValueError(f"Secret not found: {value}")

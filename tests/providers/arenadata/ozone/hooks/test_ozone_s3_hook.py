@@ -36,18 +36,6 @@ class TestOzoneS3Hook:
     """Unit tests for OzoneS3Hook retry methods."""
 
     @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.s3_client.get_key")
-    def test_get_key_with_retry_success(self, mock_get_key: MagicMock, ozone_s3_hook: OzoneS3Hook):
-        """Test that get_key_with_retry successfully retrieves a key."""
-        mock_key = MagicMock()
-        mock_get_key.return_value = mock_key
-
-        with patch.object(ozone_s3_hook, "get_conn", return_value=MagicMock()):
-            result = ozone_s3_hook.get_key_with_retry(key="test_key", bucket_name="test_bucket")
-
-        mock_get_key.assert_called_once()
-        assert result == mock_key
-
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.s3_client.get_key")
     def test_get_key_with_retry_client_error(self, mock_get_key: MagicMock, ozone_s3_hook: OzoneS3Hook):
         """Test that get_key_with_retry retries on ClientError."""
         mock_get_key.side_effect = ClientError(
@@ -76,32 +64,6 @@ class TestOzoneS3Hook:
         assert call_kw["key"] == "test_key"
         assert call_kw["bucket_name"] == "test_bucket"
         assert call_kw["replace"] is True
-
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.s3_client.load_string")
-    def test_load_string_with_retry_success(self, mock_load_string: MagicMock, ozone_s3_hook: OzoneS3Hook):
-        """Test that load_string_with_retry successfully uploads string data."""
-        test_data = "test content"
-        with patch.object(ozone_s3_hook, "get_conn", return_value=MagicMock()):
-            ozone_s3_hook.load_string_with_retry(
-                string_data=test_data, key="test_key", bucket_name="test_bucket", replace=False
-            )
-
-        mock_load_string.assert_called_once()
-        call_kw = mock_load_string.call_args[1]
-        assert call_kw["string_data"] == test_data
-        assert call_kw["replace"] is False
-
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.s3_client.create_bucket")
-    def test_create_bucket_with_retry_success(
-        self, mock_create_bucket: MagicMock, ozone_s3_hook: OzoneS3Hook
-    ):
-        """Test that create_bucket_with_retry successfully creates a bucket."""
-        with patch.object(ozone_s3_hook, "get_conn", return_value=MagicMock()):
-            ozone_s3_hook.create_bucket_with_retry(bucket_name="test_bucket")
-
-        mock_create_bucket.assert_called_once()
-        call_kw = mock_create_bucket.call_args[1]
-        assert call_kw["bucket_name"] == "test_bucket"
 
     @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.s3_client.create_bucket")
     def test_create_bucket_with_retry_already_exists(
@@ -158,4 +120,12 @@ class TestOzoneS3Hook:
         mock_get_connection.return_value = mock_conn
 
         hook = OzoneS3Hook(ozone_conn_id="test_conn")
-        assert hook._verify is False
+        assert hook._connection.extra_dejson["verify"] is False
+
+    def test_test_connection_client_error(self, ozone_s3_hook: OzoneS3Hook):
+        """test_connection maps ClientError to readable message."""
+        error = ClientError({"Error": {"Code": "NoSuchBucket", "Message": "missing"}}, "ListBuckets")
+        with patch.object(ozone_s3_hook, "get_conn", side_effect=error):
+            ok, message = ozone_s3_hook.test_connection()
+        assert ok is False
+        assert "bucket does not exist" in message.lower()

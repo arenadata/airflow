@@ -20,7 +20,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from botocore.exceptions import ClientError
 
 from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.transfers.ozone_to_s3 import OzoneToS3Operator
@@ -82,50 +81,61 @@ class TestOzoneToS3Operator:
         operator = OzoneToS3Operator(
             task_id="test_transfer", ozone_bucket="ozone_bucket", s3_bucket="s3_bucket"
         )
-        operator.execute(context={})
+        result = operator.execute(context={})
 
         mock_ozone_instance.list_keys_with_retry.assert_called_once()
-
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
-    def test_execute_all_keys_fail(self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock):
-        """Test that OzoneToS3Operator raises exception when all keys fail."""
-        mock_ozone_instance = mock_ozone_hook.return_value
-        mock_ozone_instance.list_keys_with_retry.return_value = ["data/file1.txt"]
-        mock_ozone_instance.get_key_with_retry.side_effect = ClientError(
-            {"Error": {"Code": "NoSuchKey", "Message": "Key not found"}}, "GetObject"
-        )
-
-        operator = OzoneToS3Operator(
-            task_id="test_transfer", ozone_bucket="ozone_bucket", s3_bucket="s3_bucket"
-        )
-
-        with pytest.raises(AirflowException, match=r"All .* key\(s\) failed to transfer"):
-            operator.execute(context={})
+        assert result == {"transferred": 0, "failed": 0, "total": 0}
 
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.load_file_obj")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
-    def test_execute_multiple_keys_parallel(
+    def test_execute_partial_failure_raises(
         self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock, mock_load_file_obj: MagicMock
     ):
-        """Test that OzoneToS3Operator handles multiple keys with parallel execution."""
+        """Task must fail when at least one key fails."""
         mock_ozone_instance = mock_ozone_hook.return_value
         mock_get_s3_client.return_value = MagicMock()
+        mock_ozone_instance.list_keys_with_retry.return_value = ["data/file1.txt", "data/file2.txt"]
 
-        keys = [f"data/file{i}.txt" for i in range(5)]
-        mock_ozone_instance.list_keys_with_retry.return_value = keys
-
-        mock_key_obj = MagicMock()
-        mock_body = Mock()
-        mock_body.read.return_value = b"test content"
-        mock_key_obj.get.return_value = {"Body": mock_body}
-        mock_ozone_instance.get_key_with_retry.return_value = mock_key_obj
+        ok_key_obj = MagicMock()
+        ok_body = Mock()
+        ok_body.read.return_value = b"ok-content"
+        ok_key_obj.get.return_value = {"Body": ok_body}
+        mock_ozone_instance.get_key_with_retry.side_effect = [ok_key_obj, AirflowException("boom")]
 
         operator = OzoneToS3Operator(
-            task_id="test_transfer", ozone_bucket="ozone_bucket", s3_bucket="s3_bucket", max_workers=3
+            task_id="test_transfer",
+            ozone_bucket="ozone_bucket",
+            s3_bucket="s3_bucket",
+            max_workers=1,
         )
-        operator.execute(context={})
 
-        assert mock_ozone_instance.get_key_with_retry.call_count == 5
-        assert mock_load_file_obj.call_count == 5
+        with pytest.raises(AirflowException, match=r"Failed to transfer 1 of 2 key\(s\)"):
+            operator.execute(context={})
+
+        assert mock_load_file_obj.call_count == 1
+
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.load_file_obj")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
+    def test_execute_prefix_mismatch_raises(
+        self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock, mock_load_file_obj: MagicMock
+    ):
+        """Key outside ozone_prefix must fail transfer."""
+        mock_ozone_instance = mock_ozone_hook.return_value
+        mock_get_s3_client.return_value = MagicMock()
+        mock_ozone_instance.list_keys_with_retry.return_value = ["other/file1.txt"]
+
+        operator = OzoneToS3Operator(
+            task_id="test_transfer",
+            ozone_bucket="ozone_bucket",
+            s3_bucket="s3_bucket",
+            ozone_prefix="data/",
+            s3_prefix="backup/",
+            max_workers=1,
+        )
+
+        with pytest.raises(AirflowException, match=r"Failed to transfer 1 of 1 key\(s\)"):
+            operator.execute(context={})
+
+        mock_load_file_obj.assert_not_called()

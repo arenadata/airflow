@@ -32,9 +32,6 @@ This operator requires installing the Hive provider:
 
 * ``apache-airflow-providers-apache-hive``
 
-The import is performed lazily so DAG parsing does not break if the Hive provider is not installed,
-but the task will fail at runtime with a clear error message.
-
 Example
 -------
 

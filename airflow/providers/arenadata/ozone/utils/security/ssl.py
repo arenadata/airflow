@@ -17,8 +17,10 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
+from airflow.providers.arenadata.ozone.utils.common import get_connection_extra, is_true_flag
 from airflow.providers.arenadata.ozone.utils.security.secret_resolver import get_secret_value
 from airflow.utils.log.secrets_masker import mask_secret
 
@@ -65,7 +67,7 @@ def _get_ozone_ssl_env(extra: dict[str, object], conn_id: str | None) -> dict[st
     """Build SSL env vars for Ozone Native CLI (ozone-site.xml mapping)."""
     env: dict[str, str] = {}
 
-    if extra.get("ozone_security_enabled") == "true" or extra.get("ozone.security.enabled") == "true":
+    if is_true_flag(extra, "ozone_security_enabled", "ozone.security.enabled"):
         env["OZONE_SECURITY_ENABLED"] = "true"
         env.update(
             _build_ssl_env(
@@ -91,7 +93,7 @@ def _get_hive_ssl_env(extra: dict[str, object], conn_id: str | None) -> dict[str
     """Build SSL env vars for Hive CLI (hive-site.xml mapping)."""
     env: dict[str, str] = {}
 
-    if extra.get("hive_ssl_enabled") == "true" or extra.get("hive.ssl.enabled") == "true":
+    if is_true_flag(extra, "hive_ssl_enabled", "hive.ssl.enabled"):
         env["HIVE_SSL_ENABLED"] = "true"
         env.update(
             _build_ssl_env(
@@ -113,7 +115,7 @@ def _get_hdfs_ssl_env(extra: dict[str, object], conn_id: str | None) -> dict[str
     """Build SSL env vars for HDFS clients (core-site.xml / hdfs-site.xml mapping)."""
     env: dict[str, str] = {}
 
-    if extra.get("hdfs_ssl_enabled") == "true" or extra.get("dfs.encrypt.data.transfer") == "true":
+    if is_true_flag(extra, "hdfs_ssl_enabled", "dfs.encrypt.data.transfer"):
         env["HDFS_SSL_ENABLED"] = "true"
         env.update(
             _build_ssl_env(
@@ -167,3 +169,26 @@ def apply_ssl_env_vars(
     env = existing_env.copy()
     env.update(env_vars)
     return env
+
+
+def load_ssl_env_from_connection(
+    conn: object,
+    *,
+    conn_id: str | None = None,
+    logger: logging.Logger | None = None,
+    enabled_flag_keys: tuple[str, ...] = (),
+) -> dict[str, str] | None:
+    """Build SSL env from connection extra with unified logging."""
+    extra = get_connection_extra(conn)
+    ssl_env_vars = get_ssl_env_vars(extra, conn_id=conn_id)
+    if not ssl_env_vars:
+        if logger:
+            logger.debug("No SSL/TLS configuration found in connection Extra")
+        return None
+
+    ssl_env = apply_ssl_env_vars(ssl_env_vars)
+    if logger:
+        logger.debug("SSL/TLS configuration loaded from connection: %s", list(ssl_env_vars.keys()))
+        if enabled_flag_keys and is_true_flag(extra, *enabled_flag_keys):
+            logger.info("SSL/TLS enabled for connection")
+    return ssl_env

@@ -23,8 +23,8 @@ Those operators perform data movement using the Native CLI.
 Operators
 ---------
 
-* ``airflow.providers.arenadata.ozone.operators.ozone_transfer.LocalFilesystemToOzoneOperator``
-* ``airflow.providers.arenadata.ozone.operators.ozone_transfer.OzoneToOzoneOperator``
+* ``airflow.providers.arenadata.ozone.operators.ozone.LocalFilesystemToOzoneOperator``
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneToOzoneOperator``
 
 Notes
 -----
@@ -38,7 +38,7 @@ Example
 .. code-block:: python
 
    from airflow import DAG
-   from airflow.providers.arenadata.ozone.operators.ozone_transfer import (
+   from airflow.providers.arenadata.ozone.operators.ozone import (
        LocalFilesystemToOzoneOperator,
        OzoneToOzoneOperator,
    )

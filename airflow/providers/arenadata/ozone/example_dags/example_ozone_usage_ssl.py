@@ -34,23 +34,20 @@ certificates from a trusted CA.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
+
+import pendulum
 
 from airflow import DAG
-from airflow.providers.arenadata.ozone.operators.ozone_admin import (
+from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
     OzoneCreateVolumeOperator,
-)
-from airflow.providers.arenadata.ozone.operators.ozone_fs import (
     OzoneFsMkdirOperator,
     OzoneFsPutOperator,
-)
-from airflow.providers.arenadata.ozone.operators.ozone_s3 import (
     OzoneS3CreateBucketOperator,
     OzoneS3PutObjectOperator,
 )
-from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
-from airflow.providers.arenadata.ozone.sensors.ozone_s3 import OzoneS3KeySensor
+from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor, OzoneS3KeySensor
 
 # Default arguments for the DAG
 default_args = {
@@ -71,7 +68,7 @@ with DAG(
     default_args=default_args,
     description="Example DAG demonstrating Ozone operations with SSL/TLS encryption",
     schedule=None,
-    start_date=datetime(2024, 1, 1),
+    start_date=pendulum.datetime(2024, 1, 1, tz="UTC"),
     catchup=False,
     tags=["ozone", "example"],
 ) as dag:
@@ -116,6 +113,7 @@ with DAG(
         task_id="wait_fs_file_ssl",
         path="ofs://om/vol1/bucket-native/data_dir/file.txt",
         ozone_conn_id="ozone_admin_ssl",  # SSL-enabled connection
+        mode="reschedule",
         timeout=60,  # 1 minute total
         poke_interval=5,  # Check every 5 seconds
     )
@@ -144,6 +142,7 @@ with DAG(
         bucket_name="s3bucket-ssl",
         bucket_key="s3_data/test.json",
         ozone_conn_id="ozone_s3_ssl",  # HTTPS-enabled connection
+        mode="reschedule",
         timeout=60,  # 1 minute total
         poke_interval=5,  # Check every 5 seconds
     )

@@ -32,23 +32,20 @@ S3 Gateway tasks use boto3 (no Amazon provider required).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
+
+import pendulum
 
 from airflow import DAG
-from airflow.providers.arenadata.ozone.operators.ozone_admin import (
+from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
     OzoneCreateVolumeOperator,
-)
-from airflow.providers.arenadata.ozone.operators.ozone_fs import (
     OzoneFsMkdirOperator,
     OzoneFsPutOperator,
-)
-from airflow.providers.arenadata.ozone.operators.ozone_s3 import (
     OzoneS3CreateBucketOperator,
     OzoneS3PutObjectOperator,
 )
-from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
-from airflow.providers.arenadata.ozone.sensors.ozone_s3 import OzoneS3KeySensor
+from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor, OzoneS3KeySensor
 
 default_args = {
     "owner": "airflow",
@@ -58,7 +55,7 @@ default_args = {
 
 with DAG(
     "example_ozone_usage",
-    start_date=datetime(2024, 1, 1),
+    start_date=pendulum.datetime(2024, 1, 1, tz="UTC"),
     default_args=default_args,
     schedule=None,
     catchup=False,
@@ -100,6 +97,7 @@ with DAG(
     wait_fs_file = OzoneKeySensor(
         task_id="wait_fs_file",
         path="ofs://om/vol1/bucket-native/data_dir/file.txt",
+        mode="reschedule",
         timeout=60,
     )
 
@@ -127,6 +125,7 @@ with DAG(
         bucket_name="s3bucket",
         bucket_key="s3_data/test.json",
         ozone_conn_id="ozone_s3_default",
+        mode="reschedule",
         timeout=60,
     )
 

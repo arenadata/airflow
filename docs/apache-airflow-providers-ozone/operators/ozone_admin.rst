@@ -24,11 +24,11 @@ They are implemented to be **idempotent**: "already exists" / "not found" is tre
 Operators
 ---------
 
-* ``airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneCreateVolumeOperator``
-* ``airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneCreateBucketOperator``
-* ``airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneDeleteVolumeOperator``
-* ``airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneDeleteBucketOperator``
-* ``airflow.providers.arenadata.ozone.operators.ozone_admin.OzoneSetQuotaOperator``
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneCreateVolumeOperator``
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneCreateBucketOperator``
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneDeleteVolumeOperator``
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneDeleteBucketOperator``
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneSetQuotaOperator``
 
 Important notes
 ---------------
@@ -52,7 +52,7 @@ Example
 
    from datetime import timedelta
    from airflow import DAG
-   from airflow.providers.arenadata.ozone.operators.ozone_admin import (
+   from airflow.providers.arenadata.ozone.operators.ozone import (
        OzoneCreateVolumeOperator,
        OzoneCreateBucketOperator,
        OzoneSetQuotaOperator,

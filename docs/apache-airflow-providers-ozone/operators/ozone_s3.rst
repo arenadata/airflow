@@ -24,8 +24,8 @@ S3 Gateway operators interact with Ozone via the S3-compatible API, using the pr
 Operators
 ---------
 
-* ``airflow.providers.arenadata.ozone.operators.ozone_s3.OzoneS3CreateBucketOperator``
-* ``airflow.providers.arenadata.ozone.operators.ozone_s3.OzoneS3PutObjectOperator``
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneS3CreateBucketOperator``
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneS3PutObjectOperator``
 
 Connection notes
 ----------------
@@ -35,13 +35,25 @@ Configure the ``ozone_s3`` connection Extra with:
 * ``endpoint_url``: e.g. ``http://s3g:9878`` or ``https://s3g:9879``
 * ``verify``: ``false`` (development only) or a path to a CA bundle
 
+Payload notes
+-------------
+
+``OzoneS3PutObjectOperator`` accepts three payload forms:
+
+* ``str``: uploaded as plain text (as-is)
+* ``bytes``: uploaded as a binary stream
+* JSON-serializable object (e.g. ``dict``/``list``): serialized with ``json.dumps`` before upload
+
+If ``data`` is not JSON-serializable (for non-string/bytes payloads), the task fails with
+an ``AirflowException`` describing the unsupported payload type.
+
 Example
 -------
 
 .. code-block:: python
 
    from airflow import DAG
-   from airflow.providers.arenadata.ozone.operators.ozone_s3 import (
+   from airflow.providers.arenadata.ozone.operators.ozone import (
        OzoneS3CreateBucketOperator,
        OzoneS3PutObjectOperator,
    )

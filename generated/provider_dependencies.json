@@ -316,6 +316,7 @@
   "arenadata.ozone": {
     "deps": [
       "apache-airflow-providers-apache-hdfs",
+      "apache-airflow-providers-apache-hive",
       "apache-airflow>=2.10.3",
       "boto3>=1.35.0"
     ],

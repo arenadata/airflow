@@ -18,20 +18,24 @@
 from __future__ import annotations
 
 import atexit
+import contextlib
 import logging
 import os
 import shutil
 import tempfile
-import xml.sax.saxutils as saxutils
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from functools import cached_property
+from pathlib import Path
 from typing import Callable
 
+from airflow.exceptions import AirflowException
+from airflow.providers.arenadata.ozone.utils.common import get_connection_extra, merge_env_overrides
 from airflow.providers.arenadata.ozone.utils.security import (
     apply_kerberos_env_vars,
-    apply_ssl_env_vars,
     get_kerberos_env_vars,
-    get_ssl_env_vars,
     kinit_from_env_vars,
+    load_ssl_env_from_connection,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -39,15 +43,17 @@ _CONF_DIRS: set[str] = set()
 
 
 def _cleanup_conf_dirs() -> None:
-    """Best-effort cleanup for temporary client configuration directories."""
+    """Cleanup temporary client configuration directories."""
     for conf_dir in list(_CONF_DIRS):
+        conf_path = Path(conf_dir)
         try:
-            shutil.rmtree(conf_dir)
-        except FileNotFoundError:
-            _LOG.debug("Temporary Ozone conf directory already removed: %s", conf_dir)
+            with contextlib.suppress(FileNotFoundError):
+                shutil.rmtree(conf_path)
         except OSError as exc:
-            _LOG.warning("Failed to clean temporary Ozone conf directory %s: %s", conf_dir, exc)
+            _LOG.warning("Failed to clean temporary Ozone conf directory %s: %s", conf_path, exc)
         finally:
+            if not conf_path.exists():
+                _LOG.debug("Temporary Ozone conf directory already removed: %s", conf_path)
             _CONF_DIRS.discard(conf_dir)
 
 
@@ -60,7 +66,7 @@ class OzoneConnSnapshot:
 
     host: str
     port: int
-    extra: dict
+    extra: dict[str, object]
 
 
 class OzoneEnv:
@@ -72,8 +78,8 @@ class OzoneEnv:
     - Generate minimal ozone-site.xml/core-site.xml (optional) if ozone_scm_address is provided.
     - Build subprocess environment for `ozone` CLI (OZONE_OM_ADDRESS, OZONE_CONF_DIR, SSL, Kerberos).
 
-    This module intentionally does NOT run ozone CLI commands and does NOT implement retries.
-    That logic stays in OzoneHook.
+    This module does not run ozone CLI commands and does not implement retries.
+    Command execution and retry logic are implemented in OzoneCliHook.
     """
 
     def __init__(
@@ -87,87 +93,56 @@ class OzoneEnv:
         self._get_connection = get_connection
         self.log = logger
 
-        self._ssl_env: dict[str, str] | None = None
-        self._kerberos_env: dict[str, str] | None = None
-        self._ssl_loaded = False
-        self._kerberos_loaded = False
+    @cached_property
+    def connection(self) -> object:
+        return self._get_connection(self.conn_id)
 
-        self._client_conf_dir: str | None = None
-        self._conn_snapshot: OzoneConnSnapshot | None = None
-
-    def get_connection_snapshot(self) -> OzoneConnSnapshot:
-        if self._conn_snapshot is not None:
-            return self._conn_snapshot
-
-        conn = self._get_connection(self.conn_id)
-        extra = conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
-
+    @cached_property
+    def connection_snapshot(self) -> OzoneConnSnapshot:
+        conn = self.connection
+        extra = get_connection_extra(conn)
         host = str(getattr(conn, "host", None) or "localhost")
         port = int(getattr(conn, "port", None) or 9862)
+        return OzoneConnSnapshot(host=host, port=port, extra=extra)
 
-        self._conn_snapshot = OzoneConnSnapshot(host=host, port=port, extra=extra)
-        return self._conn_snapshot
-
-    def load_ssl(self) -> None:
-        """Load SSL/TLS configuration from connection Extra (lazy)."""
-        if self._ssl_loaded:
-            return
-
+    @cached_property
+    def ssl_env(self) -> dict[str, str] | None:
+        """SSL/TLS configuration from connection Extra (lazy)."""
         try:
-            snap = self.get_connection_snapshot()
-            ssl_env_vars = get_ssl_env_vars(snap.extra, conn_id=self.conn_id)
-            if ssl_env_vars:
-                self._ssl_env = apply_ssl_env_vars(ssl_env_vars)
-                self.log.debug("SSL/TLS configuration loaded from connection: %s", list(ssl_env_vars.keys()))
-                if (
-                    snap.extra.get("ozone_security_enabled") == "true"
-                    or snap.extra.get("ozone.security.enabled") == "true"
-                ):
-                    self.log.debug("SSL/TLS enabled for Ozone Native CLI")
-            else:
-                self.log.debug("No SSL/TLS configuration found in connection Extra")
-        except Exception as e:
-            self.log.debug("Could not load SSL configuration (connection may not exist): %s", str(e))
-        finally:
-            self._ssl_loaded = True
+            return load_ssl_env_from_connection(
+                self.connection,
+                conn_id=self.conn_id,
+                logger=self.log,
+                enabled_flag_keys=("ozone_security_enabled", "ozone.security.enabled"),
+            )
+        except AirflowException as err:
+            self.log.debug("Could not load SSL configuration (connection may not exist): %s", str(err))
+        return None
 
-    def load_kerberos(self) -> None:
-        """Load Kerberos configuration from connection Extra (lazy)."""
-        if self._kerberos_loaded:
-            return
-
+    @cached_property
+    def kerberos_env(self) -> dict[str, str] | None:
+        """Kerberos configuration from connection Extra (lazy)."""
         try:
-            snap = self.get_connection_snapshot()
-            kerberos_env_vars = get_kerberos_env_vars(snap.extra, conn_id=self.conn_id)
+            kerberos_env_vars = get_kerberos_env_vars(self.connection_snapshot.extra, conn_id=self.conn_id)
             if kerberos_env_vars:
                 kinit_from_env_vars(kerberos_env_vars, existing_env=os.environ)
-                self._kerberos_env = apply_kerberos_env_vars(kerberos_env_vars)
+                kerberos_env = apply_kerberos_env_vars(kerberos_env_vars)
 
                 self.log.debug(
                     "Kerberos configuration loaded from connection: %s",
                     list(kerberos_env_vars.keys()),
                 )
-                if snap.extra.get("hadoop_security_authentication") == "kerberos":
+                if self.connection_snapshot.extra.get("hadoop_security_authentication") == "kerberos":
                     self.log.debug("Kerberos authentication enabled for Ozone Native CLI")
-            else:
-                self.log.debug("No Kerberos configuration found in connection Extra")
-        except Exception as e:
-            self.log.debug("Could not load Kerberos configuration (connection may not exist): %s", str(e))
-        finally:
-            self._kerberos_loaded = True
-
-    def ensure_loaded(self) -> None:
-        """Load SSL/Kerberos config lazily (first command execution)."""
-        self.load_ssl()
-        self.load_kerberos()
-
-    @property
-    def ssl_env(self) -> dict[str, str] | None:
-        return self._ssl_env
-
-    @property
-    def kerberos_env(self) -> dict[str, str] | None:
-        return self._kerberos_env
+                return kerberos_env
+            self.log.debug("No Kerberos configuration found in connection Extra")
+        except AirflowException as err:
+            self.log.debug("Could not load Kerberos configuration (connection may not exist): %s", str(err))
+        except ValueError as err:
+            raise AirflowException(
+                f"Invalid Kerberos configuration in connection '{self.conn_id}': {err}"
+            ) from err
+        return None
 
     def kerberos_enabled(self) -> bool:
         """
@@ -175,18 +150,21 @@ class OzoneEnv:
 
         We treat presence of kerberos env + explicit HADOOP_SECURITY_AUTHENTICATION=kerberos as enabled.
         """
-        if not self._kerberos_env:
+        if not self.kerberos_env:
             return False
-        return str(self._kerberos_env.get("HADOOP_SECURITY_AUTHENTICATION", "")).lower() == "kerberos"
+        return str(self.kerberos_env.get("HADOOP_SECURITY_AUTHENTICATION", "")).lower() == "kerberos"
 
-    def get_config_dir(self) -> str | None:
-        """Return Kerberos config directory (OZONE_CONF_DIR/HADOOP_CONF_DIR) from kerberos env."""
-        if not self._kerberos_env:
-            return None
-        conf_dir = self._kerberos_env.get("OZONE_CONF_DIR") or self._kerberos_env.get("HADOOP_CONF_DIR")
-        return conf_dir or None
+    @cached_property
+    def effective_config_dir(self) -> str | None:
+        """Return effective config dir used by env and CLI `--config`."""
+        if self.kerberos_env:
+            conf_dir = self.kerberos_env.get("OZONE_CONF_DIR") or self.kerberos_env.get("HADOOP_CONF_DIR")
+            if conf_dir:
+                return conf_dir
+        return self.client_conf_dir
 
-    def get_or_create_client_conf_dir(self) -> str | None:
+    @cached_property
+    def client_conf_dir(self) -> str | None:
         """
         If connection Extra has Ozone client addresses, build minimal ozone-site.xml and return temp dir.
 
@@ -194,14 +172,11 @@ class OzoneEnv:
         - ozone_scm_address: required to avoid CLI hanging in some environments
         - ozone_recon_address: optional
         """
-        if self._client_conf_dir is not None:
-            return self._client_conf_dir
-
         tmpdir: str | None = None
         try:
-            snap = self.get_connection_snapshot()
-        except Exception as e:
-            self.log.debug("Could not get connection for client conf: %s", e)
+            snap = self.connection_snapshot
+        except AirflowException as err:
+            self.log.debug("Could not get connection for client conf: %s", err)
             return None
 
         ozone_scm_address = snap.extra.get("ozone_scm_address")
@@ -214,48 +189,53 @@ class OzoneEnv:
             scm_addr = str(ozone_scm_address or "scm").strip()
             recon_addr = str(snap.extra.get("ozone_recon_address") or "").strip()
 
-            om_esc = saxutils.escape(om_addr)
-            scm_esc = saxutils.escape(scm_addr)
-            recon_esc = saxutils.escape(recon_addr) if recon_addr else ""
+            tmp_path = Path(tmpdir)
 
-            lines = [
-                '<?xml version="1.0"?>',
-                "<configuration>",
-                f"  <property><name>ozone.om.address</name><value>{om_esc}</value></property>",
-                f"  <property><name>ozone.scm.client.address</name><value>{scm_esc}</value></property>",
-                f"  <property><name>ozone.scm.block.client.address</name><value>{scm_esc}</value></property>",
+            ozone_root = ET.Element("configuration")
+            ozone_props = [
+                ("ozone.om.address", om_addr),
+                ("ozone.scm.client.address", scm_addr),
+                ("ozone.scm.block.client.address", scm_addr),
             ]
-            if recon_esc:
-                lines.append(
-                    f"  <property><name>ozone.recon.address</name><value>{recon_esc}</value></property>"
-                )
-            lines.append("</configuration>")
+            if recon_addr:
+                ozone_props.append(("ozone.recon.address", recon_addr))
 
-            with open(os.path.join(tmpdir, "ozone-site.xml"), "w") as f:
-                f.write("\n".join(lines))
+            for prop_name, prop_value in ozone_props:
+                prop = ET.SubElement(ozone_root, "property")
+                ET.SubElement(prop, "name").text = prop_name
+                ET.SubElement(prop, "value").text = prop_value
 
-            with open(os.path.join(tmpdir, "core-site.xml"), "w") as f:
-                f.write('<?xml version="1.0"?>\n<configuration>\n</configuration>\n')
+            ET.ElementTree(ozone_root).write(
+                tmp_path / "ozone-site.xml",
+                encoding="utf-8",
+                xml_declaration=True,
+            )
+            ET.ElementTree(ET.Element("configuration")).write(
+                tmp_path / "core-site.xml",
+                encoding="utf-8",
+                xml_declaration=True,
+            )
 
             self.log.debug("Generated minimal ozone-site.xml (om=%s, scm=%s)", om_addr, scm_addr)
 
-            self._client_conf_dir = tmpdir
             _CONF_DIRS.add(tmpdir)
             return tmpdir
-        except Exception as e:
-            self.log.warning("Failed to create Ozone client conf from Extra: %s", e)
+        except (OSError, TypeError, ValueError) as err:
+            self.log.error("Failed to create Ozone client conf from Extra: %s", err)
             if tmpdir:
+                tmp_path = Path(tmpdir)
                 try:
-                    shutil.rmtree(tmpdir)
-                except FileNotFoundError:
-                    self.log.debug("Temporary Ozone conf directory already removed: %s", tmpdir)
+                    with contextlib.suppress(FileNotFoundError):
+                        shutil.rmtree(tmp_path)
                 except OSError as cleanup_error:
                     self.log.warning(
                         "Failed to clean temporary Ozone conf directory %s: %s",
                         tmpdir,
                         cleanup_error,
                     )
-            return None
+            raise AirflowException(
+                f"Failed to create temporary Ozone client configuration for connection '{self.conn_id}'"
+            ) from err
 
     def build_env(self) -> dict[str, str]:
         """
@@ -266,21 +246,21 @@ class OzoneEnv:
         - SSL env overrides (optional)
         - Kerberos env overrides (optional)
         """
-        env = os.environ.copy()
+        env = merge_env_overrides(None)
 
         try:
-            snap = self.get_connection_snapshot()
+            snap = self.connection_snapshot
             env["OZONE_OM_ADDRESS"] = f"{snap.host}:{snap.port}"
-        except Exception as e:
-            self.log.debug("Could not set OZONE_OM_ADDRESS from connection: %s", e)
+        except AirflowException as err:
+            self.log.debug("Could not set OZONE_OM_ADDRESS from connection '%s': %s", self.conn_id, err)
 
-        conf_dir = self.get_or_create_client_conf_dir()
+        conf_dir = self.effective_config_dir
         if conf_dir:
             env["OZONE_CONF_DIR"] = conf_dir
 
-        if self._ssl_env:
-            env.update(self._ssl_env)
-        if self._kerberos_env:
-            env.update(self._kerberos_env)
+        if self.ssl_env:
+            env.update(self.ssl_env)
+        if self.kerberos_env:
+            env.update(self.kerberos_env)
 
         return env

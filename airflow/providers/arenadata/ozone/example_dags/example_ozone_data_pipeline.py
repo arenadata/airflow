@@ -30,22 +30,25 @@ and perform large-scale data migrations efficiently.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
+
+import pendulum
 
 from airflow import DAG
-from airflow.providers.arenadata.ozone.operators.ozone_admin import OzoneSetQuotaOperator
+from airflow.providers.arenadata.ozone.operators.ozone import OzoneSetQuotaOperator
 from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
 
 with DAG(
     "example_ozone_data_pipeline",
-    start_date=datetime(2025, 1, 1),
+    start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
     schedule=None,
     tags=["ozone", "example"],
 ) as dag:
     check_trigger = OzoneKeySensor(
         task_id="wait_for_landing_file",
         path="ofs://om/vol1/bucket1/trigger.lck",
+        mode="reschedule",
         execution_timeout=timedelta(minutes=1),
     )
 

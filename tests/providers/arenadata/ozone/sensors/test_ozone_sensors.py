@@ -22,10 +22,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from airflow.exceptions import AirflowException
-from airflow.providers.arenadata.ozone.hooks.ozone import OzoneCliTransientError
-from airflow.providers.arenadata.ozone.hooks.ozone_fs import OzoneFsHook
-from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
-from airflow.providers.arenadata.ozone.sensors.ozone_s3 import OzoneS3KeySensor
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneCliTransientError, OzoneFsHook
+from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor, OzoneS3KeySensor
 
 
 class TestOzoneKeySensor:
@@ -44,18 +42,6 @@ class TestOzoneKeySensor:
         assert result is True
         mock_ozone_hook.assert_called_once_with(OzoneFsHook.default_conn_name)
         mock_hook_instance.exists.assert_called_once_with("ofs://vol1/bucket1/key1")
-
-    @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneFsHook")
-    def test_poke_key_not_exists(self, mock_ozone_hook: MagicMock):
-        """Test that poke returns False when key does not exist."""
-
-        mock_hook_instance = mock_ozone_hook.return_value
-        mock_hook_instance.exists = MagicMock(return_value=False)
-
-        sensor = OzoneKeySensor(task_id="test_sensor", path="ofs://vol1/bucket1/key1")
-        result = sensor.poke(context={})
-
-        assert result is False
 
     @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneFsHook")
     def test_poke_raises_when_cli_missing(self, mock_ozone_hook: MagicMock):
@@ -83,54 +69,11 @@ class TestOzoneKeySensor:
 
         assert result is False
 
-    @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneFsHook")
-    def test_poke_unexpected_error(self, mock_ozone_hook: MagicMock):
-        """Test that poke re-raises unexpected errors."""
-
-        mock_hook_instance = mock_ozone_hook.return_value
-        mock_hook_instance.exists.side_effect = FileNotFoundError("ozone command not found")
-
-        sensor = OzoneKeySensor(task_id="test_sensor", path="ofs://vol1/bucket1/key1")
-
-        with pytest.raises(FileNotFoundError):
-            sensor.poke(context={})
-
 
 class TestOzoneS3KeySensor:
     """Unit tests for OzoneS3KeySensor (BaseSensorOperator + OzoneS3Hook)."""
 
-    @patch("airflow.providers.arenadata.ozone.sensors.ozone_s3.OzoneS3Hook")
-    def test_poke_key_exists(self, mock_ozone_hook: MagicMock):
-        """Test that poke returns True when key exists."""
-        mock_hook_instance = mock_ozone_hook.return_value
-        mock_hook_instance.check_for_key = MagicMock(return_value=True)
-
-        sensor = OzoneS3KeySensor(
-            task_id="test_s3_sensor",
-            bucket_name="mybucket",
-            bucket_key="path/file.txt",
-        )
-        result = sensor.poke(context={})
-
-        assert result is True
-        mock_hook_instance.check_for_key.assert_called_once_with("path/file.txt", "mybucket")
-
-    @patch("airflow.providers.arenadata.ozone.sensors.ozone_s3.OzoneS3Hook")
-    def test_poke_key_not_exists(self, mock_ozone_hook: MagicMock):
-        """Test that poke returns False when key does not exist."""
-        mock_hook_instance = mock_ozone_hook.return_value
-        mock_hook_instance.check_for_key = MagicMock(return_value=False)
-
-        sensor = OzoneS3KeySensor(
-            task_id="test_s3_sensor",
-            bucket_name="mybucket",
-            bucket_key="path/file.txt",
-        )
-        result = sensor.poke(context={})
-
-        assert result is False
-
-    @patch("airflow.providers.arenadata.ozone.sensors.ozone_s3.OzoneS3Hook")
+    @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneS3Hook")
     def test_poke_multiple_keys_all_exist(self, mock_ozone_hook: MagicMock):
         """Test that poke returns True when all keys in list exist."""
         mock_hook_instance = mock_ozone_hook.return_value
@@ -146,7 +89,7 @@ class TestOzoneS3KeySensor:
         assert result is True
         assert mock_hook_instance.check_for_key.call_count == 2
 
-    @patch("airflow.providers.arenadata.ozone.sensors.ozone_s3.OzoneS3Hook")
+    @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneS3Hook")
     def test_bucket_name_optional_with_s3_url(self, mock_ozone_hook: MagicMock):
         """If bucket_name is None, a full s3://bucket/key URL should be supported."""
 

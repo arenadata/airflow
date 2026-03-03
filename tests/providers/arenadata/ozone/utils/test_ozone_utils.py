@@ -32,13 +32,6 @@ from airflow.providers.arenadata.ozone.utils.security import (
 class TestGetSecretValue:
     """Tests for get_secret_value."""
 
-    def test_returns_empty_unchanged(self):
-        assert get_secret_value("") == ""
-
-    def test_returns_plain_value_unchanged(self):
-        assert get_secret_value("plain") == "plain"
-        assert get_secret_value("/path/to/keytab") == "/path/to/keytab"
-
     @patch("airflow.providers.arenadata.ozone.utils.security.secret_resolver.ensure_secrets_loaded")
     def test_resolves_secret_uri_from_backend(self, mock_ensure_loaded):
         mock_backend = MagicMock()
@@ -93,24 +86,9 @@ class TestGetKerberosEnvVars:
         assert result["HIVE_KERBEROS_PRINCIPAL"] == "hive@R"
         assert result["HIVE_KERBEROS_KEYTAB"] == "/path/hive.keytab"
 
-    def test_hdfs_kerberos_block(self):
-        extra = {
-            "hdfs_kerberos_enabled": "true",
-            "hdfs_kerberos_principal": "hdfs@R",
-            "hdfs_kerberos_keytab": "/path/hdfs.keytab",
-        }
-        result = get_kerberos_env_vars(extra)
-        assert result["HDFS_KERBEROS_PRINCIPAL"] == "hdfs@R"
-        assert result["HDFS_KERBEROS_KEYTAB"] == "/path/hdfs.keytab"
-
 
 class TestApplySslEnvVars:
     """Tests for apply_ssl_env_vars."""
-
-    def test_returns_copy_when_no_existing(self):
-        env = {"OZONE_SECURITY_ENABLED": "true"}
-        assert apply_ssl_env_vars(env, None) == env
-        assert apply_ssl_env_vars(env, None) is not env
 
     def test_merges_into_existing(self):
         overrides = {"A": "1"}

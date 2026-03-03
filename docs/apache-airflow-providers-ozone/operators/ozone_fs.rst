@@ -23,10 +23,10 @@ Filesystem operators use the Native CLI (``ozone fs``) to work with ``ofs://`` /
 Operators
 ---------
 
-* ``airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneFsMkdirOperator`` (mkdir -p)
-* ``airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneFsPutOperator`` (write string to a file)
-* ``airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneDeleteKeyOperator`` (delete a key/path; supports wildcards)
-* ``airflow.providers.arenadata.ozone.operators.ozone_fs.OzoneListOperator`` (list paths; returns list via XCom; supports wildcards)
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneFsMkdirOperator`` (mkdir -p)
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneFsPutOperator`` (write string to a file)
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneDeleteKeyOperator`` (delete a key/path; supports wildcards)
+* ``airflow.providers.arenadata.ozone.operators.ozone.OzoneListOperator`` (list paths; returns list via XCom; supports wildcards)
 
 Notes
 -----
@@ -57,7 +57,7 @@ Example
 .. code-block:: python
 
    from airflow import DAG
-   from airflow.providers.arenadata.ozone.operators.ozone_fs import (
+   from airflow.providers.arenadata.ozone.operators.ozone import (
        OzoneFsMkdirOperator,
        OzoneFsPutOperator,
        OzoneListOperator,

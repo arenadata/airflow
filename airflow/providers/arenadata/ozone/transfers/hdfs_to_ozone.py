@@ -18,21 +18,27 @@
 from __future__ import annotations
 
 import logging
-import os
+import shlex
+import subprocess
+from functools import cached_property
 
 from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
+from airflow.providers.arenadata.ozone.utils.common import (
+    require_optional_non_empty,
+    run_subprocess,
+)
 from airflow.providers.arenadata.ozone.utils.security import (
-    apply_ssl_env_vars,
-    get_ssl_env_vars,
+    load_ssl_env_from_connection,
 )
 from airflow.utils.log.secrets_masker import redact
 
 # Get the logger for tenacity to use
 log = logging.getLogger(__name__)
+DISTCP_BASE_COMMAND = ["hadoop", "distcp", "-update", "-skipcrccheck"]
 
 
 class HdfsToOzoneOperator(BaseOperator):
@@ -50,48 +56,33 @@ class HdfsToOzoneOperator(BaseOperator):
 
     def __init__(self, source_path: str, dest_path: str, hdfs_conn_id: str | None = None, **kwargs):
         super().__init__(**kwargs)
-        if not source_path or not source_path.strip():
-            raise ValueError("source_path parameter cannot be empty")
-        if not dest_path or not dest_path.strip():
-            raise ValueError("dest_path parameter cannot be empty")
-        if hdfs_conn_id is not None and not str(hdfs_conn_id).strip():
-            raise ValueError("hdfs_conn_id parameter cannot be an empty string (use None instead)")
-
-        self.source_path = source_path.strip()
-        self.dest_path = dest_path.strip()
-        self.hdfs_conn_id = hdfs_conn_id.strip() if isinstance(hdfs_conn_id, str) else hdfs_conn_id
-        self._hdfs_ssl_env = None
+        self.source_path = source_path
+        self.dest_path = dest_path
+        self.hdfs_conn_id = require_optional_non_empty(
+            hdfs_conn_id, "hdfs_conn_id parameter cannot be an empty string (use None instead)"
+        )
 
         self.log.debug(
             "Initializing HdfsToOzoneOperator - source: %s, destination: %s", self.source_path, self.dest_path
         )
 
-        if self.hdfs_conn_id:
-            self._load_hdfs_ssl_config()
-
-    def _load_hdfs_ssl_config(self):
-        """Load SSL/TLS configuration from HDFS connection Extra."""
+    @cached_property
+    def _hdfs_ssl_env(self) -> dict[str, str] | None:
+        """Load SSL/TLS configuration from HDFS connection Extra lazily."""
+        if not self.hdfs_conn_id:
+            return None
         try:
-            hook = BaseHook()
-            conn = hook.get_connection(self.hdfs_conn_id)
-            extra = conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
-
-            ssl_env_vars = get_ssl_env_vars(extra, conn_id=self.hdfs_conn_id)
-            if ssl_env_vars:
-                self._hdfs_ssl_env = apply_ssl_env_vars(ssl_env_vars)
-                self.log.debug(
-                    "SSL/TLS configuration loaded from HDFS connection: %s", list(ssl_env_vars.keys())
-                )
-                if (
-                    extra.get("hdfs_ssl_enabled") == "true"
-                    or extra.get("dfs.encrypt.data.transfer") == "true"
-                ):
-                    self.log.info("SSL/TLS enabled for HDFS connections")
-            else:
-                self.log.debug("No SSL/TLS configuration found in HDFS connection Extra")
-        except Exception as e:
+            conn = BaseHook.get_connection(self.hdfs_conn_id)
+            return load_ssl_env_from_connection(
+                conn,
+                conn_id=self.hdfs_conn_id,
+                logger=self.log,
+                enabled_flag_keys=("hdfs_ssl_enabled", "dfs.encrypt.data.transfer"),
+            )
+        except AirflowException as err:
             # Connection might not exist yet, that's OK
-            self.log.debug("Could not load HDFS SSL configuration (connection may not exist): %s", str(e))
+            self.log.debug("Could not load HDFS SSL configuration (connection may not exist): %s", str(err))
+        return None
 
     @retry(
         wait=wait_exponential(multiplier=3, min=5, max=120),
@@ -109,26 +100,17 @@ class HdfsToOzoneOperator(BaseOperator):
         :param cmd: Command to execute
         :param env: Optional environment variables dictionary
         """
-        masked_cmd = redact(" ".join(cmd))
+        masked_cmd = redact(shlex.join(cmd))
         self.log.debug("Executing DistCp command (with retry): %s", masked_cmd)
         try:
-            import subprocess
-
-            if env:
-                # Merge with current environment
-                full_env = os.environ.copy()
-                full_env.update(env)
-                subprocess.run(cmd, env=full_env, check=True, capture_output=True, text=True)
-            else:
-                subprocess.run(cmd, check=True, capture_output=True, text=True)
+            run_subprocess(
+                cmd,
+                env_overrides=env,
+                check=True,
+            )
             self.log.debug("DistCp command completed successfully")
         except subprocess.CalledProcessError as e:
             raw_error = e.stderr if e.stderr else str(e)
-            masked_error = redact(raw_error)
-            self.log.warning("DistCp command failed (will retry): %s", masked_error)
-            raise AirflowException(f"DistCp command failed: {masked_error}")
-        except Exception as e:
-            raw_error = str(e)
             masked_error = redact(raw_error)
             self.log.warning("DistCp command failed (will retry): %s", masked_error)
             raise AirflowException(f"DistCp command failed: {masked_error}")
@@ -139,19 +121,13 @@ class HdfsToOzoneOperator(BaseOperator):
         self.log.info("Destination path (Ozone): %s", self.dest_path)
         self.log.debug("DistCp options: -update (incremental), -skipcrccheck (skip CRC verification)")
 
-        cmd = ["hadoop", "distcp", "-update", "-skipcrccheck", self.source_path, self.dest_path]
-        masked_cmd = redact(" ".join(cmd))
+        cmd = [*DISTCP_BASE_COMMAND, self.source_path, self.dest_path]
+        masked_cmd = redact(shlex.join(cmd))
         self.log.debug("Executing DistCp command: %s", masked_cmd)
 
-        try:
-            if self._hdfs_ssl_env:
-                self.log.debug("Applying SSL environment variables for HDFS DistCp")
+        if self._hdfs_ssl_env:
+            self.log.debug("Applying SSL environment variables for HDFS DistCp")
 
-            self._execute_distcp(cmd, env=self._hdfs_ssl_env)
-            self.log.info("Successfully completed HDFS to Ozone migration")
-            self.log.info("Source: %s -> Destination: %s", self.source_path, self.dest_path)
-        except Exception as e:
-            self.log.error("HDFS to Ozone migration failed after retries")
-            self.log.error("Source: %s, Destination: %s", self.source_path, self.dest_path)
-            self.log.error("Error: %s", str(e))
-            raise
+        self._execute_distcp(cmd, env=self._hdfs_ssl_env)
+        self.log.info("Successfully completed HDFS to Ozone migration")
+        self.log.info("Source: %s -> Destination: %s", self.source_path, self.dest_path)

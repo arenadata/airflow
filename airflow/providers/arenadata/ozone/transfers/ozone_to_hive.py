@@ -18,34 +18,27 @@
 from __future__ import annotations
 
 import logging
-import os
-from typing import TYPE_CHECKING
+import re
+import shlex
+import subprocess
+from functools import cached_property
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
-from airflow.providers.arenadata.ozone.utils.security import apply_ssl_env_vars, get_ssl_env_vars
+from airflow.providers.apache.hive.hooks.hive import HiveCliHook
+from airflow.providers.arenadata.ozone.utils.common import get_connection_extra, merge_env_overrides
+from airflow.providers.arenadata.ozone.utils.security import load_ssl_env_from_connection
+from airflow.utils.context import Context  # noqa: TCH001
 from airflow.utils.log.secrets_masker import redact
-
-if TYPE_CHECKING:
-    from airflow.utils.context import Context
-
-try:
-    # Import lazily to avoid breaking DAG parsing when the Hive provider
-    # is not installed in the Airflow environment. The operator will still
-    # fail at runtime with a clear error if used without the dependency.
-    from airflow.providers.apache.hive.hooks.hive import HiveCliHook  # type: ignore[attr-defined]
-except ModuleNotFoundError as exc:  # pragma: no cover - environment dependent
-    HiveCliHook = None  # type: ignore[assignment]
-    _hive_import_error = exc
-else:
-    _hive_import_error = None
-
 
 # Get the logger for tenacity to use
 log = logging.getLogger(__name__)
+INVALID_SCHEMA_CHARS_PATTERN = r"[^a-z0-9_]"
 
 
 def _run_hive_cli_with_env(
@@ -62,15 +55,10 @@ def _run_hive_cli_with_env(
 
     This avoids mutating global os.environ (important for multi-task / multi-threaded workers).
     """
-    # Lazy import to avoid adding hard dependency when hive provider isn't installed.
-    import re
-    import subprocess
-    from tempfile import NamedTemporaryFile, TemporaryDirectory
-
     conn = hive_hook.conn
     schema = schema or conn.schema or ""
 
-    invalid_chars_list = re.findall(r"[^a-z0-9_]", schema)
+    invalid_chars_list = re.findall(INVALID_SCHEMA_CHARS_PATTERN, schema)
     if invalid_chars_list:
         invalid_chars = "".join(invalid_chars_list)
         raise RuntimeError(f"The schema `{schema}` contains invalid characters: {invalid_chars}")
@@ -78,10 +66,10 @@ def _run_hive_cli_with_env(
     if schema:
         hql = f"USE {schema};\n{hql}"
 
-    with TemporaryDirectory(prefix="airflow_hiveop_") as tmp_dir, NamedTemporaryFile(dir=tmp_dir) as f:
+    with TemporaryDirectory(prefix="airflow_hiveop_") as tmp_dir:
         hql += "\n"
-        f.write(hql.encode("UTF-8"))
-        f.flush()
+        hql_file = Path(tmp_dir) / "query.hql"
+        hql_file.write_text(hql, encoding="utf-8")
 
         hive_cmd = hive_hook._prepare_cli_cmd()
 
@@ -112,10 +100,10 @@ def _run_hive_cli_with_env(
             hive_conf_params.extend(["-hiveconf", f"mapred.job.name={hive_hook.mapred_job_name}"])
 
         hive_cmd.extend(hive_conf_params)
-        hive_cmd.extend(["-f", f.name])
+        hive_cmd.extend(["-f", str(hql_file)])
 
         if verbose:
-            hive_hook.log.info("%s", " ".join(hive_cmd))
+            hive_hook.log.info("%s", shlex.join(hive_cmd))
 
         sub_process = subprocess.Popen(
             hive_cmd,
@@ -124,17 +112,20 @@ def _run_hive_cli_with_env(
             cwd=tmp_dir,
             close_fds=True,
             env=env,
+            text=True,
         )
         hive_hook.sub_process = sub_process
 
-        stdout = ""
-        for line_raw in iter(sub_process.stdout.readline, b""):
-            line = line_raw.decode()
-            stdout += line
+        stdout_lines: list[str] = []
+        if sub_process.stdout is None:
+            raise AirflowException("Hive CLI subprocess has no stdout")
+        for line in sub_process.stdout:
+            stdout_lines.append(line)
             if verbose:
                 hive_hook.log.info(line.strip())
 
         sub_process.wait()
+        stdout = "".join(stdout_lines)
         if sub_process.returncode:
             raise AirflowException(stdout)
 
@@ -165,40 +156,54 @@ class OzoneToHiveOperator(BaseOperator):
         hive_cli_conn_id: str = "hive_cli_default",
         **kwargs,
     ):
-        if HiveCliHook is None:
-            raise ImportError(
-                "HiveCliHook not available. Install apache-airflow-providers-apache-hive"
-            ) from _hive_import_error
-
         super().__init__(**kwargs)
         self.ozone_path = ozone_path
         self.table_name = table_name
         # Allow partition_spec to be provided later and validate in execute()
         self.partition_spec = partition_spec or {}
         self.hive_cli_conn_id = hive_cli_conn_id
-        self._hive_ssl_env = None
-        self._load_hive_ssl_config()
 
-    def _load_hive_ssl_config(self):
-        """Load SSL/TLS configuration from Hive connection Extra."""
+    @cached_property
+    def _hive_ssl_env(self) -> dict[str, str] | None:
+        """Load SSL/TLS configuration from Hive connection Extra lazily."""
         try:
-            hook = BaseHook()
-            conn = hook.get_connection(self.hive_cli_conn_id)
-            extra = conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
-
-            ssl_env_vars = get_ssl_env_vars(extra, conn_id=self.hive_cli_conn_id)
-            if ssl_env_vars:
-                self._hive_ssl_env = apply_ssl_env_vars(ssl_env_vars)
-                self.log.debug(
-                    "SSL/TLS configuration loaded from Hive connection: %s", list(ssl_env_vars.keys())
-                )
-                if extra.get("hive_ssl_enabled") == "true" or extra.get("hive.ssl.enabled") == "true":
-                    self.log.info("SSL/TLS enabled for Hive connections")
-            else:
-                self.log.debug("No SSL/TLS configuration found in Hive connection Extra")
-        except Exception as e:
+            conn = BaseHook.get_connection(self.hive_cli_conn_id)
+            return load_ssl_env_from_connection(
+                conn,
+                conn_id=self.hive_cli_conn_id,
+                logger=self.log,
+                enabled_flag_keys=("hive_ssl_enabled", "hive.ssl.enabled"),
+            )
+        except AirflowException as err:
             # Connection might not exist yet, that's OK
-            self.log.debug("Could not load Hive SSL configuration (connection may not exist): %s", str(e))
+            self.log.debug("Could not load Hive SSL configuration (connection may not exist): %s", str(err))
+        return None
+
+    def _build_hive_env(self, hive_hook: HiveCliHook) -> dict[str, str]:
+        """Build process environment for Hive CLI execution."""
+        extra_env = get_connection_extra(hive_hook.conn).get("env", {})
+        env = dict(extra_env) if isinstance(extra_env, dict) else {}
+        base_env = merge_env_overrides(env)
+        if self._hive_ssl_env:
+            base_env.update(self._hive_ssl_env)
+        return base_env
+
+    @staticmethod
+    def _escape_hive_string(value: str) -> str:
+        """Escape backslashes and single quotes in interpolated Hive literals."""
+        return value.replace("\\", "\\\\").replace("'", "''")
+
+    def _build_partition_hql(self) -> tuple[str, str]:
+        """Build escaped partition clause and HQL statement."""
+        partition_clause = ", ".join(
+            [f"{k}='{self._escape_hive_string(str(v))}'" for k, v in self.partition_spec.items()]
+        )
+        escaped_location = self._escape_hive_string(str(self.ozone_path))
+        hql = (
+            f"ALTER TABLE {self.table_name} ADD IF NOT EXISTS PARTITION ({partition_clause}) "
+            f"LOCATION '{escaped_location}';"
+        )
+        return partition_clause, hql
 
     @retry(
         wait=wait_exponential(multiplier=2, min=3, max=60),
@@ -216,18 +221,11 @@ class OzoneToHiveOperator(BaseOperator):
         masked_hql = redact(hql)
         self.log.debug("Executing HQL statement (with retry): %s", masked_hql)
         try:
-            env = dict(hive_hook.conn.extra_dejson.get("env", {})) if hasattr(hive_hook, "conn") else {}
-            base_env = os.environ.copy()
-            if env:
-                base_env.update({str(k): str(v) for k, v in env.items()})
-            if self._hive_ssl_env:
-                base_env.update(self._hive_ssl_env)
-
-            _run_hive_cli_with_env(hive_hook=hive_hook, hql=hql, env=base_env)
+            _run_hive_cli_with_env(hive_hook=hive_hook, hql=hql, env=self._build_hive_env(hive_hook))
             self.log.debug("HQL statement executed successfully")
-        except Exception as e:
-            self.log.warning("HQL execution failed (will retry): %s", str(e))
-            raise AirflowException(f"HQL execution failed: {str(e)}")
+        except AirflowException as err:
+            self.log.warning("HQL execution failed (will retry): %s", str(err))
+            raise AirflowException(f"HQL execution failed: {str(err)}") from err
 
     def execute(self, context: Context):
         """Execute the HQL to add the partition."""
@@ -240,44 +238,23 @@ class OzoneToHiveOperator(BaseOperator):
             self.log.error("Partition specification is required but not provided")
             raise ValueError("Parameter 'partition_spec' is required for partitioning.")
 
-        def _escape_hive_string(value: str) -> str:
-            # Basic escaping for Hive string literals: escape backslashes and single quotes.
-            # This mirrors the common pattern in other providers where user input is interpolated
-            # into SQL strings.
-            return value.replace("\\", "\\\\").replace("'", "''")
-
-        partition_clause = ", ".join(
-            [f"{k}='{_escape_hive_string(str(v))}'" for k, v in self.partition_spec.items()]
-        )
-        escaped_location = _escape_hive_string(str(self.ozone_path))
-        hql = (
-            f"ALTER TABLE {self.table_name} ADD IF NOT EXISTS PARTITION ({partition_clause}) "
-            f"LOCATION '{escaped_location}';"
-        )
+        partition_clause, hql = self._build_partition_hql()
 
         self.log.info("Executing HQL to register partition")
         masked_hql = redact(hql)
         self.log.debug("HQL statement: %s", masked_hql)
 
-        # Fail fast with a clear message if Hive provider is missing
-        if HiveCliHook is None:
-            raise AirflowException(
-                "HiveCliHook could not be imported. "
-                "Please install the 'apache-airflow-providers-apache-hive' package "
-                "in your Airflow environment to use OzoneToHiveOperator."
-            ) from _hive_import_error
-
+        hive_hook = HiveCliHook(hive_cli_conn_id=self.hive_cli_conn_id)
         try:
-            hive_hook = HiveCliHook(hive_cli_conn_id=self.hive_cli_conn_id)
             self._execute_hql_with_retry(hive_hook, hql)
-            self.log.info("Successfully registered partition in Hive table")
-            self.log.info(
-                "Table: %s, Partition: %s, Location: %s", self.table_name, partition_clause, self.ozone_path
-            )
-        except Exception as e:
+        except AirflowException:
             self.log.error("Failed to register partition in Hive table after retries")
             self.log.error(
                 "Table: %s, Partition: %s, Location: %s", self.table_name, partition_clause, self.ozone_path
             )
-            self.log.error("Error: %s", str(e))
             raise
+
+        self.log.info("Successfully registered partition in Hive table")
+        self.log.info(
+            "Table: %s, Partition: %s, Location: %s", self.table_name, partition_clause, self.ozone_path
+        )

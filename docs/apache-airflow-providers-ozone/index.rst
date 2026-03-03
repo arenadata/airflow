@@ -111,10 +111,10 @@ PIP package                     Version required
 ``apache-airflow``              ``>=2.10.3``
 ==============================  ==================
 
-Optional dependencies
+Provider dependencies
 ---------------------
 
-* ``apache-airflow-providers-apache-hive`` is required only if you use ``OzoneToHiveOperator``.
+* ``apache-airflow-providers-apache-hive`` (required for ``OzoneToHiveOperator`` shipped by this provider).
 
 Runtime prerequisites (Native CLI)
 ---------------------------------
