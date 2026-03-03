@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw data from source systems
+    schema: public
+    tables:
+      - name: users
+        description: User accounts
+        columns:
+          - name: id
+            description: Primary key
+            tests:
+              - unique
+              - not_null
+          - name: email
+            description: User email
+            tests:
+              - not_null

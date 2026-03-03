@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: dim_users
+    description: User dimension table with signup metadata
+    columns:
+      - name: user_id
+        description: Unique user identifier
+        tests:
+          - unique
+          - not_null
+      - name: email
+        description: User email address
+        tests:
+          - not_null
+      - name: signup_month
+        description: Month when user signed up
+      - name: signup_year
+        description: Year when user signed up
