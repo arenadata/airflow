@@ -39,6 +39,7 @@ class HBaseConnectionConfig:  # pylint: disable=too-many-instance-attributes,too
         retry_max_attempts: int = 3,
         retry_delay: float = 1.0,
         retry_backoff_factor: float = 2.0,
+        use_http: bool = False,
     ):
         """Initialize connection configuration."""
         self.host = host
@@ -53,6 +54,7 @@ class HBaseConnectionConfig:  # pylint: disable=too-many-instance-attributes,too
         self.retry_max_attempts = retry_max_attempts
         self.retry_delay = retry_delay
         self.retry_backoff_factor = retry_backoff_factor
+        self.use_http = use_http
 
 
 def create_connection_config(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -68,6 +70,7 @@ def create_connection_config(  # pylint: disable=too-many-arguments,too-many-pos
     retry_max_attempts: int = 3,
     retry_delay: float = 1.0,
     retry_backoff_factor: float = 2.0,
+    use_http: bool = False,
 ) -> HBaseConnectionConfig:
     """Create HBase connection configuration.
 
@@ -86,4 +89,5 @@ def create_connection_config(  # pylint: disable=too-many-arguments,too-many-pos
         retry_max_attempts=retry_max_attempts,
         retry_delay=retry_delay,
         retry_backoff_factor=retry_backoff_factor,
+        use_http=use_http,
     )

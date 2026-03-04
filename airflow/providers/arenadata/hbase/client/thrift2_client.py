@@ -27,7 +27,7 @@ import time
 from typing import Any
 
 from thrift.protocol import TBinaryProtocol
-from thrift.transport import TSocket, TTransport, TSSLSocket
+from thrift.transport import TSocket, TTransport, TSSLSocket, THttpClient
 from thrift.transport.TTransport import TTransportException
 
 try:
@@ -63,6 +63,7 @@ class HBaseThrift2Client:
         retry_max_attempts: int = 3,
         retry_delay: float = 1.0,
         retry_backoff_factor: float = 2.0,
+        use_http: bool = False,
     ):
         """Initialize Thrift2 client.
 
@@ -80,7 +81,9 @@ class HBaseThrift2Client:
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
+            use_http: Use HTTP transport instead of binary socket (required for SSL with hbase.regionserver.thrift.http=true)
         """
+        self.use_http = use_http
         self.config = create_connection_config(
             host=host,
             port=port,
@@ -327,20 +330,49 @@ class HBaseThrift2Client:
 
         for attempt in range(self.config.retry_max_attempts):
             try:
-                sock = self._create_socket()
-
-                if self.config.auth_method == "GSSAPI":
-                    self._setup_kerberos_transport(sock)
+                if self.use_http:
+                    # HTTP transport
+                    scheme = "https" if self.config.ssl_options else "http"
+                    uri = f"{scheme}://{self.config.host}:{self.config.port}"
+                    
+                    # Create SSL context if needed
+                    ssl_context = None
+                    if self.config.ssl_options and "ca_certs" in self.config.ssl_options:
+                        import ssl
+                        ssl_context = ssl.create_default_context(cafile=self.config.ssl_options["ca_certs"])
+                        if "validate" in self.config.ssl_options and not self.config.ssl_options["validate"]:
+                            ssl_context.check_hostname = False
+                            ssl_context.verify_mode = ssl.CERT_NONE
+                    
+                    http_client = THttpClient.THttpClient(uri, ssl_context=ssl_context)
+                    http_client.setTimeout(self.config.timeout)
+                    
+                    self._transport = http_client
+                    protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
+                    self._client = THBaseService.Client(protocol)
+                    self._transport.open()
                     self._test_connection()
                     logger.info(
-                        "Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Auth: %s)",
-                        self.config.host,
-                        self.config.port,
+                        "Successfully connected to HBase Thrift2 at %s (HTTP, SSL: %s)",
+                        uri,
                         bool(self.config.ssl_options),
-                        self.config.auth_method,
                     )
                 else:
-                    self._setup_simple_transport(sock)
+                    # Socket transport
+                    sock = self._create_socket()
+
+                    if self.config.auth_method == "GSSAPI":
+                        self._setup_kerberos_transport(sock)
+                        self._test_connection()
+                        logger.info(
+                            "Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Auth: %s)",
+                            self.config.host,
+                            self.config.port,
+                            bool(self.config.ssl_options),
+                            self.config.auth_method,
+                        )
+                    else:
+                        self._setup_simple_transport(sock)
 
                 return
 
