@@ -80,7 +80,7 @@ with DAG(
         DROP TABLE IF EXISTS public.users CASCADE;
         DROP SCHEMA IF EXISTS dbt_demo CASCADE;
         """,
-        trigger_rule="all_done",
+        trigger_rule="all_success",
     )
 
     create_source_table >> dbt_debug >> dbt_deps >> dbt_run >> dbt_test >> cleanup
