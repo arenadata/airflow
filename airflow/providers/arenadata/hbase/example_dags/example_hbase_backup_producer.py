@@ -50,7 +50,7 @@ default_args = {
 }
 
 # Define dataset for the table
-backup_table_dataset = hbase_table_dataset(host="hbase", port=9090, table_name="test_table_backup")
+backup_table_dataset = hbase_table_dataset(host="hbase", port=9090, table_name="test_table_backup_v2")
 
 with DAG(
     "example_hbase_backup_producer",
@@ -64,14 +64,14 @@ with DAG(
     # Delete table if exists for idempotency
     delete_table_cleanup = HBaseDeleteTableOperator(
         task_id="delete_table_cleanup",
-        table_name="test_table_backup",
+        table_name="test_table_backup_v2",
         hbase_conn_id="hbase_thrift2",
     )
 
     # Create test table for backup
     create_table = HBaseCreateTableOperator(
         task_id="create_table",
-        table_name="test_table_backup",
+        table_name="test_table_backup_v2",
         families={"cf1": {}, "cf2": {}},
         hbase_conn_id="hbase_thrift2",
         # No outlets here - only produce dataset after data is inserted
@@ -92,7 +92,7 @@ with DAG(
 
     put_data = HBaseBatchPutOperator(
         task_id="put_data",
-        table_name="test_table_backup",
+        table_name="test_table_backup_v2",
         rows=rows,
         hbase_conn_id="hbase_thrift2",
         outlets=[backup_table_dataset],  # Produce dataset only after data is ready

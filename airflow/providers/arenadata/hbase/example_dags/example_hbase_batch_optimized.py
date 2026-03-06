@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.providers.arenadata.hbase.operators.hbase import (
+    HBaseBatchGetOperator,
     HBaseBatchPutOperator,
     HBaseCreateTableOperator,
     HBaseDeleteTableOperator,

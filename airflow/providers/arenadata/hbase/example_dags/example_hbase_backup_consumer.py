@@ -59,7 +59,7 @@ default_args = {
 }
 
 # Define dataset - same as in producer
-backup_table_dataset = hbase_table_dataset(host="hbase", port=9090, table_name="test_table_backup")
+backup_table_dataset = hbase_table_dataset(host="hbase", port=9090, table_name="test_table_backup_v2")
 
 
 def decide_backup_type(**_context) -> str:
@@ -67,38 +67,29 @@ def decide_backup_type(**_context) -> str:
     Decide whether to create FULL or INCREMENTAL backup.
 
     Logic:
-    - If no backups exist for test_table_backup -> FULL
-    - If backups exist for test_table_backup -> INCREMENTAL
+    - Check HDFS first for actual backup files
+    - If no backup_* directories exist -> FULL
+    - If backup_* directories exist -> INCREMENTAL
 
     Returns:
         Task ID to execute next
     """
-    hook = HBaseCLIHook(
-        hbase_conn_id="hbase_thrift2",
-        java_home="/usr/lib/jvm/java-arenadata-openjdk-8",
-        hbase_home="/usr/lib/hbase",
+    import subprocess
+
+    # Check HDFS directly for backup directories
+    result = subprocess.run(
+        ["hdfs", "dfs", "-ls", "/hbase/backup/"],
+        capture_output=True, text=True, check=False
     )
-
-    # Get ALL backup history (backup set filter doesn't work properly)
-    try:
-        history = hook.get_backup_history()
-        print(f"Full backup history:\n{history}")
-
-        # Check if any backups exist for test_table_backup
-        if not history or not history.strip():
-            print("No previous backups found. Creating FULL backup.")
-            return "create_full_backup"
-
-        # Check if test_table_backup is mentioned in history
-        if "test_table_backup" in history:
-            print("Previous backups found for test_table_backup. Creating INCREMENTAL backup.")
-            return "create_incremental_backup"
-        print("No backups found for test_table_backup. Creating FULL backup.")
-        return "create_full_backup"
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        print(f"Error getting backup history: {e}")
-        print("Defaulting to FULL backup.")
-        return "create_full_backup"
+    
+    # Check if there are actual backup_* directories
+    if result.returncode == 0 and "backup_" in result.stdout:
+        print(f"Found existing backups in HDFS:\n{result.stdout}")
+        print("Creating INCREMENTAL backup.")
+        return "create_incremental_backup"
+    
+    print("No backup directories found in HDFS. Creating FULL backup.")
+    return "create_full_backup"
 
 
 with DAG(
@@ -113,16 +104,15 @@ with DAG(
     # Cleanup any stuck backup sessions before starting
     cleanup_stuck_sessions = BashOperator(
         task_id="cleanup_stuck_sessions",
-        # || true to not fail if nothing to repair
-        bash_command=("/usr/lib/hbase/bin/hbase backup repair || true"),
+        bash_command=("/usr/lib/hbase/bin/hbase backup repair 2>&1 || true"),
     )
 
     # Create backup set
     create_backup_set = HBaseBackupSetOperator(
         task_id="create_backup_set",
         action=BackupSetAction.ADD,
-        backup_set_name="test_backup_set",
-        tables=["test_table_backup"],
+        backup_set_name="test_backup_set_v2",
+        tables=["test_table_backup_v2"],
         hbase_conn_id="hbase_thrift2",
     )
 
@@ -141,7 +131,7 @@ with DAG(
         task_id="create_full_backup",
         backup_type=BackupType.FULL,
         backup_path="hdfs:///hbase/backup",  # HDFS URI
-        backup_set_name="test_backup_set",
+        backup_set_name="test_backup_set_v2",
         workers=1,
         hbase_conn_id="hbase_thrift2",
         do_xcom_push=True,  # Push backup ID to XCom
@@ -153,7 +143,7 @@ with DAG(
         task_id="create_incremental_backup",
         backup_type=BackupType.INCREMENTAL,
         backup_path="hdfs:///hbase/backup",  # Same path as FULL
-        backup_set_name="test_backup_set",
+        backup_set_name="test_backup_set_v2",
         workers=1,
         hbase_conn_id="hbase_thrift2",
         do_xcom_push=True,  # Push backup ID to XCom
@@ -162,7 +152,7 @@ with DAG(
     # Get backup history (runs after either backup type)
     get_backup_history = HBaseBackupHistoryOperator(
         task_id="get_backup_history",
-        backup_set_name="test_backup_set",
+        backup_set_name="test_backup_set_v2",
         hbase_conn_id="hbase_thrift2",
         trigger_rule="none_failed_min_one_success",
     )

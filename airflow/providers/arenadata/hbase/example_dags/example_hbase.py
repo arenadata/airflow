@@ -47,7 +47,7 @@ default_args = {
 }
 
 dag = DAG(
-    "example_hbase_hook",
+    "example_hbase",
     default_args=default_args,
     description="Example HBase DAG using Hook with Thrift2",
     schedule_interval=None,

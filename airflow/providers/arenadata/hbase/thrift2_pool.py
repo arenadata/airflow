@@ -151,7 +151,7 @@ class Thrift2ConnectionPool:
             try:
                 client = self._pool.get_nowait()
             except queue.Empty:
-                acquired = self._semaphore.acquire(blocking=False)
+                acquired = self._semaphore.acquire(blocking=False)  # Check limit
                 if acquired:
                     logger.debug("Creating new connection")
                     try:

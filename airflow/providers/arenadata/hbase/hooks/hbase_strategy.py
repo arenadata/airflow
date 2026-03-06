@@ -92,7 +92,7 @@ class HBaseStrategy(ABC):
         table_name: str,
         rows: list[dict[str, Any]],
         batch_size: int = 200,
-        max_workers: int = 4,
+        max_workers: int | None = None,
     ) -> None:
         """Insert multiple rows in batch with chunking and parallel processing."""
 
@@ -202,14 +202,14 @@ class Thrift2Strategy(HBaseStrategy):
         table_name: str,
         rows: list[dict[str, Any]],
         batch_size: int = 200,
-        max_workers: int = 1,
+        max_workers: int | None = None,
     ) -> None:
         """Insert multiple rows via Thrift2 with batch API (single-threaded)."""
-        if max_workers > 1:
+        # Thrift2 doesn't support parallel processing
+        if max_workers and max_workers > 1:
             self.log.warning(
-                "Thrift2 doesn't support parallel processing (no connection pool). Using single thread."
+                "Thrift2 doesn't support parallel processing (no connection pool). Ignoring max_workers."
             )
-            max_workers = 1
 
         # Debug: check row format
         if rows:
@@ -447,15 +447,21 @@ class PooledThrift2Strategy(HBaseStrategy):
             results = client.scan(table_name, row_start, row_stop, columns, limit)
             return [self._convert_scan_result(r) for r in results]
 
-    def batch_delete_rows(self, table_name: str, row_keys: list[str], batch_size: int = 200) -> None:
-        """Delete multiple rows in batch via pooled Thrift2."""
+    def batch_delete_rows(
+        self, table_name: str, row_keys: list[str], batch_size: int = 200, max_workers: int = 4
+    ) -> None:
+        """Delete multiple rows in batch via pooled Thrift2 with parallel processing."""
+        if hasattr(self.pool, "size") and self.pool.size < max_workers:
+            self.log.warning(
+                f"Pool size ({self.pool.size}) < max_workers ({max_workers}). "
+                "Consider increasing pool size."
+            )
 
         def process_chunk(chunk):
             """Process chunk using pooled connection."""
             self.log.info(f"Deleting chunk: {len(chunk)} rows")
             try:
                 with self.pool.connection() as client:
-                    # Convert row_keys to (row_key, None) tuples for delete_multiple
                     deletes = [(row_key, None) for row_key in chunk]
                     client.delete_multiple(table_name, deletes)
                 time.sleep(BATCH_DELAY)
@@ -463,11 +469,22 @@ class PooledThrift2Strategy(HBaseStrategy):
                 self.log.error(f"Chunk deletion failed: {e}")
                 raise
 
-        chunks = self._create_chunks(row_keys, batch_size)
-        self.log.info(f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})")
+        chunk_size = max(1, len(row_keys) // max_workers) if max_workers > 1 else batch_size
+        chunks = self._create_chunks(row_keys, chunk_size)
 
-        for chunk in chunks:
-            process_chunk(chunk)
+        self.log.info(
+            f"Deleting {len(row_keys)} rows in {len(chunks)} chunks "
+            f"with {max_workers} workers (batch_size={batch_size})"
+        )
+
+        if max_workers > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(process_chunk, chunk) for chunk in chunks]
+                for future in futures:
+                    future.result()
+        else:
+            for chunk in chunks:
+                process_chunk(chunk)
 
     def create_backup_set(self, backup_set_name: str, tables: list[str]) -> str:
         """Create backup set - not supported in Thrift2 mode."""

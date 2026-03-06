@@ -448,10 +448,21 @@ class HBaseThrift2Client:
             raise RuntimeError("Client not connected")
         table_name_obj = ttypes.TTableName(ns=self.config.namespace.encode(), qualifier=table_name.encode())
 
-        # Disable table first
-        self._client.disableTable(table_name_obj)
-        # Delete table
-        self._client.deleteTable(table_name_obj)
+        try:
+            # Check if table is enabled before disabling
+            if self._client.isTableEnabled(table_name_obj):
+                logger.info("Disabling table %s", table_name)
+                self._client.disableTable(table_name_obj)
+            else:
+                logger.info("Table %s is already disabled", table_name)
+            
+            # Delete table
+            logger.info("Deleting table %s", table_name)
+            self._client.deleteTable(table_name_obj)
+            logger.info("Successfully deleted table %s", table_name)
+        except Exception as e:
+            logger.error("Failed to delete table %s: %s", table_name, e, exc_info=True)
+            raise
 
     def put(self, table_name: str, row_key: str, data: dict[str, str]) -> None:
         """Put data into table.
