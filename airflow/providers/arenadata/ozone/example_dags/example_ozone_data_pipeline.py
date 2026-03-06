@@ -30,39 +30,60 @@ and perform large-scale data migrations efficiently.
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
-
-import pendulum
 
 from airflow import DAG
 from airflow.providers.arenadata.ozone.operators.ozone import OzoneSetQuotaOperator
 from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
+from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.utils import timezone
+
+
+def get_env_str(name: str, default: str | None = None) -> str | None:
+    return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
+
+
+OM_HOST = get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
+PIPELINE_CONN_ID = get_env_str("OZONE_EXAMPLE_PIPELINE_CONN_ID", "ozone_admin_default")
+PIPELINE_HDFS_CONN_ID = get_env_str("OZONE_EXAMPLE_PIPELINE_HDFS_CONN_ID")
+PIPELINE_VOLUME = get_env_str("OZONE_EXAMPLE_PIPELINE_VOLUME", "vol1")
+PIPELINE_BUCKET = get_env_str("OZONE_EXAMPLE_PIPELINE_BUCKET", "bucket1")
+PIPELINE_TRIGGER_FILE = get_env_str("OZONE_EXAMPLE_PIPELINE_TRIGGER_FILE", "trigger.lck")
+PIPELINE_QUOTA = get_env_str("OZONE_EXAMPLE_PIPELINE_QUOTA", "500GB")
+PIPELINE_SOURCE_PATH = get_env_str("OZONE_EXAMPLE_PIPELINE_SOURCE_PATH", "hdfs:///user/data/legacy/")
+PIPELINE_DEST_SUBPATH = get_env_str("OZONE_EXAMPLE_PIPELINE_DEST_SUBPATH", "migrated/")
+PIPELINE_TRIGGER_PATH = f"ofs://{OM_HOST}/{PIPELINE_VOLUME}/{PIPELINE_BUCKET}/{PIPELINE_TRIGGER_FILE}"
+PIPELINE_DEST_PATH = f"ofs://{OM_HOST}/{PIPELINE_VOLUME}/{PIPELINE_BUCKET}/{PIPELINE_DEST_SUBPATH}"
 
 with DAG(
     "example_ozone_data_pipeline",
-    start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
+    start_date=timezone.datetime(2025, 1, 1),
     schedule=None,
     tags=["ozone", "example"],
 ) as dag:
     check_trigger = OzoneKeySensor(
         task_id="wait_for_landing_file",
-        path="ofs://om/vol1/bucket1/trigger.lck",
+        path=PIPELINE_TRIGGER_PATH,
+        ozone_conn_id=PIPELINE_CONN_ID,
         mode="reschedule",
         execution_timeout=timedelta(minutes=1),
     )
 
     set_storage = OzoneSetQuotaOperator(
         task_id="prepare_quota",
-        volume="vol1",
-        quota="500GB",
+        volume=PIPELINE_VOLUME,
+        quota=PIPELINE_QUOTA,
+        ozone_conn_id=PIPELINE_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
     migrate_data = HdfsToOzoneOperator(
         task_id="migrate_legacy_data",
-        source_path="hdfs:///user/data/legacy/",
-        dest_path="ofs://om/vol1/bucket1/migrated/",
+        source_path=PIPELINE_SOURCE_PATH,
+        dest_path=PIPELINE_DEST_PATH,
+        hdfs_conn_id=PIPELINE_HDFS_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 

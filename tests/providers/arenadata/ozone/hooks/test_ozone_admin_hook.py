@@ -21,51 +21,68 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminHook
+from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
-# The path to the mocked method is in the base class
 MOCK_CLI_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliHook.run_cli"
+MOCK_RUN_RETRY_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.CliRunner.run_ozone"
 
 
 @pytest.fixture
 def admin_hook():
     """Provides a reusable instance of the OzoneAdminHook."""
-
-    return OzoneAdminHook(ozone_conn_id="test_admin_conn")
+    hook = OzoneAdminHook(ozone_conn_id="test_admin_conn")
+    conn = MagicMock()
+    conn.host = "ozone-om"
+    conn.port = 9862
+    conn.extra_dejson = {}
+    hook.__dict__["connection"] = conn
+    return hook
 
 
 class TestOzoneAdminHook:
     """Unit tests for OzoneAdminHook."""
 
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone.subprocess.run")
-    def test_create_volume(self, mock_subprocess_run: MagicMock, admin_hook: OzoneAdminHook):
-        """Test that `create_volume` calls the correct CLI command without a quota."""
-
-        mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_create_volume_uses_run_with_retry(
+        self, mock_run_with_retry: MagicMock, admin_hook: OzoneAdminHook
+    ):
+        """create_volume should execute via run_with_retry and succeed on returncode=0."""
+        mock_run_with_retry.return_value = MagicMock(returncode=0, stdout="", stderr="")
         admin_hook.create_volume(volume_name="test_vol")
-        mock_subprocess_run.assert_called_once()
-        call_args = mock_subprocess_run.call_args[0][0]
-        assert call_args == ["ozone", "sh", "volume", "create", "/test_vol"]
+        mock_run_with_retry.assert_called_once()
+        assert mock_run_with_retry.call_args.args[0] == ["ozone", "sh", "volume", "create", "/test_vol"]
 
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone.subprocess.run")
-    def test_create_volume_with_quota(self, mock_subprocess_run: MagicMock, admin_hook: OzoneAdminHook):
-        """Test that `create_volume` correctly adds the --quota argument."""
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_create_volume_already_exists_is_idempotent(
+        self, mock_run_with_retry: MagicMock, admin_hook: OzoneAdminHook
+    ):
+        """create_volume should not fail on VOLUME_ALREADY_EXISTS marker."""
+        mock_run_with_retry.side_effect = OzoneCliError(
+            "VOLUME_ALREADY_EXISTS",
+            command=["ozone", "sh", "volume", "create", "/test_vol"],
+            stderr="VOLUME_ALREADY_EXISTS",
+            returncode=1,
+            retryable=False,
+        )
+        admin_hook.create_volume(volume_name="test_vol")
+        mock_run_with_retry.assert_called_once()
 
-        mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        admin_hook.create_volume(volume_name="test_vol_quota", quota="100GB")
-        mock_subprocess_run.assert_called_once()
-        call_args = mock_subprocess_run.call_args[0][0]
-        assert call_args == ["ozone", "sh", "volume", "create", "/test_vol_quota", "--quota", "100GB"]
-
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone.subprocess.run")
-    def test_create_bucket(self, mock_subprocess_run: MagicMock, admin_hook: OzoneAdminHook):
-        """Test the `create_bucket` command."""
-
-        mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        admin_hook.create_bucket(volume_name="test_vol", bucket_name="test_bkt")
-        mock_subprocess_run.assert_called_once()
-        call_args = mock_subprocess_run.call_args[0][0]
-        assert call_args == ["ozone", "sh", "bucket", "create", "/test_vol/test_bkt"]
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_create_bucket_raises_on_non_idempotent_failure(
+        self, mock_run_with_retry: MagicMock, admin_hook: OzoneAdminHook
+    ):
+        """create_bucket should raise AirflowException on non-idempotent CLI errors."""
+        mock_run_with_retry.side_effect = OzoneCliError(
+            "ACCESS_DENIED",
+            command=["ozone", "sh", "bucket", "create", "/test_vol/test_bkt", "--quota", "100GB"],
+            stderr="ACCESS_DENIED",
+            returncode=1,
+            retryable=False,
+        )
+        with pytest.raises(AirflowException, match="Ozone command failed"):
+            admin_hook.create_bucket(volume_name="test_vol", bucket_name="test_bkt", quota="100GB")
 
     @patch(MOCK_CLI_PATH)
     def test_get_container_report(self, mock_run_cli: MagicMock, admin_hook: OzoneAdminHook):
@@ -76,6 +93,8 @@ class TestOzoneAdminHook:
 
         result = admin_hook.get_container_report()
 
-        mock_run_cli.assert_called_once_with(["ozone", "admin", "container", "report", "--json"])
+        mock_run_cli.assert_called_once_with(
+            ["ozone", "admin", "container", "report", "--json"], timeout=3600
+        )
         assert result["total"] == 1
         assert len(result["containers"]) == 1

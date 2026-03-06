@@ -27,9 +27,9 @@ from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzon
 class TestHdfsToOzoneOperator:
     """Unit tests for HdfsToOzoneOperator."""
 
-    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.HdfsToOzoneOperator._execute_distcp")
-    def test_execute(self, mock_execute_distcp: MagicMock):
-        """Verify that the operator calls _execute_distcp with the correct distcp command."""
+    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.CliRunner.run_process")
+    def test_execute(self, mock_run_with_retry: MagicMock):
+        """Verify that the operator calls CliRunner with DistCp command."""
 
         operator = HdfsToOzoneOperator(
             task_id="hdfs_to_ozone_test",
@@ -47,8 +47,8 @@ class TestHdfsToOzoneOperator:
             "ofs://om:9862/vol1/bucket1/data",
         ]
 
-        mock_execute_distcp.assert_called_once()
-        call_args = mock_execute_distcp.call_args[0][0]
+        mock_run_with_retry.assert_called_once()
+        call_args = mock_run_with_retry.call_args.args[0]
         assert call_args == expected_cmd
 
     def test_init_invalid_optional_conn_type(self):

@@ -27,7 +27,9 @@ from airflow.providers.arenadata.ozone.transfers.ozone_to_hive import OzoneToHiv
 class TestOzoneToHiveOperator:
     """Unit tests for OzoneToHiveOperator."""
 
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_hive._run_hive_cli_with_env")
+    @patch(
+        "airflow.providers.arenadata.ozone.transfers.ozone_to_hive.OzoneToHiveOperator._run_hive_cli_with_env"
+    )
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_hive.HiveCliHook")
     def test_execute_add_partition(self, mock_hive_hook: MagicMock, mock_run_hive: MagicMock):
         """Test that OzoneToHiveOperator adds a partition correctly."""

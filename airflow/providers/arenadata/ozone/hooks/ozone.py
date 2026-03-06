@@ -18,136 +18,133 @@
 from __future__ import annotations
 
 import json
-import logging
 import shlex
 import subprocess
-import time
+from dataclasses import dataclass
 from enum import Enum
+from functools import cached_property
 from pathlib import Path
-
-from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
-from airflow.providers.arenadata.ozone.utils.common import run_subprocess
-from airflow.providers.arenadata.ozone.utils.ozone_env import OzoneEnv
+from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner
+from airflow.providers.arenadata.ozone.utils.errors import (
+    OzoneCliError,
+)
+from airflow.providers.arenadata.ozone.utils.helpers import EnvSecretHelper
+from airflow.providers.arenadata.ozone.utils.security import (
+    KerberosConfig,
+    SSLConfig,
+)
 from airflow.utils.log.secrets_masker import redact
 
-log = logging.getLogger(__name__)
-DEFAULT_CLI_TIMEOUT_SECONDS = 300
+RETRY_ATTEMPTS = 3
+FAST_TIMEOUT_SECONDS = 5 * 60
+SLOW_TIMEOUT_SECONDS = 60 * 60
 
 
-class OzoneCliError(AirflowException):
-    """Non-retryable Ozone CLI error."""
+@dataclass(frozen=True)
+class OzoneConnSnapshot:
+    """Lightweight connection snapshot to reduce repeated connection reads."""
 
-    def __init__(
-        self,
-        message: str,
-        *,
-        command: list[str] | None = None,
-        stderr: str | None = None,
-        returncode: int | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.command = command
-        self.stderr = stderr
-        self.returncode = returncode
-
-
-class OzoneCliTransientError(OzoneCliError):
-    """Retryable/transient Ozone CLI error."""
-
-
-def is_transient_cli_failure(return_code: int | None, stderr: str) -> bool:
-    """
-    Classify transient Ozone CLI failures by stderr markers.
-
-    We only retry errors that are likely to resolve on their own (network hiccups, timeouts, temporary
-    unavailability). Most semantic failures (NOT_FOUND, ALREADY_EXISTS, permission errors) should not
-    be retried here.
-    """
-    s = (stderr or "").lower()
-
-    non_transient_markers = (
-        "already_exists",
-        "not_found",
-        "does not exist",
-        "accessdenied",
-        "access denied",
-        "permission denied",
-        "invalid",
-        "illegalargumentexception",
-        "authentication failed",
-        "unauthorized",
-    )
-    if any(m in s for m in non_transient_markers):
-        return False
-
-    transient_markers = (
-        "timed out",
-        "timeout",
-        "connection refused",
-        "connection reset",
-        "connection closed",
-        "no route to host",
-        "temporarily unavailable",
-        "service unavailable",
-        "unknownhostexception",
-        "could not resolve",
-        "sockettimeoutexception",
-        "connectexception",
-        "eofexception",
-        "broken pipe",
-        "too many requests",
-        "throttl",
-        "503",
-    )
-    if any(m in s for m in transient_markers):
-        return True
-
-    return False
+    host: str
+    port: int
+    extra: dict[str, object]
 
 
 class OzoneCliHook(BaseHook):
-    """
-    Base hook for Apache Ozone interactions using CLI wrappers.
-
-    Encapsulates the logic for running `ozone` commands, handling errors,
-    and automatically retrying on transient failures.
-
-    Supports SSL/TLS configuration via connection Extra:
-    - ozone_security_enabled: Enable SSL/TLS for Ozone CLI
-    - ozone_om_https_port: HTTPS port for Ozone Manager
-    - ozone.scm.https.port: HTTPS port for SCM
-    - ozone_ssl_keystore_location: Path to keystore file
-    - ozone_ssl_keystore_password: Keystore password
-    - ozone_ssl_truststore_location: Path to truststore file
-    - ozone_ssl_truststore_password: Truststore password
-
-    Supports Kerberos authentication via connection Extra:
-    - hadoop_security_authentication: Set to "kerberos" to enable
-    - kerberos_principal: Kerberos principal (e.g., "user@REALM.COM")
-    - kerberos_keytab: Path to keytab file (supports secret:// paths)
-    - kerberos_realm: Kerberos realm (e.g., "EXAMPLE.COM")
-    - krb5_conf: Optional path to krb5.conf file
-    """
+    """Base hook for Ozone CLI commands with retry and auth handling."""
 
     conn_name_attr = "ozone_conn_id"
     default_conn_name = "ozone_default"
     conn_type = "ozone"
     hook_name = "Ozone"
 
-    def __init__(self, ozone_conn_id: str = default_conn_name):
+    def __init__(
+        self,
+        ozone_conn_id: str = default_conn_name,
+        *,
+        retry_attempts: int = RETRY_ATTEMPTS,
+    ):
         super().__init__()
         self.ozone_conn_id = ozone_conn_id
+        self.retry_attempts = retry_attempts
+        self._kerberos_ticket_ready = False
 
-        self._env = OzoneEnv(
+    @cached_property
+    def connection(self) -> object:
+        """Resolve Airflow connection lazily."""
+        return self.get_connection(self.ozone_conn_id)
+
+    @cached_property
+    def connection_snapshot(self) -> OzoneConnSnapshot:
+        """Validate and cache required host/port/extra connection fields."""
+        conn = self.connection
+        extra = EnvSecretHelper.get_connection_extra(conn)
+        raw_host = getattr(conn, "host", None)
+        raw_port = getattr(conn, "port", None)
+        if not raw_host or not str(raw_host).strip():
+            raise AirflowException(
+                f"Connection '{self.ozone_conn_id}' must define host for Ozone CLI operations."
+            )
+        if raw_port in (None, ""):
+            raise AirflowException(
+                f"Connection '{self.ozone_conn_id}' must define port for Ozone CLI operations."
+            )
+        host = str(raw_host).strip()
+        port = int(raw_port)
+        return OzoneConnSnapshot(host=host, port=port, extra=extra)
+
+    @cached_property
+    def _cached_ssl_env(self) -> dict[str, str] | None:
+        """SSL/TLS configuration from connection Extra (lazy)."""
+        try:
+            return SSLConfig.load_from_connection(
+                self.connection,
+                conn_id=self.ozone_conn_id,
+                logger=self.log,
+                enabled_flag_keys=("ozone_security_enabled", "ozone.security.enabled"),
+            )
+        except AirflowException as err:
+            self.log.debug("Could not load SSL configuration (connection may not exist): %s", str(err))
+            return None
+
+    @cached_property
+    def _cached_kerberos_env(self) -> dict[str, str] | None:
+        """Kerberos configuration from connection Extra (lazy)."""
+        return KerberosConfig.load_ozone_env(
+            extra=self.connection_snapshot.extra,
             conn_id=self.ozone_conn_id,
-            get_connection=self.get_connection,
             logger=self.log,
         )
 
-        self.log.debug("OzoneCliHook initialized (conn_id=%s)", self.ozone_conn_id)
+    @cached_property
+    def _cached_client_conf_dir(self) -> str | None:
+        """Generate minimal Ozone client config dir from connection extra when needed."""
+        return KerberosConfig.build_client_conf_dir(
+            host=self.connection_snapshot.host,
+            port=self.connection_snapshot.port,
+            extra=self.connection_snapshot.extra,
+            conn_id=self.ozone_conn_id,
+            logger=self.log,
+        )
+
+    @cached_property
+    def _cached_effective_config_dir(self) -> str | None:
+        """Config dir used for CLI --config and subprocess environment."""
+        return KerberosConfig.effective_config_dir(self._cached_kerberos_env, self._cached_client_conf_dir)
+
+    def _prepared_cli_env(self) -> dict[str, str]:
+        """Build subprocess environment for Ozone CLI calls."""
+        return KerberosConfig.build_ozone_cli_env(
+            host=self.connection_snapshot.host,
+            port=self.connection_snapshot.port,
+            conn_id=self.ozone_conn_id,
+            logger=self.log,
+            effective_config_dir=self._cached_effective_config_dir,
+            ssl_env=self._cached_ssl_env,
+            kerberos_env=self._cached_kerberos_env,
+        )
 
     @classmethod
     def get_ui_field_behaviour(cls) -> dict[str, object]:
@@ -169,59 +166,30 @@ class OzoneCliHook(BaseHook):
     def test_connection(self) -> tuple[bool, str]:
         """Run a minimal CLI command to verify Ozone auth and connectivity."""
         try:
-            result = self.run_cli_check(["ozone", "sh", "volume", "list", "/"], timeout=30)
-        except Exception as err:
+            result = self.run_cli(
+                ["ozone", "sh", "volume", "list", "/"],
+                timeout=FAST_TIMEOUT_SECONDS,
+                retry_attempts=0,
+                check=False,
+                log_output=False,
+                return_result=True,
+            )
+        except OzoneCliError as err:
             return False, f"Ozone CLI connection test failed: {err}"
         if result.returncode == 0:
             return True, "Ozone CLI connection test succeeded."
-        error_text = (result.stderr or result.stdout or "Unknown CLI error").strip()
+        error_text = CliRunner.pick_process_output(result) or "Unknown CLI error"
         return False, f"Ozone CLI connection test failed: {error_text}"
 
-    def _check_config_files_exist(self, config_dir: str) -> bool:
-        """
-        Check if required Ozone configuration files exist in the directory.
-
-        Returns True if both core-site.xml and ozone-site.xml exist, False otherwise.
-        """
-        if not config_dir:
-            self.log.debug("Config directory is None or empty")
-            return False
-
-        config_path = Path(config_dir)
-        if not config_path.is_dir():
-            self.log.debug("Config directory does not exist: %s", config_dir)
-            return False
-
-        core_site = config_path / "core-site.xml"
-        ozone_site = config_path / "ozone-site.xml"
-
-        core_exists = core_site.is_file()
-        ozone_exists = ozone_site.is_file()
-
-        if not core_exists:
-            self.log.debug("core-site.xml not found at: %s", core_site)
-        if not ozone_exists:
-            self.log.debug("ozone-site.xml not found at: %s", ozone_site)
-
-        if core_exists and ozone_exists:
-            self.log.debug("Both configuration files found in %s", config_dir)
-
-        return core_exists and ozone_exists
-
     def _prepare_cli_command(self, cmd: list[str]) -> list[str]:
-        """
-        Prepare Ozone CLI command with --config flag if Kerberos is enabled.
-
-        Using the --config flag explicitly tells Ozone Shell where to find security
-        configuration files, which is critical for Kerberos authentication to work properly.
-        """
-        if not self._env.kerberos_enabled():
+        """Add ``--config`` for Kerberos-enabled commands when available."""
+        if not KerberosConfig.is_enabled(self._cached_kerberos_env):
             return cmd
 
         if "--config" in cmd:
             return cmd
 
-        config_dir = self._env.effective_config_dir
+        config_dir = self._cached_effective_config_dir
         if not config_dir:
             self.log.warning(
                 "Kerberos enabled but OZONE_CONF_DIR/HADOOP_CONF_DIR not set. "
@@ -229,7 +197,7 @@ class OzoneCliHook(BaseHook):
             )
             return cmd
 
-        config_files_exist = self._check_config_files_exist(config_dir)
+        config_files_exist = KerberosConfig.check_config_files_exist(config_dir, logger=self.log)
         if not config_files_exist:
             self.log.warning(
                 "Kerberos enabled but configuration files (core-site.xml, ozone-site.xml) "
@@ -253,133 +221,39 @@ class OzoneCliHook(BaseHook):
 
         return cmd
 
-    def _run_command(
-        self,
-        prepared_cmd: list[str],
-        env: dict[str, str],
-        timeout: int = DEFAULT_CLI_TIMEOUT_SECONDS,
-        check: bool = True,
-        input_text: str | None = None,
-    ) -> subprocess.CompletedProcess[str]:
-        """
-        Run Ozone CLI command locally.
-
-        Returns subprocess.CompletedProcess.
-        """
-        try:
-            result = run_subprocess(
-                prepared_cmd,
-                env=env,
-                check=check,
-                timeout=timeout,
-                input_text=input_text,
-            )
-            return result
-        except FileNotFoundError as e:
-            raise OzoneCliError(
-                "Ozone CLI not found. Please ensure Ozone is installed and available in PATH."
-            ) from e
-
-    def _log_cli_output(self, stdout: str, stderr: str, *, stdout_msg: str, stderr_msg: str) -> None:
-        """Log stdout/stderr when present using provided message templates."""
-        if stdout.strip():
-            self.log.debug(stdout_msg, redact(stdout.strip()))
-        if stderr.strip():
-            self.log.debug(stderr_msg, redact(stderr.strip()))
-
-    def run_cli_check(
+    def run_cli(
         self,
         cmd: list[str],
-        timeout: int = DEFAULT_CLI_TIMEOUT_SECONDS,
+        *,
+        timeout: int = FAST_TIMEOUT_SECONDS,
+        retry_attempts: int | None = None,
         input_text: str | None = None,
-    ) -> subprocess.CompletedProcess[str]:
-        """
-        Execute Ozone CLI command without retries.
-
-        Use this method for probes such as existence checks where retry backoff is not needed.
-        """
-        prepared_cmd = self._prepare_cli_command(cmd)
-        env = self._env.build_env()
-        return self._run_command(
-            prepared_cmd,
-            env,
-            timeout=timeout,
-            check=False,
-            input_text=input_text,
+        check: bool = True,
+        log_output: bool = True,
+        return_result: bool = False,
+    ) -> str | subprocess.CompletedProcess[str]:
+        """Execute Ozone CLI command with error handling and automatic retries on retryable failures."""
+        self.log.info("Executing Ozone CLI command (connection: %s)", self.ozone_conn_id)
+        self._kerberos_ticket_ready = KerberosConfig.ensure_ticket(
+            extra=self.connection_snapshot.extra,
+            conn_id=self.ozone_conn_id,
+            logger=self.log,
+            kerberos_ticket_ready=self._kerberos_ticket_ready,
         )
-
-    @retry(
-        wait=wait_exponential(multiplier=2, min=2, max=60),
-        stop=stop_after_attempt(3),
-        before_sleep=before_sleep_log(log, logging.WARNING),
-        retry=retry_if_exception_type(OzoneCliTransientError),
-        reraise=True,
-    )
-    def run_cli(self, cmd: list[str]) -> str:
-        """Execute Ozone CLI command with error handling and automatic retries on transient failures."""
-        command_str = shlex.join(cmd)
-        masked_command = redact(command_str)
-
-        self.log.info("Executing Ozone CLI command (connection: %s): %s", self.ozone_conn_id, masked_command)
-        masked_cmd = [redact(str(arg)) for arg in cmd]
-        self.log.debug("Full command arguments: %s", masked_cmd)
-
-        start_time = time.monotonic()
-        try:
-            prepared_cmd = self._prepare_cli_command(cmd)
-            env = self._env.build_env()
-
-            result = self._run_command(
-                prepared_cmd,
-                env,
-                timeout=DEFAULT_CLI_TIMEOUT_SECONDS,
-                check=True,
-            )
-            execution_time = time.monotonic() - start_time
-
-            self.log.info("Ozone CLI command completed successfully in %.2f seconds", execution_time)
-            self._log_cli_output(
-                result.stdout or "",
-                result.stderr or "",
-                stdout_msg="Command stdout: %s",
-                stderr_msg="Command stderr: %s",
-            )
-
-            return (result.stdout or "").strip()
-        except subprocess.CalledProcessError as e:
-            execution_time = time.monotonic() - start_time
-            error_message = e.stderr.strip() if e.stderr else "No error message provided"
-            return_code = e.returncode
-
-            masked_error = redact(error_message)
-            masked_failed_command = redact(command_str)
-
-            self.log.error(
-                "Ozone CLI command failed after %.2f seconds (return code: %d, connection: %s)",
-                execution_time,
-                return_code,
-                self.ozone_conn_id,
-            )
-            self.log.error("Failed command: %s", masked_failed_command)
-            self.log.error("Error output: %s", masked_error)
-
-            if e.stdout:
-                self.log.debug("Command stdout before failure: %s", redact(e.stdout.strip()))
-
-            if is_transient_cli_failure(return_code, error_message):
-                raise OzoneCliTransientError(
-                    f"Ozone command failed (transient, return code: {return_code}): {masked_error}",
-                    command=prepared_cmd,
-                    stderr=error_message,
-                    returncode=return_code,
-                )
-
-            raise OzoneCliError(
-                f"Ozone command failed (return code: {return_code}): {masked_error}",
-                command=prepared_cmd,
-                stderr=error_message,
-                returncode=return_code,
-            )
+        prepared_cmd = self._prepare_cli_command(cmd)
+        effective_retry_attempts = self.retry_attempts if retry_attempts is None else retry_attempts
+        result = CliRunner.run_ozone(
+            prepared_cmd,
+            env_overrides=self._prepared_cli_env(),
+            timeout=timeout,
+            input_text=input_text,
+            check=check,
+            log_output=log_output,
+            retry_attempts=effective_retry_attempts,
+        )
+        if return_result:
+            return result
+        return CliRunner.pick_process_output(result)
 
 
 class OzoneFsHook(OzoneCliHook):
@@ -391,15 +265,20 @@ class OzoneFsHook(OzoneCliHook):
 
     hook_name = "Ozone FS"
 
-    def mkdir(self, path: str) -> None:
+    def mkdir(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> None:
         """Create a directory tree in Ozone FS."""
-        self.log.info("Creating directory in Ozone FS: %s", path)
-        self.run_cli(["ozone", "fs", "-mkdir", "-p", path])
-        self.log.info("Successfully created directory: %s", path)
+        self.log.debug("Creating directory in Ozone FS: %s", path)
+        self.run_cli(["ozone", "fs", "-mkdir", "-p", path], timeout=timeout)
 
-    def copy_from_local(self, local_path: str, remote_path: str) -> None:
+    def copy_from_local(
+        self,
+        local_path: str,
+        remote_path: str,
+        *,
+        timeout: int = SLOW_TIMEOUT_SECONDS,
+    ) -> None:
         """Upload a local file to an Ozone URI."""
-        self.log.info(
+        self.log.debug(
             "Uploading file from local filesystem to Ozone (local: %s -> remote: %s)",
             local_path,
             remote_path,
@@ -411,31 +290,32 @@ class OzoneFsHook(OzoneCliHook):
 
         file_size = local_file.stat().st_size
         self.log.debug("Local file exists, size: %d bytes", file_size)
-        self.run_cli(["ozone", "fs", "-put", "-f", str(local_file), remote_path])
-        self.log.info("Successfully uploaded file to Ozone: %s", remote_path)
+        self.run_cli(
+            ["ozone", "fs", "-put", "-f", str(local_file), remote_path],
+            timeout=timeout,
+        )
 
-    def exists(self, path: str) -> bool:
-        """Check path existence with transient-error handling."""
+    def exists(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> bool:
+        """Check path existence with retryable-error handling."""
         self.log.debug("Checking existence of path in Ozone FS: %s", path)
-        cmd = ["ozone", "fs", "-test", "-e", path]
-        result = self.run_cli_check(cmd, timeout=30)
-        if result.returncode == 0:
-            self.log.debug("Path exists in Ozone: %s", path)
+        try:
+            self.run_cli(
+                ["ozone", "fs", "-test", "-e", path],
+                timeout=timeout,
+                check=True,
+                log_output=True,
+            )
             return True
+        except OzoneCliError as err:
+            error_text = (err.stderr or "").lower()
+            if any(marker in error_text for marker in ("not found", "does not exist", "no such file")):
+                return False
+            raise
 
-        stderr = (result.stderr or "").strip()
-        stdout = (result.stdout or "").strip()
-        combined = stderr or stdout
-        if is_transient_cli_failure(result.returncode, combined):
-            raise OzoneCliTransientError(f"Transient error while checking path existence: {path}")
-
-        self.log.debug("Path does not exist in Ozone: %s", path)
-        return False
-
-    def list_paths(self, path: str) -> list[str]:
+    def list_paths(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> list[str]:
         """List keys/paths under the provided Ozone URI."""
-        self.log.info("Listing paths in Ozone FS: %s", path)
-        output = self.run_cli(["ozone", "fs", "-ls", "-C", path])
+        self.log.debug("Listing paths in Ozone FS: %s", path)
+        output = self.run_cli(["ozone", "fs", "-ls", "-C", path], timeout=timeout)
 
         paths = output.splitlines() if output else []
         self.log.info("Found %d path(s) in %s", len(paths), path)
@@ -445,18 +325,22 @@ class OzoneFsHook(OzoneCliHook):
                 self.log.debug("... and %d more paths", len(paths) - 10)
         return paths
 
-    def set_key_property(self, path: str, replication_factor: int | None = None) -> None:
-        """
-        Set replication factor for a key.
-
-        This helper is used by data lifecycle and administrative workflows.
-        """
+    def set_key_property(
+        self,
+        path: str,
+        replication_factor: int | None = None,
+        *,
+        timeout: int = FAST_TIMEOUT_SECONDS,
+    ) -> None:
+        """Set replication factor for a key."""
         if replication_factor:
-            self.log.info("Setting replication factor to %d for path: %s", replication_factor, path)
-            self.run_cli(["ozone", "fs", "-setrep", str(replication_factor), path])
-            self.log.info("Successfully set replication factor to %d for path: %s", replication_factor, path)
+            self.log.debug("Setting replication factor to %d for path: %s", replication_factor, path)
+            self.run_cli(
+                ["ozone", "fs", "-setrep", str(replication_factor), path],
+                timeout=timeout,
+            )
         else:
-            self.log.warning("No key properties were specified to be set for path: %s", path)
+            self.log.debug("No key properties were specified to be set for path: %s", path)
 
 
 class OzoneResource(str, Enum):
@@ -481,6 +365,7 @@ class OzoneAdminHook(OzoneCliHook):
         not_found_keywords: list[str],
         recursive: bool = False,
         force: bool = False,
+        timeout: int = SLOW_TIMEOUT_SECONDS,
     ) -> None:
         """Delete volume/bucket with idempotent not-found handling."""
         self.log.info(
@@ -498,46 +383,29 @@ class OzoneAdminHook(OzoneCliHook):
         input_text = "yes\n" if (recursive and force) else None
 
         try:
-            start = time.monotonic()
-            result = self.run_cli_check(
+            self.run_cli(
                 cmd,
-                timeout=DEFAULT_CLI_TIMEOUT_SECONDS,
+                timeout=timeout,
                 input_text=input_text,
+                check=True,
+                log_output=True,
+                return_result=True,
             )
-            elapsed = time.monotonic() - start
 
-            if result.returncode == 0:
-                self.log.info(
-                    "Successfully deleted %s: %s in %.2f seconds", resource_type, resource_path, elapsed
-                )
-                self._log_cli_output(
-                    result.stdout or "",
-                    result.stderr or "",
-                    stdout_msg="Command output: %s",
-                    stderr_msg="Command stderr: %s",
-                )
-                return
-
-            err = (result.stderr or "").strip()
-            err_l = err.lower()
-            if any(k in err for k in not_found_keywords) or "does not exist" in err_l:
+            self.log.info("Successfully deleted %s: %s", resource_type, resource_path)
+            return
+        except OzoneCliError as err:
+            stderr = (err.stderr or "").strip()
+            err_l = stderr.lower()
+            if any(k in stderr for k in not_found_keywords) or "does not exist" in err_l:
                 self.log.info(
                     "%s %s does not exist, treating as success.", resource_type.capitalize(), resource_path
                 )
                 return
-
-            masked_error = redact(err or "Unknown error")
+            masked_error = redact(stderr or "Unknown error")
             self.log.error("Failed to delete %s %s: %s", resource_type, resource_path, masked_error)
-            raise AirflowException(f"Failed to delete {resource_type} {resource_path}: {masked_error}")
-        except subprocess.TimeoutExpired as err:
-            self.log.error(
-                "Timeout while deleting %s %s after %d seconds",
-                resource_type,
-                resource_path,
-                DEFAULT_CLI_TIMEOUT_SECONDS,
-            )
             raise AirflowException(
-                f"Timeout while deleting {resource_type} {resource_path}. The operation took longer than 5 minutes."
+                f"Failed to delete {resource_type} {resource_path}: {masked_error}"
             ) from err
 
     def _create_resource(
@@ -547,6 +415,7 @@ class OzoneAdminHook(OzoneCliHook):
         resource_path: str,
         quota: str | None,
         already_exists_marker: str,
+        timeout: int = SLOW_TIMEOUT_SECONDS,
     ) -> None:
         """Create volume/bucket and treat ALREADY_EXISTS as success."""
         cmd = ["ozone", "sh", resource_type, "create", resource_path]
@@ -554,64 +423,73 @@ class OzoneAdminHook(OzoneCliHook):
             cmd.extend(["--quota", quota])
 
         try:
-            start = time.monotonic()
-            result = self.run_cli_check(cmd, timeout=DEFAULT_CLI_TIMEOUT_SECONDS)
-            elapsed = time.monotonic() - start
+            self.run_cli(
+                cmd,
+                timeout=timeout,
+                check=True,
+                log_output=True,
+                return_result=True,
+            )
 
-            if result.returncode == 0:
-                self.log.info(
-                    "Successfully created %s: %s (quota: %s) in %.2f seconds",
-                    resource_type,
-                    resource_path,
-                    quota or "none",
-                    elapsed,
-                )
-                self._log_cli_output(
-                    result.stdout or "",
-                    result.stderr or "",
-                    stdout_msg="Command output: %s",
-                    stderr_msg="Command stderr: %s",
-                )
-                return
-
-            err = (result.stderr or "").strip() or "No error message provided"
-            if already_exists_marker in err:
+            self.log.info(
+                "Successfully created %s: %s (quota: %s)",
+                resource_type,
+                resource_path,
+                quota or "none",
+            )
+            return
+        except OzoneCliError as err:
+            error_message = (err.stderr or "").strip() or "No error message provided"
+            if already_exists_marker in error_message:
                 self.log.info(
                     "%s %s already exists, treating as success.", resource_type.capitalize(), resource_path
                 )
                 return
-            raise AirflowException(f"Ozone command failed (return code: {result.returncode}): {redact(err)}")
-        except subprocess.TimeoutExpired as err:
-            self.log.error(
-                "Timeout while creating %s %s after %d seconds",
-                resource_type,
-                resource_path,
-                DEFAULT_CLI_TIMEOUT_SECONDS,
-            )
             raise AirflowException(
-                f"Timeout while creating {resource_type} {resource_path}. "
-                "The operation took longer than 5 minutes."
-            ) from err
+                f"Ozone command failed (return code: {err.returncode}): {redact(error_message)}"
+            )
 
-    def create_volume(self, volume_name: str, quota: str | None = None) -> None:
+    def create_volume(
+        self,
+        volume_name: str,
+        quota: str | None = None,
+        *,
+        timeout: int = SLOW_TIMEOUT_SECONDS,
+    ) -> None:
         """Create volume and treat ALREADY_EXISTS as success."""
         self._create_resource(
             resource_type=OzoneResource.VOLUME.value,
             resource_path=f"/{volume_name}",
             quota=quota,
             already_exists_marker="VOLUME_ALREADY_EXISTS",
+            timeout=timeout,
         )
 
-    def create_bucket(self, volume_name: str, bucket_name: str, quota: str | None = None) -> None:
+    def create_bucket(
+        self,
+        volume_name: str,
+        bucket_name: str,
+        quota: str | None = None,
+        *,
+        timeout: int = SLOW_TIMEOUT_SECONDS,
+    ) -> None:
         """Create bucket and treat ALREADY_EXISTS as success."""
         self._create_resource(
             resource_type=OzoneResource.BUCKET.value,
             resource_path=f"/{volume_name}/{bucket_name}",
             quota=quota,
             already_exists_marker="BUCKET_ALREADY_EXISTS",
+            timeout=timeout,
         )
 
-    def delete_volume(self, volume_name: str, recursive: bool = False, force: bool = False) -> None:
+    def delete_volume(
+        self,
+        volume_name: str,
+        recursive: bool = False,
+        force: bool = False,
+        *,
+        timeout: int = SLOW_TIMEOUT_SECONDS,
+    ) -> None:
         """Delete a volume, optionally with recursive confirmation."""
         self._delete_resource(
             resource_type=OzoneResource.VOLUME.value,
@@ -620,6 +498,7 @@ class OzoneAdminHook(OzoneCliHook):
             not_found_keywords=["VOLUME_NOT_FOUND"],
             recursive=recursive,
             force=force,
+            timeout=timeout,
         )
 
     def delete_bucket(
@@ -628,6 +507,8 @@ class OzoneAdminHook(OzoneCliHook):
         bucket_name: str,
         recursive: bool = False,
         force: bool = False,
+        *,
+        timeout: int = SLOW_TIMEOUT_SECONDS,
     ) -> None:
         """Delete a bucket, optionally with recursive confirmation."""
         self._delete_resource(
@@ -637,12 +518,16 @@ class OzoneAdminHook(OzoneCliHook):
             not_found_keywords=["BUCKET_NOT_FOUND"],
             recursive=recursive,
             force=force,
+            timeout=timeout,
         )
 
-    def get_container_report(self) -> dict:
+    def get_container_report(self, *, timeout: int = SLOW_TIMEOUT_SECONDS) -> dict:
         """Fetch and parse the JSON container report from SCM."""
         self.log.info("Fetching container report from Ozone SCM")
-        output = self.run_cli(["ozone", "admin", "container", "report", "--json"])
+        output = self.run_cli(
+            ["ozone", "admin", "container", "report", "--json"],
+            timeout=timeout,
+        )
         try:
             report_data = json.loads(output)
             if not isinstance(report_data, (dict, list)):

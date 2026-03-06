@@ -22,8 +22,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from airflow.exceptions import AirflowException
-from airflow.providers.arenadata.ozone.hooks.ozone import OzoneCliTransientError, OzoneFsHook
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneFsHook
 from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor, OzoneS3KeySensor
+from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
 
 class TestOzoneKeySensor:
@@ -40,29 +41,17 @@ class TestOzoneKeySensor:
         result = sensor.poke(context={})
 
         assert result is True
-        mock_ozone_hook.assert_called_once_with(OzoneFsHook.default_conn_name)
-        mock_hook_instance.exists.assert_called_once_with("ofs://vol1/bucket1/key1")
+        mock_ozone_hook.assert_called_once()
+        assert mock_ozone_hook.call_args.kwargs["ozone_conn_id"] == OzoneFsHook.default_conn_name
+        mock_hook_instance.exists.assert_called_once()
+        assert mock_hook_instance.exists.call_args.args[0] == "ofs://vol1/bucket1/key1"
 
     @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneFsHook")
-    def test_poke_raises_when_cli_missing(self, mock_ozone_hook: MagicMock):
-        """Test that poke re-raises when Ozone CLI is not available."""
+    def test_poke_retryable_error_returns_false(self, mock_ozone_hook: MagicMock):
+        """Test that poke returns False on retryable OzoneCliError (triggers retry)."""
 
         mock_hook_instance = mock_ozone_hook.return_value
-        mock_hook_instance.exists.side_effect = AirflowException(
-            "Ozone CLI not found. Please ensure Ozone is installed and available in PATH."
-        )
-
-        sensor = OzoneKeySensor(task_id="test_sensor", path="ofs://vol1/bucket1/key1")
-
-        with pytest.raises(AirflowException):
-            sensor.poke(context={})
-
-    @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneFsHook")
-    def test_poke_transient_error_returns_false(self, mock_ozone_hook: MagicMock):
-        """Test that poke returns False on OzoneCliTransientError (triggers retry)."""
-
-        mock_hook_instance = mock_ozone_hook.return_value
-        mock_hook_instance.exists.side_effect = OzoneCliTransientError("Connection reset")
+        mock_hook_instance.exists.side_effect = OzoneCliError("Connection reset", retryable=True)
 
         sensor = OzoneKeySensor(task_id="test_sensor", path="ofs://vol1/bucket1/key1")
         result = sensor.poke(context={})
@@ -104,7 +93,9 @@ class TestOzoneS3KeySensor:
         result = sensor.poke(context={})
 
         assert result is True
-        mock_hook_instance.check_for_key.assert_called_once_with("path/file.txt", "mybucket")
+        mock_hook_instance.check_for_key.assert_called_once()
+        check_args = mock_hook_instance.check_for_key.call_args.args
+        assert check_args == ("path/file.txt", "mybucket")
 
     def test_bucket_name_required_for_plain_key(self):
         """If bucket_name is None and key is not s3:// URL, sensor should fail fast."""
@@ -116,4 +107,37 @@ class TestOzoneS3KeySensor:
         )
 
         with pytest.raises(AirflowException, match="bucket_name is required"):
+            sensor.poke(context={})
+
+    @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneS3Hook")
+    def test_wildcard_match_uses_metadata_listing(self, mock_ozone_hook: MagicMock):
+        """wildcard_match should search metadata and match glob patterns."""
+        mock_hook_instance = mock_ozone_hook.return_value
+        mock_hook_instance.get_file_metadata.return_value = [
+            {"Key": "logs/2025-01-01.json"},
+            {"Key": "logs/2025-01-01.txt"},
+        ]
+        sensor = OzoneS3KeySensor(
+            task_id="test_s3_sensor_wildcard",
+            bucket_name="mybucket",
+            bucket_key="logs/*.json",
+            wildcard_match=True,
+        )
+        assert sensor.poke(context={}) is True
+        mock_hook_instance.get_file_metadata.assert_called_once()
+        metadata_args = mock_hook_instance.get_file_metadata.call_args.args
+        assert metadata_args == ("logs/", "mybucket")
+
+    @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneS3Hook")
+    def test_invalid_regex_pattern_raises(self, mock_ozone_hook: MagicMock):
+        """use_regex should fail fast on invalid regular expression."""
+        mock_hook_instance = mock_ozone_hook.return_value
+        mock_hook_instance.get_file_metadata.return_value = [{"Key": "logs/2025-01-01.json"}]
+        sensor = OzoneS3KeySensor(
+            task_id="test_s3_sensor_regex",
+            bucket_name="mybucket",
+            bucket_key="logs/[invalid",
+            use_regex=True,
+        )
+        with pytest.raises(AirflowException, match="Invalid regex pattern"):
             sensor.poke(context={})

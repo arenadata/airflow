@@ -31,6 +31,14 @@
 .. toctree::
    :hidden:
    :maxdepth: 1
+   :caption: Guides
+
+   Connection types <connections/index>
+   Example DAG configuration <example-dags>
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
    :caption: Resources
 
    Installing from sources <installing-providers-from-sources>
@@ -60,6 +68,8 @@ Requirements
 ------------
 
 * ``apache-airflow`` >= 2.10.3
+* ``apache-airflow-providers-apache-hdfs``
+* ``apache-airflow-providers-apache-hive``
 * ``boto3`` >= 1.35.0
 
 Example DAGs

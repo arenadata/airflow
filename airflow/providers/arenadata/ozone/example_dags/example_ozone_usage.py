@@ -32,9 +32,8 @@ S3 Gateway tasks use boto3 (no Amazon provider required).
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
-
-import pendulum
 
 from airflow import DAG
 from airflow.providers.arenadata.ozone.operators.ozone import (
@@ -46,6 +45,24 @@ from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneS3PutObjectOperator,
 )
 from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor, OzoneS3KeySensor
+from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.utils import timezone
+
+
+def get_env_str(name: str, default: str | None = None) -> str | None:
+    return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
+
+
+OM_HOST = get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
+NATIVE_VOLUME = get_env_str("OZONE_EXAMPLE_USAGE_VOLUME", "vol1")
+NATIVE_BUCKET = get_env_str("OZONE_EXAMPLE_USAGE_BUCKET", "bucket-native")
+NATIVE_DIR = get_env_str("OZONE_EXAMPLE_USAGE_DIR", "data_dir")
+NATIVE_FILE = get_env_str("OZONE_EXAMPLE_USAGE_FILE", "file.txt")
+S3_BUCKET = get_env_str("OZONE_EXAMPLE_USAGE_S3_BUCKET", "s3bucket")
+S3_KEY = get_env_str("OZONE_EXAMPLE_USAGE_S3_KEY", "s3_data/test.json")
+S3_CONN_ID = get_env_str("OZONE_EXAMPLE_USAGE_S3_CONN_ID", "ozone_s3_default")
+ADMIN_CONN_ID = get_env_str("OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID", "ozone_admin_default")
+FS_FILE_PATH = f"ofs://{OM_HOST}/{NATIVE_VOLUME}/{NATIVE_BUCKET}/{NATIVE_DIR}/{NATIVE_FILE}"
 
 default_args = {
     "owner": "airflow",
@@ -55,76 +72,73 @@ default_args = {
 
 with DAG(
     "example_ozone_usage",
-    start_date=pendulum.datetime(2024, 1, 1, tz="UTC"),
+    start_date=timezone.datetime(2024, 1, 1),
     default_args=default_args,
     schedule=None,
     catchup=False,
     tags=["ozone", "example"],
 ) as dag:
-    # 1. Native Admin: Create a volume named 'vol1'
     create_vol = OzoneCreateVolumeOperator(
         task_id="create_volume",
-        volume_name="vol1",
+        volume_name=NATIVE_VOLUME,
         quota="10GB",
+        ozone_conn_id=ADMIN_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 
-    # 2. Native Admin: Create a bucket 'bucket-native' inside 'vol1'
     create_bucket_native = OzoneCreateBucketOperator(
         task_id="create_bucket_native",
-        volume_name="vol1",
-        bucket_name="bucket-native",
+        volume_name=NATIVE_VOLUME,
+        bucket_name=NATIVE_BUCKET,
         quota="10GB",
+        ozone_conn_id=ADMIN_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 
-    # 3. FS Layer: Create a directory via ofs://
     fs_mkdir = OzoneFsMkdirOperator(
         task_id="fs_mkdir",
-        path="ofs://om/vol1/bucket-native/data_dir",
+        path=f"ofs://{OM_HOST}/{NATIVE_VOLUME}/{NATIVE_BUCKET}/{NATIVE_DIR}",
+        ozone_conn_id=ADMIN_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 
-    # 4. FS Layer: Put a file via ofs://
     fs_put = OzoneFsPutOperator(
         task_id="fs_put_file",
         content="Hello from FS Layer",
-        remote_path="ofs://om/vol1/bucket-native/data_dir/file.txt",
+        remote_path=FS_FILE_PATH,
+        ozone_conn_id=ADMIN_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 
-    # 5. FS Sensor: Wait for file to appear
     wait_fs_file = OzoneKeySensor(
         task_id="wait_fs_file",
-        path="ofs://om/vol1/bucket-native/data_dir/file.txt",
+        path=FS_FILE_PATH,
+        ozone_conn_id=ADMIN_CONN_ID,
         mode="reschedule",
         timeout=60,
     )
 
-    # 6. S3 Layer: Create bucket via S3 Gateway (if not exists)
     s3_create_bucket = OzoneS3CreateBucketOperator(
         task_id="s3_create_bucket",
-        bucket_name="s3bucket",
-        ozone_conn_id="ozone_s3_default",
+        bucket_name=S3_BUCKET,
+        ozone_conn_id=S3_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 
-    # 7. S3 Layer: Put a file into a bucket
     s3_put = OzoneS3PutObjectOperator(
         task_id="s3_put",
-        bucket_name="s3bucket",
-        key="s3_data/test.json",
+        bucket_name=S3_BUCKET,
+        key=S3_KEY,
         data='{"message": "Hello from S3 Layer"}',
-        ozone_conn_id="ozone_s3_default",
+        ozone_conn_id=S3_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 
-    # 8. S3 Sensor: Check file
     wait_s3_file = OzoneS3KeySensor(
         task_id="wait_s3_file",
-        bucket_name="s3bucket",
-        bucket_key="s3_data/test.json",
-        ozone_conn_id="ozone_s3_default",
+        bucket_name=S3_BUCKET,
+        bucket_key=S3_KEY,
+        ozone_conn_id=S3_CONN_ID,
         mode="reschedule",
         timeout=60,
     )

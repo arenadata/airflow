@@ -19,7 +19,12 @@ from __future__ import annotations
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
-from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminHook, OzoneCliError
+from airflow.providers.arenadata.ozone.hooks.ozone import (
+    RETRY_ATTEMPTS,
+    SLOW_TIMEOUT_SECONDS,
+    OzoneAdminHook,
+)
+from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 from airflow.utils.context import Context  # noqa: TCH001
 
 
@@ -35,6 +40,8 @@ class OzoneBackupOperator(BaseOperator):
         bucket: str,
         snapshot_name: str,
         ozone_conn_id: str = OzoneAdminHook.default_conn_name,
+        retry_attempts: int = RETRY_ATTEMPTS,
+        timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -42,17 +49,20 @@ class OzoneBackupOperator(BaseOperator):
         self.bucket = bucket
         self.snapshot_name = snapshot_name
         self.ozone_conn_id = ozone_conn_id
-
-        # Template fields must be assigned directly from __init__ args
+        self.retry_attempts = retry_attempts
+        self.timeout = timeout
 
     def execute(self, context: Context):
         """Create snapshot and treat existing snapshot as success."""
         path = f"/{self.volume}/{self.bucket}"
         cmd = ["ozone", "sh", "snapshot", "create", path, self.snapshot_name]
 
-        hook = OzoneAdminHook(ozone_conn_id=self.ozone_conn_id)
+        hook = OzoneAdminHook(
+            ozone_conn_id=self.ozone_conn_id,
+            retry_attempts=self.retry_attempts,
+        )
         try:
-            hook.run_cli(cmd)
+            hook.run_cli(cmd, timeout=self.timeout)
             self.log.info("Snapshot created: %s (path=%s)", self.snapshot_name, path)
         except OzoneCliError as e:
             error_stderr = (e.stderr or "").strip()

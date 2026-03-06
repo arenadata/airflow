@@ -38,9 +38,8 @@ Requirements:
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
-
-import pendulum
 
 from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
@@ -54,11 +53,27 @@ from airflow.providers.arenadata.ozone.operators.ozone import (
 )
 from airflow.providers.arenadata.ozone.transfers.ozone_backup import OzoneBackupOperator
 from airflow.providers.arenadata.ozone.transfers.ozone_to_hive import OzoneToHiveOperator
+from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.utils import timezone
 from airflow.utils.task_group import TaskGroup
+
+
+def get_env_str(name: str, default: str | None = None) -> str | None:
+    return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
+
+
+OM_HOST = get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
+LIFECYCLE_CONN_ID = get_env_str("OZONE_EXAMPLE_LIFECYCLE_CONN_ID", "ozone_admin_default")
+LIFECYCLE_HIVE_CONN_ID = get_env_str("OZONE_EXAMPLE_LIFECYCLE_HIVE_CONN_ID", "hive_cli_default")
+LANDING_VOLUME = get_env_str("OZONE_EXAMPLE_LIFECYCLE_LANDING_VOLUME", "landing")
+LANDING_BUCKET = get_env_str("OZONE_EXAMPLE_LIFECYCLE_LANDING_BUCKET", "raw")
+ARCHIVE_VOLUME = get_env_str("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_VOLUME", "archive")
+ARCHIVE_BUCKET = get_env_str("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_BUCKET", "processed")
+LIFECYCLE_HIVE_TABLE = get_env_str("OZONE_EXAMPLE_LIFECYCLE_HIVE_TABLE", "processed_events")
 
 with DAG(
     dag_id="example_ozone_data_lifecycle",
-    start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
+    start_date=timezone.datetime(2025, 1, 1),
     catchup=False,
     schedule=None,
     tags=["ozone", "example"],
@@ -76,32 +91,20 @@ with DAG(
     **Requirement**: `apache-airflow-providers-apache-hive` must be installed.
     """,
 ) as dag:
-    # Assume we have some files in this landing path.
-    # Ozone volume and bucket names must match the pattern `[a-z0-9.-]+`
-    # (lowercase letters, digits, dots and dashes; underscores are not allowed).
-    # We use:
-    #   - Volumes:  'landing', 'archive'
-    #   - Buckets:  'raw', 'processed'
-    LANDING_VOLUME = "landing"
-    LANDING_BUCKET = "raw"
-    ARCHIVE_VOLUME = "archive"
-    ARCHIVE_BUCKET = "processed"
-
-    # Note: Ozone requires 'ofs://om/<volume>/<bucket>/...' format, where `om`
-    # is the Ozone Manager hostname in the docker compose cluster.
-    LANDING_PATH = f"ofs://om/{LANDING_VOLUME}/{LANDING_BUCKET}"
-    # Base archive path (without date partition)
-    ARCHIVE_BASE_PATH = f"ofs://om/{ARCHIVE_VOLUME}/{ARCHIVE_BUCKET}"
+    LANDING_PATH = f"ofs://{OM_HOST}/{LANDING_VOLUME}/{LANDING_BUCKET}"
+    ARCHIVE_BASE_PATH = f"ofs://{OM_HOST}/{ARCHIVE_VOLUME}/{ARCHIVE_BUCKET}"
 
     # 0. Ensure required volumes and buckets exist.
     create_landing_volume = OzoneCreateVolumeOperator(
         task_id="create_landing_volume",
         volume_name=LANDING_VOLUME,
+        ozone_conn_id=LIFECYCLE_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
     create_archive_volume = OzoneCreateVolumeOperator(
         task_id="create_archive_volume",
         volume_name=ARCHIVE_VOLUME,
+        ozone_conn_id=LIFECYCLE_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
@@ -109,12 +112,14 @@ with DAG(
         task_id="create_landing_bucket",
         volume_name=LANDING_VOLUME,
         bucket_name=LANDING_BUCKET,
+        ozone_conn_id=LIFECYCLE_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
     create_archive_bucket = OzoneCreateBucketOperator(
         task_id="create_archive_bucket",
         volume_name=ARCHIVE_VOLUME,
         bucket_name=ARCHIVE_BUCKET,
+        ozone_conn_id=LIFECYCLE_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
@@ -122,6 +127,7 @@ with DAG(
     list_files_in_landing_zone = OzoneListOperator(
         task_id="list_files_in_landing_zone",
         path=LANDING_PATH,
+        ozone_conn_id=LIFECYCLE_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
@@ -139,6 +145,7 @@ with DAG(
     create_archive_dir = OzoneFsMkdirOperator(
         task_id="create_archive_dir",
         path=ARCHIVE_BASE_PATH + "/ds={{ ds }}",
+        ozone_conn_id=LIFECYCLE_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
@@ -147,6 +154,7 @@ with DAG(
         task_id="archive_landing_files",
         source_path=f"{LANDING_PATH}/*",  # Move all files
         dest_path=ARCHIVE_BASE_PATH + "/ds={{ ds }}",
+        ozone_conn_id=LIFECYCLE_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 
@@ -154,8 +162,9 @@ with DAG(
     register_hive_partition = OzoneToHiveOperator(
         task_id="register_hive_partition",
         ozone_path=ARCHIVE_BASE_PATH + "/ds={{ ds }}",
-        table_name="processed_events",
+        table_name=LIFECYCLE_HIVE_TABLE,
         partition_spec={"ds": "{{ ds }}"},
+        hive_cli_conn_id=LIFECYCLE_HIVE_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 
@@ -165,6 +174,7 @@ with DAG(
         volume=ARCHIVE_VOLUME,
         bucket=ARCHIVE_BUCKET,
         snapshot_name="snap-{{ ds_nodash }}",
+        ozone_conn_id=LIFECYCLE_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 
@@ -172,6 +182,7 @@ with DAG(
     cleanup_landing_zone = OzoneDeleteKeyOperator(
         task_id="cleanup_landing_zone",
         path=f"{LANDING_PATH}/*",
+        ozone_conn_id=LIFECYCLE_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 

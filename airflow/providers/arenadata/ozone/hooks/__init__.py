@@ -22,14 +22,12 @@ from __future__ import annotations
 
 from airflow.providers.arenadata.ozone.hooks.ozone import (
     OzoneAdminHook,
-    OzoneCliError,
     OzoneCliHook,
-    OzoneCliTransientError,
     OzoneFsHook,
     OzoneResource,
-    is_transient_cli_failure,
 )
 from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
+from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
 __all__ = [
     "OzoneCliHook",
@@ -38,6 +36,4 @@ __all__ = [
     "OzoneS3Hook",
     "OzoneResource",
     "OzoneCliError",
-    "OzoneCliTransientError",
-    "is_transient_cli_failure",
 ]

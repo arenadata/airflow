@@ -18,29 +18,16 @@ from __future__ import annotations
 
 from airflow.providers.arenadata.ozone.utils.security.kerberos import (
     KerberosConfig,
-    apply_kerberos_env_vars,
-    get_kerberos_env_vars,
-    kinit_from_env_vars,
-    kinit_with_keytab,
 )
-from airflow.providers.arenadata.ozone.utils.security.secret_resolver import get_secret_value, is_secret_ref
+from airflow.providers.arenadata.ozone.utils.security.secret_resolver import (
+    SecretResolver,
+)
 from airflow.providers.arenadata.ozone.utils.security.ssl import (
     SSLConfig,
-    apply_ssl_env_vars,
-    get_ssl_env_vars,
-    load_ssl_env_from_connection,
 )
 
 __all__ = [
-    "get_secret_value",
-    "is_secret_ref",
+    "SecretResolver",
     "SSLConfig",
-    "get_ssl_env_vars",
-    "apply_ssl_env_vars",
-    "load_ssl_env_from_connection",
     "KerberosConfig",
-    "get_kerberos_env_vars",
-    "apply_kerberos_env_vars",
-    "kinit_with_keytab",
-    "kinit_from_env_vars",
 ]

@@ -20,9 +20,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from airflow.providers.arenadata.ozone.utils.common import get_connection_extra, is_true_flag
-from airflow.providers.arenadata.ozone.utils.security.secret_resolver import get_secret_value
-from airflow.utils.log.secrets_masker import mask_secret
+from airflow.providers.arenadata.ozone.utils.helpers import EnvSecretHelper, TypeNormalizationHelper
+from airflow.providers.arenadata.ozone.utils.security.secret_resolver import SecretResolver
 
 
 @dataclass(frozen=True)
@@ -32,9 +31,9 @@ class SSLConfig:
     ozone: dict[str, str] = field(default_factory=dict)
     hive: dict[str, str] = field(default_factory=dict)
     hdfs: dict[str, str] = field(default_factory=dict)
+    conn_id: str | None = None
 
-    @property
-    def env(self) -> dict[str, str]:
+    def as_env(self) -> dict[str, str]:
         """Merge all subsystem env vars into a single mapping."""
         merged: dict[str, str] = {}
         merged.update(self.ozone)
@@ -42,153 +41,121 @@ class SSLConfig:
         merged.update(self.hdfs)
         return merged
 
-
-def _build_ssl_env(
-    extra: dict[str, object],
-    conn_id: str | None,
-    mapping: tuple[tuple[str, str, bool], ...],
-) -> dict[str, str]:
-    """Build SSL env vars from an extra->env mapping."""
-    env: dict[str, str] = {}
-    for extra_key, env_key, is_secret in mapping:
-        if extra_key not in extra:
-            continue
-        value = extra[extra_key]
-        if is_secret:
-            resolved = get_secret_value(value, conn_id)
-            mask_secret(resolved)
-            env[env_key] = str(resolved)
-        else:
-            env[env_key] = str(value)
-    return env
-
-
-def _get_ozone_ssl_env(extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
-    """Build SSL env vars for Ozone Native CLI (ozone-site.xml mapping)."""
-    env: dict[str, str] = {}
-
-    if is_true_flag(extra, "ozone_security_enabled", "ozone.security.enabled"):
-        env["OZONE_SECURITY_ENABLED"] = "true"
-        env.update(
-            _build_ssl_env(
-                extra,
-                conn_id,
-                (
-                    ("ozone_om_https_port", "OZONE_OM_HTTPS_PORT", False),
-                    ("ozone.scm.https.port", "OZONE_SCM_HTTPS_PORT", False),
-                    ("ozone_ssl_keystore_location", "OZONE_SSL_KEYSTORE_LOCATION", False),
-                    ("ozone_ssl_keystore_password", "OZONE_SSL_KEYSTORE_PASSWORD", True),
-                    ("ozone_ssl_keystore_type", "OZONE_SSL_KEYSTORE_TYPE", False),
-                    ("ozone_ssl_truststore_location", "OZONE_SSL_TRUSTSTORE_LOCATION", False),
-                    ("ozone_ssl_truststore_password", "OZONE_SSL_TRUSTSTORE_PASSWORD", True),
-                    ("ozone_ssl_truststore_type", "OZONE_SSL_TRUSTSTORE_TYPE", False),
-                ),
-            )
+    @classmethod
+    def from_extra(cls, extra: dict[str, object], conn_id: str | None = None) -> SSLConfig:
+        """Build SSL configuration from connection Extra fields."""
+        return cls(
+            ozone=cls._build_ozone_env(extra, conn_id),
+            hive=cls._build_hive_env(extra, conn_id),
+            hdfs=cls._build_hdfs_env(extra, conn_id),
+            conn_id=conn_id,
         )
 
-    return env
-
-
-def _get_hive_ssl_env(extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
-    """Build SSL env vars for Hive CLI (hive-site.xml mapping)."""
-    env: dict[str, str] = {}
-
-    if is_true_flag(extra, "hive_ssl_enabled", "hive.ssl.enabled"):
-        env["HIVE_SSL_ENABLED"] = "true"
-        env.update(
-            _build_ssl_env(
-                extra,
-                conn_id,
-                (
-                    ("hive_ssl_keystore_path", "HIVE_SSL_KEYSTORE_PATH", False),
-                    ("hive_ssl_keystore_password", "HIVE_SSL_KEYSTORE_PASSWORD", True),
-                    ("hive_ssl_truststore_path", "HIVE_SSL_TRUSTSTORE_PATH", False),
-                    ("hive_ssl_truststore_password", "HIVE_SSL_TRUSTSTORE_PASSWORD", True),
-                ),
+    @classmethod
+    def _build_ozone_env(cls, extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
+        """Build SSL env vars for Ozone Native CLI (ozone-site.xml mapping)."""
+        env: dict[str, str] = {}
+        if TypeNormalizationHelper.is_true_flag(extra, "ozone_security_enabled", "ozone.security.enabled"):
+            env["OZONE_SECURITY_ENABLED"] = "true"
+            env.update(
+                EnvSecretHelper.build_mapped_env(
+                    extra,
+                    (
+                        ("ozone_om_https_port", "OZONE_OM_HTTPS_PORT", False),
+                        ("ozone.scm.https.port", "OZONE_SCM_HTTPS_PORT", False),
+                        ("ozone_ssl_keystore_location", "OZONE_SSL_KEYSTORE_LOCATION", False),
+                        ("ozone_ssl_keystore_password", "OZONE_SSL_KEYSTORE_PASSWORD", True),
+                        ("ozone_ssl_keystore_type", "OZONE_SSL_KEYSTORE_TYPE", False),
+                        ("ozone_ssl_truststore_location", "OZONE_SSL_TRUSTSTORE_LOCATION", False),
+                        ("ozone_ssl_truststore_password", "OZONE_SSL_TRUSTSTORE_PASSWORD", True),
+                        ("ozone_ssl_truststore_type", "OZONE_SSL_TRUSTSTORE_TYPE", False),
+                    ),
+                    resolve_secret=lambda value: EnvSecretHelper.resolve_secret_masked(
+                        value, lambda v: SecretResolver.get_secret_value(v, conn_id)
+                    ),
+                )
             )
-        )
+        return env
 
-    return env
-
-
-def _get_hdfs_ssl_env(extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
-    """Build SSL env vars for HDFS clients (core-site.xml / hdfs-site.xml mapping)."""
-    env: dict[str, str] = {}
-
-    if is_true_flag(extra, "hdfs_ssl_enabled", "dfs.encrypt.data.transfer"):
-        env["HDFS_SSL_ENABLED"] = "true"
-        env.update(
-            _build_ssl_env(
-                extra,
-                conn_id,
-                (
-                    ("dfs_encrypt_data_transfer", "DFS_ENCRYPT_DATA_TRANSFER", False),
-                    ("dfs.encrypt.data.transfer", "DFS_ENCRYPT_DATA_TRANSFER", False),
-                    ("hdfs_ssl_keystore_location", "HDFS_SSL_KEYSTORE_LOCATION", False),
-                    ("hdfs_ssl_keystore_password", "HDFS_SSL_KEYSTORE_PASSWORD", True),
-                    ("hdfs_ssl_keystore_type", "HDFS_SSL_KEYSTORE_TYPE", False),
-                    ("hdfs_ssl_truststore_location", "HDFS_SSL_TRUSTSTORE_LOCATION", False),
-                    ("hdfs_ssl_truststore_password", "HDFS_SSL_TRUSTSTORE_PASSWORD", True),
-                    ("hdfs_ssl_truststore_type", "HDFS_SSL_TRUSTSTORE_TYPE", False),
-                ),
+    @classmethod
+    def _build_hive_env(cls, extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
+        """Build SSL env vars for Hive CLI (hive-site.xml mapping)."""
+        env: dict[str, str] = {}
+        if TypeNormalizationHelper.is_true_flag(extra, "hive_ssl_enabled", "hive.ssl.enabled"):
+            env["HIVE_SSL_ENABLED"] = "true"
+            env.update(
+                EnvSecretHelper.build_mapped_env(
+                    extra,
+                    (
+                        ("hive_ssl_keystore_path", "HIVE_SSL_KEYSTORE_PATH", False),
+                        ("hive_ssl_keystore_password", "HIVE_SSL_KEYSTORE_PASSWORD", True),
+                        ("hive_ssl_truststore_path", "HIVE_SSL_TRUSTSTORE_PATH", False),
+                        ("hive_ssl_truststore_password", "HIVE_SSL_TRUSTSTORE_PASSWORD", True),
+                    ),
+                    resolve_secret=lambda value: EnvSecretHelper.resolve_secret_masked(
+                        value, lambda v: SecretResolver.get_secret_value(v, conn_id)
+                    ),
+                )
             )
-        )
+        return env
 
-    return env
+    @classmethod
+    def _build_hdfs_env(cls, extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
+        """Build SSL env vars for HDFS clients (core-site.xml / hdfs-site.xml mapping)."""
+        env: dict[str, str] = {}
+        if TypeNormalizationHelper.is_true_flag(extra, "hdfs_ssl_enabled", "dfs.encrypt.data.transfer"):
+            env["HDFS_SSL_ENABLED"] = "true"
+            env.update(
+                EnvSecretHelper.build_mapped_env(
+                    extra,
+                    (
+                        ("dfs_encrypt_data_transfer", "DFS_ENCRYPT_DATA_TRANSFER", False),
+                        ("dfs.encrypt.data.transfer", "DFS_ENCRYPT_DATA_TRANSFER", False),
+                        ("hdfs_ssl_keystore_location", "HDFS_SSL_KEYSTORE_LOCATION", False),
+                        ("hdfs_ssl_keystore_password", "HDFS_SSL_KEYSTORE_PASSWORD", True),
+                        ("hdfs_ssl_keystore_type", "HDFS_SSL_KEYSTORE_TYPE", False),
+                        ("hdfs_ssl_truststore_location", "HDFS_SSL_TRUSTSTORE_LOCATION", False),
+                        ("hdfs_ssl_truststore_password", "HDFS_SSL_TRUSTSTORE_PASSWORD", True),
+                        ("hdfs_ssl_truststore_type", "HDFS_SSL_TRUSTSTORE_TYPE", False),
+                    ),
+                    resolve_secret=lambda value: EnvSecretHelper.resolve_secret_masked(
+                        value, lambda v: SecretResolver.get_secret_value(v, conn_id)
+                    ),
+                )
+            )
+        return env
 
+    @staticmethod
+    def apply_ssl_env_vars(
+        env_vars: dict[str, str], existing_env: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """Apply SSL environment variables to existing environment."""
+        if existing_env is None:
+            return env_vars.copy()
+        env = existing_env.copy()
+        env.update(env_vars)
+        return env
 
-def get_ssl_env_vars(extra: dict, conn_id: str | None = None) -> dict[str, str]:
-    """
-    Extract SSL/TLS configuration from connection Extra and return environment variables.
+    @classmethod
+    def load_from_connection(
+        cls,
+        conn: object,
+        *,
+        conn_id: str | None = None,
+        logger: logging.Logger | None = None,
+        enabled_flag_keys: tuple[str, ...] = (),
+    ) -> dict[str, str] | None:
+        """Build SSL env from connection extra with unified logging."""
+        extra = EnvSecretHelper.get_connection_extra(conn)
+        ssl_env_vars = cls.from_extra(extra, conn_id=conn_id).as_env()
+        if not ssl_env_vars:
+            if logger:
+                logger.debug("No SSL/TLS configuration found in connection Extra")
+            return None
 
-    Supports:
-    - Ozone Native CLI SSL configuration
-    - Hive SSL configuration
-    - HDFS SSL configuration
-    - Airflow Secrets Backend integration (secret:// paths)
-    """
-    config = SSLConfig(
-        ozone=_get_ozone_ssl_env(extra, conn_id),
-        hive=_get_hive_ssl_env(extra, conn_id),
-        hdfs=_get_hdfs_ssl_env(extra, conn_id),
-    )
-    return config.env
-
-
-def apply_ssl_env_vars(
-    env_vars: dict[str, str], existing_env: dict[str, str] | None = None
-) -> dict[str, str]:
-    """
-    Apply SSL environment variables to existing environment.
-
-    If existing_env is None -> return overrides only (delta).
-    """
-    if existing_env is None:
-        return env_vars.copy()
-
-    env = existing_env.copy()
-    env.update(env_vars)
-    return env
-
-
-def load_ssl_env_from_connection(
-    conn: object,
-    *,
-    conn_id: str | None = None,
-    logger: logging.Logger | None = None,
-    enabled_flag_keys: tuple[str, ...] = (),
-) -> dict[str, str] | None:
-    """Build SSL env from connection extra with unified logging."""
-    extra = get_connection_extra(conn)
-    ssl_env_vars = get_ssl_env_vars(extra, conn_id=conn_id)
-    if not ssl_env_vars:
+        ssl_env = cls.apply_ssl_env_vars(ssl_env_vars)
         if logger:
-            logger.debug("No SSL/TLS configuration found in connection Extra")
-        return None
-
-    ssl_env = apply_ssl_env_vars(ssl_env_vars)
-    if logger:
-        logger.debug("SSL/TLS configuration loaded from connection: %s", list(ssl_env_vars.keys()))
-        if enabled_flag_keys and is_true_flag(extra, *enabled_flag_keys):
-            logger.info("SSL/TLS enabled for connection")
-    return ssl_env
+            logger.debug("SSL/TLS configuration loaded from connection: %s", list(ssl_env_vars.keys()))
+            if enabled_flag_keys and TypeNormalizationHelper.is_true_flag(extra, *enabled_flag_keys):
+                logger.info("SSL/TLS enabled for connection")
+        return ssl_env

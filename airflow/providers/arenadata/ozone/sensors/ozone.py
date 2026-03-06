@@ -24,9 +24,14 @@ from typing import Sequence
 from urllib.parse import urlsplit
 
 from airflow.exceptions import AirflowException
-from airflow.providers.arenadata.ozone.hooks.ozone import OzoneCliTransientError, OzoneFsHook
+from airflow.providers.arenadata.ozone.hooks.ozone import (
+    FAST_TIMEOUT_SECONDS,
+    RETRY_ATTEMPTS,
+    OzoneFsHook,
+)
 from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
-from airflow.providers.arenadata.ozone.utils.common import contains_wildcards
+from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
+from airflow.providers.arenadata.ozone.utils.helpers import URIHelper
 from airflow.sensors.base import BaseSensorOperator
 from airflow.utils.context import Context  # noqa: TCH001
 
@@ -35,40 +40,49 @@ class OzoneKeySensor(BaseSensorOperator):
     """
     Wait for a file or directory (key) to exist on Ozone FS (ofs:// or o3fs://).
 
-    Uses OzoneFsHook; transient CLI errors are treated as "not yet" and trigger retry.
+    Uses OzoneFsHook; retryable CLI errors are treated as "not yet" and trigger retry.
     """
 
-    template_fields = ("path", "ozone_conn_id")
+    template_fields = ("path",)
 
     def __init__(
         self,
         path: str,
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
+        retry_attempts: int = RETRY_ATTEMPTS,
+        timeout: int = FAST_TIMEOUT_SECONDS,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.path = path
         self.ozone_conn_id = ozone_conn_id
+        self.retry_attempts = retry_attempts
+        self.timeout = timeout
         self.log.debug("OzoneKeySensor initialized (path=%s, conn_id=%s)", self.path, self.ozone_conn_id)
 
     def poke(self, context: Context) -> bool:
         """Return True when the target path appears in Ozone."""
         self.log.debug("Checking if key exists in Ozone: %s", self.path)
-        hook = OzoneFsHook(self.ozone_conn_id)
+        hook = OzoneFsHook(
+            ozone_conn_id=self.ozone_conn_id,
+            retry_attempts=self.retry_attempts,
+        )
         try:
-            if hook.exists(self.path):
+            if hook.exists(self.path, timeout=self.timeout):
                 self.log.info("Key found in Ozone: %s", self.path)
                 return True
             return False
-        except OzoneCliTransientError as e:
-            self.log.warning("Transient error while checking key existence (will retry): %s", str(e))
-            return False
+        except OzoneCliError as e:
+            if e.retryable:
+                self.log.warning("Retryable error while checking key existence (will retry): %s", str(e))
+                return False
+            raise
 
 
 class OzoneS3KeySensor(BaseSensorOperator):
     """Waits for a key (or keys) to be present in an Ozone S3 bucket."""
 
-    template_fields: Sequence[str] = ("bucket_key", "bucket_name", "ozone_conn_id")
+    template_fields: Sequence[str] = ("bucket_key", "bucket_name")
 
     def __init__(
         self,
@@ -111,7 +125,7 @@ class OzoneS3KeySensor(BaseSensorOperator):
         """Check key existence with exact, wildcard, or regex matching."""
         bucket_name, key_use = self._parse_bucket_and_key(key)
 
-        if not self.wildcard_match and not self.use_regex and contains_wildcards(key_use):
+        if not self.wildcard_match and not self.use_regex and URIHelper.contains_wildcards(key_use):
             self.log.warning(
                 "bucket_key %r contains wildcard characters, but wildcard_match=False and use_regex=False. "
                 "Key will be treated as literal. If you expect glob matching, set wildcard_match=True.",

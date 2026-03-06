@@ -35,9 +35,11 @@ def ozone_s3_hook():
 class TestOzoneS3Hook:
     """Unit tests for OzoneS3Hook retry methods."""
 
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.s3_client.get_key")
-    def test_get_key_with_retry_client_error(self, mock_get_key: MagicMock, ozone_s3_hook: OzoneS3Hook):
-        """Test that get_key_with_retry retries on ClientError."""
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.OzoneS3Client.get_key")
+    def test_get_key_with_retry_no_such_key_not_retried(
+        self, mock_get_key: MagicMock, ozone_s3_hook: OzoneS3Hook
+    ):
+        """NoSuchKey is terminal and should not be retried."""
         mock_get_key.side_effect = ClientError(
             {"Error": {"Code": "NoSuchKey", "Message": "Key not found"}}, "GetObject"
         )
@@ -46,9 +48,25 @@ class TestOzoneS3Hook:
             with pytest.raises(AirflowException):
                 ozone_s3_hook.get_key_with_retry(key="test_key", bucket_name="test_bucket")
 
+        assert mock_get_key.call_count == 1
+
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.OzoneS3Client.get_key")
+    def test_get_key_with_retry_service_unavailable_retried(
+        self, mock_get_key: MagicMock, ozone_s3_hook: OzoneS3Hook
+    ):
+        """ServiceUnavailable is retryable and should be retried."""
+        mock_get_key.side_effect = ClientError(
+            {"Error": {"Code": "ServiceUnavailable", "Message": "Service is temporarily unavailable"}},
+            "GetObject",
+        )
+
+        with patch.object(ozone_s3_hook, "get_conn", return_value=MagicMock()):
+            with pytest.raises(AirflowException):
+                ozone_s3_hook.get_key_with_retry(key="test_key", bucket_name="test_bucket")
+
         assert mock_get_key.call_count == 3
 
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.s3_client.load_file_obj")
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.OzoneS3Client.load_file_obj")
     def test_load_file_obj_with_retry_success(
         self, mock_load_file_obj: MagicMock, ozone_s3_hook: OzoneS3Hook
     ):
@@ -65,7 +83,7 @@ class TestOzoneS3Hook:
         assert call_kw["bucket_name"] == "test_bucket"
         assert call_kw["replace"] is True
 
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.s3_client.create_bucket")
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.OzoneS3Client.create_bucket")
     def test_create_bucket_with_retry_already_exists(
         self, mock_create_bucket: MagicMock, ozone_s3_hook: OzoneS3Hook
     ):
@@ -80,7 +98,7 @@ class TestOzoneS3Hook:
 
         mock_create_bucket.assert_called_once()
 
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.s3_client.list_keys")
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.OzoneS3Client.list_keys")
     def test_list_keys_with_retry_success(self, mock_list_keys: MagicMock, ozone_s3_hook: OzoneS3Hook):
         """Test that list_keys_with_retry successfully lists keys."""
         expected_keys = ["key1", "key2", "key3"]
@@ -95,7 +113,7 @@ class TestOzoneS3Hook:
         assert call_kw["prefix"] == "test/"
         assert result == expected_keys
 
-    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.s3_client.get_key")
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone_s3.OzoneS3Client.get_key")
     def test_get_key_with_retry_uses_mapped_error_message(
         self, mock_get_key: MagicMock, ozone_s3_hook: OzoneS3Hook
     ):

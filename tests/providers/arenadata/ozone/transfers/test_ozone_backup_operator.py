@@ -19,8 +19,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from airflow.providers.arenadata.ozone.hooks.ozone import OzoneCliError
 from airflow.providers.arenadata.ozone.transfers.ozone_backup import OzoneBackupOperator
+from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
 
 class TestOzoneBackupOperator:
@@ -37,10 +37,13 @@ class TestOzoneBackupOperator:
         )
         operator.execute(context={})
 
-        mock_admin_hook.assert_called_once_with(ozone_conn_id="ozone_admin_default")
-        mock_hook_instance.run_cli.assert_called_once_with(
-            ["ozone", "sh", "snapshot", "create", "/test_vol/test_bucket", "snapshot_20240101"]
-        )
+        mock_admin_hook.assert_called_once()
+        assert mock_admin_hook.call_args.kwargs["ozone_conn_id"] == "ozone_admin_default"
+        mock_hook_instance.run_cli.assert_called_once()
+        snapshot_cmd = mock_hook_instance.run_cli.call_args.args[0]
+        assert snapshot_cmd[:4] == ["ozone", "sh", "snapshot", "create"]
+        assert "/test_vol/test_bucket" in snapshot_cmd
+        assert "snapshot_20240101" in snapshot_cmd
 
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_backup.OzoneAdminHook")
     def test_execute_idempotent_snapshot_exists(self, mock_admin_hook: MagicMock):

@@ -31,9 +31,8 @@ Useful for multi-tenant environments where each project needs isolated storage.
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
-
-import pendulum
 
 from airflow.models.dag import DAG
 from airflow.providers.arenadata.ozone.operators.ozone import (
@@ -42,19 +41,25 @@ from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneFsMkdirOperator,
     OzoneSetQuotaOperator,
 )
+from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.utils import timezone
 
-# Define a project name, which could come from a Trigger UI config
-# Note: Ozone volume and bucket names must match the pattern `[a-z0-9.-]+`
-# (lowercase letters, digits, dots and dashes; underscores are not allowed).
-PROJECT_NAME = "project-alpha"
-PROJECT_VOLUME = "project-alpha"  # Use project name as volume name (no _vol suffix)
-PROJECT_QUOTA = "10GB"  # Reduced for test environment
-# When volume has quota, buckets must also have quota
-BUCKET_QUOTA = "1GB"
+
+def get_env_str(name: str, default: str | None = None) -> str | None:
+    return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
+
+
+OM_HOST = get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
+MULTI_TENANT_CONN_ID = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_CONN_ID", "ozone_admin_default")
+PROJECT_VOLUME = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_VOLUME", "project-alpha")
+PROJECT_QUOTA = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_QUOTA", "10GB")
+LANDING_BUCKET = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_LANDING_BUCKET", "landing")
+PROCESSED_BUCKET = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROCESSED_BUCKET", "processed")
+BUCKET_QUOTA = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_BUCKET_QUOTA", "1GB")
 
 with DAG(
     dag_id="example_ozone_multi_tenant_management",
-    start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
+    start_date=timezone.datetime(2025, 1, 1),
     catchup=False,
     schedule=None,
     tags=["ozone", "example"],
@@ -63,6 +68,7 @@ with DAG(
     create_volume = OzoneCreateVolumeOperator(
         task_id="create_project_volume",
         volume_name=PROJECT_VOLUME,
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
@@ -71,6 +77,7 @@ with DAG(
         task_id="set_project_quota",
         volume=PROJECT_VOLUME,
         quota=PROJECT_QUOTA,
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
@@ -78,29 +85,33 @@ with DAG(
     create_landing_bucket = OzoneCreateBucketOperator(
         task_id="create_landing_bucket",
         volume_name=PROJECT_VOLUME,
-        bucket_name="landing",
+        bucket_name=LANDING_BUCKET,
         quota=BUCKET_QUOTA,
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
     create_processed_bucket = OzoneCreateBucketOperator(
         task_id="create_processed_bucket",
         volume_name=PROJECT_VOLUME,
-        bucket_name="processed",
+        bucket_name=PROCESSED_BUCKET,
         quota=BUCKET_QUOTA,
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
     # 4. Create standard subdirectories inside the buckets
     create_landing_dir = OzoneFsMkdirOperator(
         task_id="create_landing_dir",
-        path=f"ofs://om/{PROJECT_VOLUME}/landing/data",
+        path=f"ofs://{OM_HOST}/{PROJECT_VOLUME}/{LANDING_BUCKET}/data",
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
     create_processed_dir = OzoneFsMkdirOperator(
         task_id="create_processed_dir",
-        path=f"ofs://om/{PROJECT_VOLUME}/processed/data",
+        path=f"ofs://{OM_HOST}/{PROJECT_VOLUME}/{PROCESSED_BUCKET}/data",
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 

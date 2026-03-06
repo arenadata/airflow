@@ -20,6 +20,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.transfers.ozone_to_s3 import OzoneToS3Operator
@@ -28,8 +29,8 @@ from airflow.providers.arenadata.ozone.transfers.ozone_to_s3 import OzoneToS3Ope
 class TestOzoneToS3Operator:
     """Unit tests for OzoneToS3Operator."""
 
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.load_file_obj")
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.load_file_obj")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.get_s3_client")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
     def test_execute_single_key(
         self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock, mock_load_file_obj: MagicMock
@@ -41,11 +42,9 @@ class TestOzoneToS3Operator:
 
         mock_ozone_instance.list_keys_with_retry.return_value = ["data/file1.txt"]
 
-        mock_key_obj = MagicMock()
         mock_body = Mock()
         mock_body.read.return_value = b"test content"
-        mock_key_obj.get.return_value = {"Body": mock_body}
-        mock_ozone_instance.get_key_with_retry.return_value = mock_key_obj
+        mock_ozone_instance.get_key_with_retry.return_value = {"Body": mock_body}
 
         operator = OzoneToS3Operator(
             task_id="test_transfer",
@@ -70,8 +69,9 @@ class TestOzoneToS3Operator:
         assert call_args[3] == "s3_bucket"
         assert call_kwargs.get("replace") is True
         assert result == {"transferred": 1, "failed": 0, "total": 1}
+        mock_body.close.assert_called_once()
 
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.get_s3_client")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
     def test_execute_no_keys(self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock):
         """Test that OzoneToS3Operator handles empty key list."""
@@ -86,8 +86,8 @@ class TestOzoneToS3Operator:
         mock_ozone_instance.list_keys_with_retry.assert_called_once()
         assert result == {"transferred": 0, "failed": 0, "total": 0}
 
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.load_file_obj")
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.load_file_obj")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.get_s3_client")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
     def test_execute_partial_failure_raises(
         self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock, mock_load_file_obj: MagicMock
@@ -97,11 +97,9 @@ class TestOzoneToS3Operator:
         mock_get_s3_client.return_value = MagicMock()
         mock_ozone_instance.list_keys_with_retry.return_value = ["data/file1.txt", "data/file2.txt"]
 
-        ok_key_obj = MagicMock()
         ok_body = Mock()
         ok_body.read.return_value = b"ok-content"
-        ok_key_obj.get.return_value = {"Body": ok_body}
-        mock_ozone_instance.get_key_with_retry.side_effect = [ok_key_obj, AirflowException("boom")]
+        mock_ozone_instance.get_key_with_retry.side_effect = [{"Body": ok_body}, AirflowException("boom")]
 
         operator = OzoneToS3Operator(
             task_id="test_transfer",
@@ -115,8 +113,8 @@ class TestOzoneToS3Operator:
 
         assert mock_load_file_obj.call_count == 1
 
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.load_file_obj")
-    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.s3_client.get_s3_client")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.load_file_obj")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.get_s3_client")
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
     def test_execute_prefix_mismatch_raises(
         self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock, mock_load_file_obj: MagicMock
@@ -139,3 +137,87 @@ class TestOzoneToS3Operator:
             operator.execute(context={})
 
         mock_load_file_obj.assert_not_called()
+
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.load_file_obj")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.get_s3_client")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
+    def test_execute_parallel_multiple_keys_success(
+        self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock, mock_load_file_obj: MagicMock
+    ):
+        """Parallel mode should transfer all keys and return stable counters."""
+        mock_ozone_instance = mock_ozone_hook.return_value
+        mock_get_s3_client.return_value = MagicMock()
+        mock_ozone_instance.list_keys_with_retry.return_value = [
+            "data/file1.txt",
+            "data/file2.txt",
+            "data/file3.txt",
+        ]
+
+        def _key_obj():
+            body = Mock()
+            return {"Body": body}
+
+        mock_ozone_instance.get_key_with_retry.side_effect = [_key_obj(), _key_obj(), _key_obj()]
+
+        operator = OzoneToS3Operator(
+            task_id="test_transfer_parallel",
+            ozone_bucket="ozone_bucket",
+            s3_bucket="s3_bucket",
+            ozone_prefix="data/",
+            s3_prefix="backup/",
+            max_workers=3,
+        )
+        result = operator.execute(context={})
+        assert result == {"transferred": 3, "failed": 0, "total": 3}
+        assert mock_load_file_obj.call_count == 3
+
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.load_file_obj")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Client.get_s3_client")
+    @patch("airflow.providers.arenadata.ozone.transfers.ozone_to_s3.OzoneS3Hook")
+    def test_execute_destination_retryable_upload_error_retried(
+        self, mock_ozone_hook: MagicMock, mock_get_s3_client: MagicMock, mock_load_file_obj: MagicMock
+    ):
+        """Destination upload retryable ClientError should be retried and succeed."""
+        mock_ozone_instance = mock_ozone_hook.return_value
+        mock_get_s3_client.return_value = MagicMock()
+        mock_ozone_instance.list_keys_with_retry.return_value = ["data/file1.txt"]
+
+        body = Mock()
+        mock_ozone_instance.get_key_with_retry.return_value = {"Body": body}
+
+        retryable_error = ClientError(
+            {
+                "Error": {"Code": "ServiceUnavailable", "Message": "temporary"},
+                "ResponseMetadata": {"HTTPStatusCode": 503},
+            },
+            "PutObject",
+        )
+        mock_load_file_obj.side_effect = [retryable_error, None]
+
+        operator = OzoneToS3Operator(
+            task_id="test_transfer_retry_dest",
+            ozone_bucket="ozone_bucket",
+            s3_bucket="s3_bucket",
+            ozone_prefix="data/",
+            s3_prefix="backup/",
+            max_workers=1,
+        )
+        result = operator.execute(context={})
+
+        assert result == {"transferred": 1, "failed": 0, "total": 1}
+        assert mock_load_file_obj.call_count == 2
+
+    def test_prefixes_are_normalized_for_stable_mapping(self):
+        """Prefix normalization should make key mapping independent of leading/trailing slashes."""
+        operator = OzoneToS3Operator(
+            task_id="test_prefix_normalization",
+            ozone_bucket="ozone_bucket",
+            s3_bucket="s3_bucket",
+            ozone_prefix=" /data ",
+            s3_prefix="/backup ",
+            max_workers=1,
+        )
+
+        assert operator.ozone_prefix == " /data "
+        assert operator.s3_prefix == "/backup "
+        assert operator._build_dest_key("data/file1.txt") == "backup/file1.txt"

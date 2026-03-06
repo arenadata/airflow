@@ -26,26 +26,42 @@ This DAG demonstrates replicating data from a primary Ozone cluster to a DR (Dis
 
 This example requires:
 - Two Ozone clusters (primary and DR) with network connectivity
-- Proper Hadoop configuration for cross-cluster communication
-- Separate Airflow connections for each cluster (if needed)
+- Proper Hadoop configuration for cross-cluster communication (core-site.xml / ozone-site.xml)
+- Optional HDFS connection for SSL/TLS settings used by distcp
 
 Note: This DAG uses distcp, which is the standard tool for cross-cluster replication in Hadoop ecosystems.
 """
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
-
-import pendulum
 
 from airflow.models.dag import DAG
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
+from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.utils import timezone
+
+
+def get_env_str(name: str, default: str | None = None) -> str | None:
+    return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
+
+
+REPLICATION_SOURCE_CLUSTER = get_env_str("OZONE_EXAMPLE_REPLICATION_SOURCE_CLUSTER", "primary-cluster")
+REPLICATION_TARGET_CLUSTER = get_env_str("OZONE_EXAMPLE_REPLICATION_TARGET_CLUSTER", "dr-cluster")
+REPLICATION_SOURCE_BASE = get_env_str("OZONE_EXAMPLE_REPLICATION_SOURCE_BASE", "critical_data")
+REPLICATION_TARGET_BASE = get_env_str(
+    "OZONE_EXAMPLE_REPLICATION_TARGET_BASE", "replicated_data/critical_data"
+)
+REPLICATION_HDFS_CONN_ID = get_env_str("OZONE_EXAMPLE_REPLICATION_HDFS_CONN_ID")
+REPLICATION_SOURCE_PATH = f"ofs://{REPLICATION_SOURCE_CLUSTER}/{REPLICATION_SOURCE_BASE}/{{{{ ds }}}}/"
+REPLICATION_DEST_PATH = f"ofs://{REPLICATION_TARGET_CLUSTER}/{REPLICATION_TARGET_BASE}/{{{{ ds }}}}/"
 
 with DAG(
     dag_id="example_ozone_cross_region_replication",
-    start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
+    start_date=timezone.datetime(2025, 1, 1),
     catchup=False,
-    schedule="0 1 * * *",  # Daily at 1 AM
+    schedule=get_env_str("OZONE_EXAMPLE_REPLICATION_SCHEDULE", "0 1 * * *"),
     tags=["ozone", "example"],
     doc_md="""
     ### Cross-Region Replication Example
@@ -54,17 +70,15 @@ with DAG(
     It uses `HdfsToOzoneOperator`, which leverages `distcp`, the standard tool for this task.
 
     **Prerequisites:**
-    1. Two Airflow connections: `ozone_primary_cluster` and `ozone_dr_cluster`.
-    2. Network connectivity between the Airflow worker and both clusters.
-    3. The `distcp` command must be configured to handle cross-cluster communication (e.g., via `core-site.xml`).
+    1. Network connectivity between the Airflow worker and both clusters.
+    2. DistCp must be configured for cross-cluster communication (for example via `core-site.xml` / `ozone-site.xml`).
+    3. Optional: set `OZONE_EXAMPLE_REPLICATION_HDFS_CONN_ID` to pass SSL/TLS parameters for the source HDFS side.
     """,
 ) as dag:
     replicate_critical_data = HdfsToOzoneOperator(
         task_id="replicate_critical_data_to_dr",
-        # Note: We provide the full HDFS path including the cluster name (nameservice)
-        source_path="ofs://primary-cluster/critical_data/{{ ds }}/",
-        dest_path="ofs://dr-cluster/replicated_data/critical_data/{{ ds }}/",
-        # In a real setup, you might have separate hooks/connections for each
-        # but distcp handles this at the Hadoop config level.
+        source_path=REPLICATION_SOURCE_PATH,
+        dest_path=REPLICATION_DEST_PATH,
+        hdfs_conn_id=REPLICATION_HDFS_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )

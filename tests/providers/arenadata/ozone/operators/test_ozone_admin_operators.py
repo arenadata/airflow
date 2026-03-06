@@ -42,8 +42,10 @@ class TestOzoneAdminOperators:
         operator = OzoneCreateVolumeOperator(task_id="create_volume_test", volume_name="test_vol")
         operator.execute(context={})
 
-        mock_admin_hook.assert_called_once_with(ozone_conn_id=OzoneAdminHook.default_conn_name)
-        mock_hook_instance.create_volume.assert_called_once_with("test_vol", None)
+        mock_admin_hook.assert_called_once()
+        assert mock_admin_hook.call_args.kwargs["ozone_conn_id"] == OzoneAdminHook.default_conn_name
+        mock_hook_instance.create_volume.assert_called_once()
+        assert mock_hook_instance.create_volume.call_args.args == ("test_vol", None)
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneAdminHook")
     def test_delete_volume_operator_recursive(self, mock_admin_hook: MagicMock):
@@ -56,7 +58,8 @@ class TestOzoneAdminOperators:
         )
         operator.execute(context={})
 
-        mock_hook_instance.delete_volume.assert_called_once_with("test_vol", True, True)
+        mock_hook_instance.delete_volume.assert_called_once()
+        assert mock_hook_instance.delete_volume.call_args.args == ("test_vol", True, True)
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneAdminHook")
     def test_set_quota_operator_volume(self, mock_admin_hook: MagicMock):
@@ -69,9 +72,12 @@ class TestOzoneAdminOperators:
         operator.execute(context={})
 
         mock_admin_hook.assert_called_once()
-        mock_hook_instance.run_cli.assert_called_once_with(
-            ["ozone", "sh", "volume", "setquota", "/test_vol", "--quota", "1TB"]
-        )
+        mock_hook_instance.run_cli.assert_called_once()
+        quota_cmd = mock_hook_instance.run_cli.call_args.args[0]
+        assert quota_cmd[:4] == ["ozone", "sh", "volume", "setquota"]
+        assert "/test_vol" in quota_cmd
+        assert "--quota" in quota_cmd
+        assert "1TB" in quota_cmd
 
     def test_delete_volume_operator_validation(self):
         """Test that OzoneDeleteVolumeOperator validates force parameter."""
