@@ -67,28 +67,23 @@ def decide_backup_type(**_context) -> str:
     Decide whether to create FULL or INCREMENTAL backup.
 
     Logic:
-    - Check HDFS first for actual backup files
-    - If no backup_* directories exist -> FULL
-    - If backup_* directories exist -> INCREMENTAL
+    - Check full backup history for the table
+    - If no backups exist -> FULL
+    - If backups exist -> INCREMENTAL
 
     Returns:
         Task ID to execute next
     """
-    import subprocess
-
-    # Check HDFS directly for backup directories
-    result = subprocess.run(
-        ["hdfs", "dfs", "-ls", "/hbase/backup/"],
-        capture_output=True, text=True, check=False
-    )
+    hook = HBaseCLIHook(hbase_conn_id="hbase_thrift2")
+    history = hook.get_backup_history()  # Get full history without filter
     
-    # Check if there are actual backup_* directories
-    if result.returncode == 0 and "backup_" in result.stdout:
-        print(f"Found existing backups in HDFS:\n{result.stdout}")
+    # Check if there are any backups for our table
+    if history and "test_table_backup_v2" in history:
+        print(f"Found existing backups for test_table_backup_v2")
         print("Creating INCREMENTAL backup.")
         return "create_incremental_backup"
     
-    print("No backup directories found in HDFS. Creating FULL backup.")
+    print("No backups found for test_table_backup_v2. Creating FULL backup.")
     return "create_full_backup"
 
 
