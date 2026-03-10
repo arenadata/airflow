@@ -77,7 +77,7 @@ def verify_restored_data(**context):
     """Verify that data was restored correctly."""
 
     hook = HBaseThriftHook(hbase_conn_id="hbase_thrift2")
-    table_name = "test_table_backup"
+    table_name = "test_table_backup_v2"
 
     # Get restore output from previous task
     ti = context["ti"]
@@ -141,7 +141,7 @@ def verify_restored_data(**context):
 # Step 1: Delete table to simulate data loss (ignore if not exists)
 delete_table = HBaseDeleteTableOperator(
     task_id="delete_table",
-    table_name="test_table_backup",
+    table_name="test_table_backup_v2",
     if_not_exists=IfNotExistsAction.IGNORE,
     hbase_conn_id="hbase_thrift2",
     dag=dag,
@@ -152,7 +152,7 @@ restore_backup = HBaseRestoreOperator(
     task_id="restore_backup",
     backup_path="hdfs:///hbase/backup",
     backup_id="{{ params.backup_id }}",
-    tables=["test_table_backup"],
+    tables=["test_table_backup_v2"],
     overwrite=True,
     hbase_conn_id="hbase_thrift2",
     do_xcom_push=True,

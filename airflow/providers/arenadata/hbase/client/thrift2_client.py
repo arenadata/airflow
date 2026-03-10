@@ -27,7 +27,7 @@ import time
 from typing import Any
 
 from thrift.protocol import TBinaryProtocol
-from thrift.transport import TSocket, TTransport, TSSLSocket
+from thrift.transport import TSocket, TTransport, TSSLSocket, THttpClient
 from thrift.transport.TTransport import TTransportException
 
 try:
@@ -63,6 +63,7 @@ class HBaseThrift2Client:
         retry_max_attempts: int = 3,
         retry_delay: float = 1.0,
         retry_backoff_factor: float = 2.0,
+        use_http: bool = False,
     ):
         """Initialize Thrift2 client.
 
@@ -80,7 +81,9 @@ class HBaseThrift2Client:
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
+            use_http: Use HTTP transport instead of binary socket (required for SSL with hbase.regionserver.thrift.http=true)
         """
+        self.use_http = use_http
         self.config = create_connection_config(
             host=host,
             port=port,
@@ -96,7 +99,7 @@ class HBaseThrift2Client:
             retry_backoff_factor=retry_backoff_factor,
         )
         self._client = None
-        self._transport = None
+        self._transport: Any = None
 
         if auth_method and not SASL_AVAILABLE:
             raise ImportError(
@@ -258,8 +261,7 @@ class HBaseThrift2Client:
         self._transport = self._create_sasl_transport(sock)
         protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
         self._client = THBaseService.Client(protocol)
-        if self._transport:
-            self._transport.open()
+        self._transport.open()
 
     def _setup_simple_transport(self, sock: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
         """Setup simple transport without authentication.
@@ -279,8 +281,7 @@ class HBaseThrift2Client:
 
                 protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
                 self._client = THBaseService.Client(protocol)
-                if self._transport:
-                    self._transport.open()
+                self._transport.open()
 
                 # Test connection
                 if self._client:
@@ -327,20 +328,48 @@ class HBaseThrift2Client:
 
         for attempt in range(self.config.retry_max_attempts):
             try:
-                sock = self._create_socket()
+                if self.use_http:
+                    # HTTP transport
+                    scheme = "https" if self.config.ssl_options else "http"
+                    uri = f"{scheme}://{self.config.host}:{self.config.port}"
 
-                if self.config.auth_method == "GSSAPI":
-                    self._setup_kerberos_transport(sock)
+                    # Create SSL context if needed
+                    ssl_context = None
+                    if self.config.ssl_options and "ca_certs" in self.config.ssl_options:
+                        ssl_context = ssl_module.create_default_context(cafile=self.config.ssl_options["ca_certs"])
+                        if "validate" in self.config.ssl_options and not self.config.ssl_options["validate"]:
+                            ssl_context.check_hostname = False
+                            ssl_context.verify_mode = ssl_module.CERT_NONE
+
+                    http_client = THttpClient.THttpClient(uri, ssl_context=ssl_context)
+                    http_client.setTimeout(self.config.timeout)
+
+                    self._transport = http_client
+                    protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
+                    self._client = THBaseService.Client(protocol)
+                    self._transport.open()
                     self._test_connection()
                     logger.info(
-                        "Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Auth: %s)",
-                        self.config.host,
-                        self.config.port,
+                        "Successfully connected to HBase Thrift2 at %s (HTTP, SSL: %s)",
+                        uri,
                         bool(self.config.ssl_options),
-                        self.config.auth_method,
                     )
                 else:
-                    self._setup_simple_transport(sock)
+                    # Socket transport
+                    sock = self._create_socket()
+
+                    if self.config.auth_method == "GSSAPI":
+                        self._setup_kerberos_transport(sock)
+                        self._test_connection()
+                        logger.info(
+                            "Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Auth: %s)",
+                            self.config.host,
+                            self.config.port,
+                            bool(self.config.ssl_options),
+                            self.config.auth_method,
+                        )
+                    else:
+                        self._setup_simple_transport(sock)
 
                 return
 
@@ -416,10 +445,21 @@ class HBaseThrift2Client:
             raise RuntimeError("Client not connected")
         table_name_obj = ttypes.TTableName(ns=self.config.namespace.encode(), qualifier=table_name.encode())
 
-        # Disable table first
-        self._client.disableTable(table_name_obj)
-        # Delete table
-        self._client.deleteTable(table_name_obj)
+        try:
+            # Check if table is enabled before disabling
+            if self._client.isTableEnabled(table_name_obj):
+                logger.info("Disabling table %s", table_name)
+                self._client.disableTable(table_name_obj)
+            else:
+                logger.info("Table %s is already disabled", table_name)
+
+            # Delete table
+            logger.info("Deleting table %s", table_name)
+            self._client.deleteTable(table_name_obj)
+            logger.info("Successfully deleted table %s", table_name)
+        except Exception as e:
+            logger.error("Failed to delete table %s: %s", table_name, e, exc_info=True)
+            raise
 
     def put(self, table_name: str, row_key: str, data: dict[str, str]) -> None:
         """Put data into table.

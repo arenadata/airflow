@@ -65,7 +65,8 @@ class TestThrift2ConnectionPool:
             size=2,
             host="localhost",
             port=9090,
-            ssl_options=ssl_options
+            ssl_options=ssl_options,
+            use_http=True
         )
         
         with pool.connection():
@@ -82,7 +83,8 @@ class TestThrift2ConnectionPool:
                 namespace='default',
                 retry_max_attempts=3,
                 retry_delay=1.0,
-                retry_backoff_factor=2.0
+                retry_backoff_factor=2.0,
+                use_http=True
             )
 
     @patch("airflow.providers.arenadata.hbase.thrift2_pool.HBaseThrift2Client")
@@ -115,5 +117,6 @@ class TestThrift2ConnectionPool:
                 namespace='default',
                 retry_max_attempts=5,
                 retry_delay=2.0,
-                retry_backoff_factor=3.0
+                retry_backoff_factor=3.0,
+                use_http=False
             )

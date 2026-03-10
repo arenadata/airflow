@@ -54,6 +54,7 @@ class Thrift2ConnectionPool:
         retry_max_attempts: int = 3,
         retry_delay: float = 1.0,
         retry_backoff_factor: float = 2.0,
+        use_http: bool = False,
     ):
         """Initialize connection pool.
 
@@ -71,6 +72,8 @@ class Thrift2ConnectionPool:
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
+            use_http: Use HTTP transport instead of binary socket (required for SSL with
+            hbase.regionserver.thrift.http=true)
         """
         self.size = size
         self.config = create_connection_config(
@@ -86,6 +89,7 @@ class Thrift2ConnectionPool:
             retry_max_attempts=retry_max_attempts,
             retry_delay=retry_delay,
             retry_backoff_factor=retry_backoff_factor,
+            use_http=use_http,
         )
         self._pool: queue.Queue[HBaseThrift2Client] = queue.Queue(maxsize=size)
         self._semaphore = threading.Semaphore(size)
@@ -112,6 +116,7 @@ class Thrift2ConnectionPool:
             retry_max_attempts=self.config.retry_max_attempts,
             retry_delay=self.config.retry_delay,
             retry_backoff_factor=self.config.retry_backoff_factor,
+            use_http=self.config.use_http,
         )
         client.open()
         return client
@@ -147,7 +152,7 @@ class Thrift2ConnectionPool:
             try:
                 client = self._pool.get_nowait()
             except queue.Empty:
-                acquired = self._semaphore.acquire(blocking=False)
+                acquired = self._semaphore.acquire(blocking=False)  # Check limit
                 if acquired:
                     logger.debug("Creating new connection")
                     try:
@@ -221,6 +226,7 @@ def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-p
     retry_max_attempts: int = 3,
     retry_delay: float = 1.0,
     retry_backoff_factor: float = 2.0,
+    use_http: bool = False,
 ) -> Thrift2ConnectionPool:
     """Get existing Thrift2 pool or create new one.
 
@@ -239,6 +245,8 @@ def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-p
         retry_max_attempts: Maximum number of connection attempts
         retry_delay: Initial delay between retry attempts in seconds
         retry_backoff_factor: Multiplier for delay after each failed attempt
+        use_http: Use HTTP transport instead of binary socket (required for SSL with
+        hbase.regionserver.thrift.http=true)
 
     Returns:
         Thrift2ConnectionPool instance
@@ -259,6 +267,7 @@ def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-p
                 retry_max_attempts=retry_max_attempts,
                 retry_delay=retry_delay,
                 retry_backoff_factor=retry_backoff_factor,
+                use_http=use_http,
             )
         return _thrift2_pools[conn_id]
 

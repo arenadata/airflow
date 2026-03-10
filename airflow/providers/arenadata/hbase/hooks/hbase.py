@@ -69,6 +69,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
 
             # Get SSL options if configured
             ssl_options = self._get_ssl_options(conn.extra_dejson or {})
+            use_http = conn.extra_dejson.get("use_http", False) if conn.extra_dejson else False
             auth_method = None
             kerberos_service_name = "hbase"
             kerberos_principal = None
@@ -110,6 +111,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
                     kerberos_principal=kerberos_principal,
                     kerberos_keytab=kerberos_keytab,
                     namespace=namespace,
+                    use_http=use_http,
                     **retry_config,
                 )
                 # pylint: enable=duplicate-code
@@ -127,6 +129,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
                     kerberos_principal=kerberos_principal,
                     kerberos_keytab=kerberos_keytab,
                     namespace=namespace,
+                    use_http=use_http,
                     **retry_config,
                 )
                 # pylint: enable=duplicate-code
