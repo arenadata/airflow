@@ -79,7 +79,7 @@ def decide_backup_type(**_context) -> str:
 
     # Check if there are any backups for our table
     if history and "test_table_backup_v2" in history:
-        print(f"Found existing backups for test_table_backup_v2")
+        print("Found existing backups for test_table_backup_v2")
         print("Creating INCREMENTAL backup.")
         return "create_incremental_backup"
 

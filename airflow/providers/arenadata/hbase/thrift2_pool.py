@@ -72,7 +72,8 @@ class Thrift2ConnectionPool:
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
-            use_http: Use HTTP transport instead of binary socket (required for SSL with hbase.regionserver.thrift.http=true)
+            use_http: Use HTTP transport instead of binary socket (required for SSL with
+            hbase.regionserver.thrift.http=true)
         """
         self.size = size
         self.config = create_connection_config(
@@ -244,7 +245,8 @@ def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-p
         retry_max_attempts: Maximum number of connection attempts
         retry_delay: Initial delay between retry attempts in seconds
         retry_backoff_factor: Multiplier for delay after each failed attempt
-        use_http: Use HTTP transport instead of binary socket (required for SSL with hbase.regionserver.thrift.http=true)
+        use_http: Use HTTP transport instead of binary socket (required for SSL with
+        hbase.regionserver.thrift.http=true)
 
     Returns:
         Thrift2ConnectionPool instance

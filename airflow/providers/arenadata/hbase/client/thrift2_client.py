@@ -338,12 +338,10 @@ class HBaseThrift2Client:
                     # Create SSL context if needed
                     ssl_context = None
                     if self.config.ssl_options and "ca_certs" in self.config.ssl_options:
-                        import ssl
-
-                        ssl_context = ssl.create_default_context(cafile=self.config.ssl_options["ca_certs"])
+                        ssl_context = ssl_module.create_default_context(cafile=self.config.ssl_options["ca_certs"])
                         if "validate" in self.config.ssl_options and not self.config.ssl_options["validate"]:
                             ssl_context.check_hostname = False
-                            ssl_context.verify_mode = ssl.CERT_NONE
+                            ssl_context.verify_mode = ssl_module.CERT_NONE
 
                     http_client = THttpClient.THttpClient(uri, ssl_context=ssl_context)
                     http_client.setTimeout(self.config.timeout)
