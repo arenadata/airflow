@@ -76,13 +76,13 @@ def decide_backup_type(**_context) -> str:
     """
     hook = HBaseCLIHook(hbase_conn_id="hbase_thrift2")
     history = hook.get_backup_history()  # Get full history without filter
-    
+
     # Check if there are any backups for our table
     if history and "test_table_backup_v2" in history:
         print(f"Found existing backups for test_table_backup_v2")
         print("Creating INCREMENTAL backup.")
         return "create_incremental_backup"
-    
+
     print("No backups found for test_table_backup_v2. Creating FULL backup.")
     return "create_full_backup"
 

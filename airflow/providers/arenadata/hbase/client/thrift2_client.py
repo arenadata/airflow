@@ -334,19 +334,20 @@ class HBaseThrift2Client:
                     # HTTP transport
                     scheme = "https" if self.config.ssl_options else "http"
                     uri = f"{scheme}://{self.config.host}:{self.config.port}"
-                    
+
                     # Create SSL context if needed
                     ssl_context = None
                     if self.config.ssl_options and "ca_certs" in self.config.ssl_options:
                         import ssl
+
                         ssl_context = ssl.create_default_context(cafile=self.config.ssl_options["ca_certs"])
                         if "validate" in self.config.ssl_options and not self.config.ssl_options["validate"]:
                             ssl_context.check_hostname = False
                             ssl_context.verify_mode = ssl.CERT_NONE
-                    
+
                     http_client = THttpClient.THttpClient(uri, ssl_context=ssl_context)
                     http_client.setTimeout(self.config.timeout)
-                    
+
                     self._transport = http_client
                     protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
                     self._client = THBaseService.Client(protocol)
@@ -455,7 +456,7 @@ class HBaseThrift2Client:
                 self._client.disableTable(table_name_obj)
             else:
                 logger.info("Table %s is already disabled", table_name)
-            
+
             # Delete table
             logger.info("Deleting table %s", table_name)
             self._client.deleteTable(table_name_obj)
