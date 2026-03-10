@@ -386,9 +386,10 @@ class PooledThrift2Strategy(HBaseStrategy):
         table_name: str,
         rows: list[dict[str, Any]],
         batch_size: int = 200,
-        max_workers: int = 4,
+        max_workers: int | None = None,
     ) -> None:
         """Insert multiple rows via pooled Thrift2 with parallel processing."""
+        max_workers = max_workers or 4
         if hasattr(self.pool, "size") and self.pool.size < max_workers:
             self.log.warning(
                 f"Pool size ({self.pool.size}) < max_workers ({max_workers}). "

@@ -99,7 +99,7 @@ class HBaseThrift2Client:
             retry_backoff_factor=retry_backoff_factor,
         )
         self._client = None
-        self._transport = None
+        self._transport: Any = None
 
         if auth_method and not SASL_AVAILABLE:
             raise ImportError(
@@ -261,8 +261,7 @@ class HBaseThrift2Client:
         self._transport = self._create_sasl_transport(sock)
         protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
         self._client = THBaseService.Client(protocol)
-        if self._transport:
-            self._transport.open()
+        self._transport.open()
 
     def _setup_simple_transport(self, sock: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
         """Setup simple transport without authentication.
@@ -282,8 +281,7 @@ class HBaseThrift2Client:
 
                 protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
                 self._client = THBaseService.Client(protocol)
-                if self._transport:
-                    self._transport.open()
+                self._transport.open()
 
                 # Test connection
                 if self._client:
