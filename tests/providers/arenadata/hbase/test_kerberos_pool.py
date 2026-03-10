@@ -70,7 +70,7 @@ class TestKerberosPool:
             kerberos_service_name="hbase"
         )
         
-        client = pool._create_connection()
+        pool._create_connection()
         
         mock_client.assert_called_once_with(
             host="localhost",
@@ -84,7 +84,8 @@ class TestKerberosPool:
             namespace='default',
             retry_max_attempts=3,
             retry_delay=1.0,
-            retry_backoff_factor=2.0
+            retry_backoff_factor=2.0,
+            use_http=False
         )
         mock_client_inst.open.assert_called_once()
 
@@ -104,7 +105,7 @@ class TestKerberosPool:
             kerberos_service_name="hbase"
         )
         
-        client = pool._create_connection()
+        pool._create_connection()
         
         call_kwargs = mock_client.call_args[1]
         assert call_kwargs["ssl_options"] == ssl_options
