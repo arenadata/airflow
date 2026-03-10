@@ -158,6 +158,7 @@ Extra (optional)
 
     * ``timeout`` - Connection timeout in milliseconds (default: 30000).
     * ``namespace`` - HBase namespace (default: "default").
+    * ``use_http`` - Use HTTP transport instead of binary socket (default: false for non-SSL, true for SSL connections).
     * ``retry_max_attempts`` - Maximum number of connection retry attempts (default: 3).
     * ``retry_delay`` - Initial delay between retry attempts in seconds (default: 1.0).
     * ``retry_backoff_factor`` - Multiplier for delay after each failed attempt (default: 2.0).
