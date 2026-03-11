@@ -39,7 +39,7 @@ class TestHBaseCLIHook:
         assert "successfully" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "backup set add test_set table1,table2" in call_args
+        assert call_args[-5:] == ["backup", "set", "add", "test_set", "table1,table2"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -55,7 +55,7 @@ class TestHBaseCLIHook:
         assert "test_set2" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "backup set list" in call_args
+        assert call_args[-3:] == ["backup", "set", "list"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -70,7 +70,7 @@ class TestHBaseCLIHook:
         assert "backup_1234567890" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "backup create full /backup -s test_set" in call_args
+        assert call_args[-6:] == ["backup", "create", "full", "/backup", "-s", "test_set"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -85,7 +85,7 @@ class TestHBaseCLIHook:
         assert "backup_1234567890" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "backup create full /backup -t table1,table2" in call_args
+        assert call_args[-6:] == ["backup", "create", "full", "/backup", "-t", "table1,table2"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -100,7 +100,7 @@ class TestHBaseCLIHook:
         assert "backup_1234567890" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "backup create full /backup -t table1 -w 4" in call_args
+        assert call_args[-8:] == ["backup", "create", "full", "/backup", "-t", "table1", "-w", "4"]
 
     def test_create_full_backup_no_tables_or_set(self):
         """Test create full backup without tables or set raises error."""
@@ -122,7 +122,7 @@ class TestHBaseCLIHook:
         assert "backup_1234567891" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "backup create incremental /backup -s test_set" in call_args
+        assert call_args[-6:] == ["backup", "create", "incremental", "/backup", "-s", "test_set"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -137,7 +137,7 @@ class TestHBaseCLIHook:
         assert "backup_1234567890" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "backup history" in call_args
+        assert call_args[-2:] == ["backup", "history"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -152,7 +152,7 @@ class TestHBaseCLIHook:
         assert "backup_1234567890" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "backup history -s test_set" in call_args
+        assert call_args[-4:] == ["backup", "history", "-s", "test_set"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -167,7 +167,7 @@ class TestHBaseCLIHook:
         assert "backup_1234567890" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "backup describe backup_1234567890" in call_args
+        assert call_args[-3:] == ["backup", "describe", "backup_1234567890"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -182,7 +182,7 @@ class TestHBaseCLIHook:
         assert "successfully" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "restore /backup backup_1234567890" in call_args
+        assert call_args[-3:] == ["restore", "/backup", "backup_1234567890"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -197,7 +197,7 @@ class TestHBaseCLIHook:
         assert "successfully" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "restore /backup backup_1234567890 -t table1" in call_args
+        assert call_args[-5:] == ["restore", "/backup", "backup_1234567890", "-t", "table1"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -212,7 +212,7 @@ class TestHBaseCLIHook:
         assert "successfully" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "restore /backup backup_1234567890 -o" in call_args
+        assert call_args[-4:] == ["restore", "/backup", "backup_1234567890", "-o"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
     def test_command_failure(self, mock_run):
@@ -235,7 +235,8 @@ class TestHBaseCLIHook:
         hook.list_backup_sets()
 
         call_args = mock_run.call_args[0][0]
-        assert "/opt/hbase/bin/hbase" in call_args
+        # Check that the command starts with the custom hbase path
+        assert call_args[0].endswith("/opt/hbase/bin/hbase")
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -250,7 +251,7 @@ class TestHBaseCLIHook:
         assert "successfully" in result
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "backup set list" in call_args
+        assert call_args[-3:] == ["backup", "set", "list"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -263,4 +264,6 @@ class TestHBaseCLIHook:
         hook.execute_command("version")
 
         call_args = mock_run.call_args[0][0]
-        assert "/custom/hbase version" in call_args
+        # Check that the command starts with the custom hbase path and ends with version
+        assert call_args[0].endswith("/custom/hbase")
+        assert call_args[-1] == "version"
