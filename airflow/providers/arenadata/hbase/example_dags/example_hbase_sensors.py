@@ -31,6 +31,7 @@ and Airflow processes the data once it's ready.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -38,6 +39,8 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.arenadata.hbase.operators.hbase import HBaseDeleteTableOperator
 from airflow.providers.arenadata.hbase.sensors.hbase import HBaseTableSensor, HBaseRowSensor
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
+
+logger = logging.getLogger(__name__)
 
 default_args = {
     "owner": "airflow",
@@ -62,7 +65,7 @@ def simulate_external_system():
     # Create table (simulating external ETL)
     if not hook.table_exists(TABLE_NAME):
         hook.create_table(TABLE_NAME, {"cf1": {}, "cf2": {}})
-        print(f"External system created table: {TABLE_NAME}")
+        logger.info("External system created table: %s", TABLE_NAME)
 
     # Write some data rows
     for i in range(10):
@@ -74,7 +77,7 @@ def simulate_external_system():
                 "cf2:timestamp": str(datetime.now()),
             },
         )
-    print("External system wrote 10 data rows")
+    logger.info("External system wrote 10 data rows")
 
     # Write control row to signal completion
     hook.put_row(
@@ -85,7 +88,7 @@ def simulate_external_system():
             "cf1:row_count": "10",
         },
     )
-    print(f"External system wrote control row: {CONTROL_ROW}")
+    logger.info("External system wrote control row: %s", CONTROL_ROW)
 
 
 def process_data():
@@ -94,16 +97,16 @@ def process_data():
 
     # Read control row to get metadata
     control_data = hook.get_row(TABLE_NAME, CONTROL_ROW)
-    print(f"Control row data: {control_data}")
+    logger.info("Control row data: %s", control_data)
 
     # Scan and process data rows
     rows = hook.scan_table(TABLE_NAME, row_start="data_row_", row_stop="data_row_~")
-    print(f"Processing {len(rows)} data rows:")
+    logger.info("Processing %d data rows:", len(rows))
 
     for row_key, data in rows:
-        print(f"  Processing {row_key}: {data}")
+        logger.info("  Processing %s: %s", row_key, data)
 
-    print("Data processing complete!")
+    logger.info("Data processing complete!")
 
 
 with DAG(

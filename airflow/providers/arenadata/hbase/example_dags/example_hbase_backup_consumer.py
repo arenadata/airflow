@@ -33,6 +33,7 @@ Prerequisites:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -47,6 +48,8 @@ from airflow.providers.arenadata.hbase.operators.hbase import (
 )
 from airflow.providers.arenadata.hbase.datasets.hbase import hbase_table_dataset
 from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
+
+logger = logging.getLogger(__name__)
 
 default_args = {
     "owner": "airflow",
@@ -79,11 +82,11 @@ def decide_backup_type(**_context) -> str:
 
     # Check if there are any backups for our table
     if history and "test_table_backup_v2" in history:
-        print("Found existing backups for test_table_backup_v2")
-        print("Creating INCREMENTAL backup.")
+        logger.info("Found existing backups for test_table_backup_v2")
+        logger.info("Creating INCREMENTAL backup.")
         return "create_incremental_backup"
 
-    print("No backups found for test_table_backup_v2. Creating FULL backup.")
+    logger.info("No backups found for test_table_backup_v2. Creating FULL backup.")
     return "create_full_backup"
 
 

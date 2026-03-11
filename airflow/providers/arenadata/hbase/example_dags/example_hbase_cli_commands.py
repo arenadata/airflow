@@ -23,11 +23,14 @@ arbitrary HBase CLI commands for backup set management.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
+
+logger = logging.getLogger(__name__)
 
 HBASE_CONN_ID = "hbase_thrift2"
 
@@ -47,7 +50,7 @@ def describe_backup_set(**context):
     command = f"backup set describe {backup_set_name}"
 
     result = hook.execute_command(command)
-    print(f"Backup set description:\n{result}")
+    logger.info("Backup set description:\n%s", result)
     return result
 
 
@@ -66,7 +69,7 @@ def get_backup_history(**context):
     command = f"backup history -s {backup_set_name}"
 
     result = hook.execute_command(command)
-    print(f"Backup history:\n{result}")
+    logger.info("Backup history:\n%s", result)
     return result
 
 
@@ -85,7 +88,7 @@ def delete_backup_set(**context):
     command = f"backup set delete {backup_set_name}"
 
     result = hook.execute_command(command)
-    print(f"Delete backup set result:\n{result}")
+    logger.info("Delete backup set result:\n%s", result)
     return result
 
 
@@ -104,11 +107,11 @@ def verify_deletion(**context):
     command = "backup set list"
 
     result = hook.execute_command(command)
-    print(f"Backup sets after deletion:\n{result}")
+    logger.info("Backup sets after deletion:\n%s", result)
 
     if backup_set_name in result:
         raise ValueError(f"Backup set {backup_set_name} still exists after deletion!")
-    print(f"Backup set {backup_set_name} successfully deleted")
+    logger.info("Backup set %s successfully deleted", backup_set_name)
 
     return result
 

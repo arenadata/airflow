@@ -24,12 +24,15 @@ for large-scale batch operations.
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime
 
 from airflow import DAG
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.operators.python import PythonOperator
+
+logger = logging.getLogger(__name__)
 
 # Connection IDs
 # Single connection: no pool
@@ -50,7 +53,7 @@ def setup_table(conn_id: str):
     # Create table
     families: dict[str, dict] = {"cf1": {}, "cf2": {}, "cf3": {}}
     hook.create_table(TABLE_NAME, families)
-    print(f"Created table: {TABLE_NAME}")
+    logger.info("Created table: %s", TABLE_NAME)
 
 
 def benchmark_single_connection():
@@ -76,7 +79,12 @@ def benchmark_single_connection():
         hook.batch_put_rows(TABLE_NAME, rows, batch_size=200, max_workers=1)
         elapsed = time.time() - start
 
-        print(f"Single connection: {len(rows)} rows in {elapsed:.2f}s " f"({len(rows)/elapsed:.0f} rows/sec)")
+        logger.info(
+            "Single connection: %d rows in %.2fs (%.0f rows/sec)",
+            len(rows),
+            elapsed,
+            len(rows) / elapsed,
+        )
         return elapsed
     finally:
         hook.close()
@@ -105,9 +113,11 @@ def benchmark_pooled_connection():
     hook.batch_put_rows(TABLE_NAME, rows, batch_size=200, max_workers=4)
     elapsed = time.time() - start
 
-    print(
-        f"Pooled connection (4 workers): {len(rows)} rows in {elapsed:.2f}s "
-        f"({len(rows)/elapsed:.0f} rows/sec)"
+    logger.info(
+        "Pooled connection (4 workers): %d rows in %.2fs (%.0f rows/sec)",
+        len(rows),
+        elapsed,
+        len(rows) / elapsed,
     )
     return elapsed
 
@@ -135,9 +145,11 @@ def benchmark_large_dataset():
     hook.batch_put_rows(TABLE_NAME, rows, batch_size=250, max_workers=6)
     elapsed = time.time() - start
 
-    print(
-        f"Large dataset (6 workers): {len(rows)} rows in {elapsed:.2f}s "
-        f"({len(rows)/elapsed:.0f} rows/sec)"
+    logger.info(
+        "Large dataset (6 workers): %d rows in %.2fs (%.0f rows/sec)",
+        len(rows),
+        elapsed,
+        len(rows) / elapsed,
     )
     return elapsed
 
@@ -148,20 +160,20 @@ def verify_data():
 
     # Scan samples from each benchmark
     results = hook.scan_table(TABLE_NAME, row_start="single_000000", row_stop="single_000010")
-    print(f"Single connection sample: {len(results)} rows")
+    logger.info("Single connection sample: %d rows", len(results))
 
     results = hook.scan_table(TABLE_NAME, row_start="pooled_000000", row_stop="pooled_000010")
-    print(f"Pooled connection sample: {len(results)} rows")
+    logger.info("Pooled connection sample: %d rows", len(results))
 
     results = hook.scan_table(TABLE_NAME, row_start="large_000000", row_stop="large_000010")
-    print(f"Large dataset sample: {len(results)} rows")
+    logger.info("Large dataset sample: %d rows", len(results))
 
 
 def cleanup_table():
     """Delete test table."""
     hook = HBaseThriftHook(hbase_conn_id=POOLED_CONN_ID)
     hook.delete_table(TABLE_NAME)
-    print(f"Deleted table: {TABLE_NAME}")
+    logger.info("Deleted table: %s", TABLE_NAME)
 
 
 with DAG(
