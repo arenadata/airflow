@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import socket
 import subprocess
 from typing import TYPE_CHECKING
@@ -82,21 +81,60 @@ class HBaseCLIHook(BaseHook):
             self._connection = self.get_connection(self.hbase_conn_id)
         return self._connection
 
-    def _execute_hbase_command(self, command: str) -> str:  # pylint: disable=too-many-locals
+    _HBASE_SECURITY_OPTS = {"-kt", "--keytab", "-k"}
+
+    def _build_hbase_command(self, args: list[str]) -> list[str]:
+        """Build HBase command as list.
+
+        :param args: HBase command arguments (e.g., ["backup", "create", "full", "/backup", "-t", "table1"])
+        :return: Full command as list
+        """
+        hbase_bin = f"{self.hbase_home}/bin/{self.hbase_cmd}"
+        return [hbase_bin, *args]
+
+    def _build_kerberos_command(self, hbase_cmd: list[str], keytab: str, principal: str) -> list[str]:
+        """Build command with Kerberos authentication.
+
+        :param hbase_cmd: HBase command as list
+        :param keytab: Path to keytab file
+        :param principal: Kerberos principal
+        :return: Full command with kinit and sudo
+        """
+        kinit_cmd = ["sudo", "-u", "hbase", "kinit", "-kt", keytab, principal]
+        sudo_hbase_cmd = ["sudo", "-u", "hbase", *hbase_cmd]
+        # Use shell to chain commands with &&
+        return ["sh", "-c", " ".join(kinit_cmd) + " && " + " ".join(sudo_hbase_cmd)]
+
+    def _mask_cmd(self, cmd: list[str]) -> list[str]:
+        """Mask sensitive parameters in command for logging.
+
+        :param cmd: Command as list
+        :return: Masked command as list
+        """
+        masked = cmd.copy()
+        for idx, value in enumerate(masked):
+            if value in self._HBASE_SECURITY_OPTS and idx + 1 < len(masked):
+                masked[idx + 1] = "********"
+            # Mask keytab paths
+            elif ".keytab" in value:
+                masked[idx] = "***KEYTAB***"
+        return masked
+
+    def _execute_hbase_command(self, args: list[str]) -> str:  # pylint: disable=too-many-locals
         """Execute HBase CLI command.
 
-        :param command: HBase command to execute (e.g., "backup create full /backup -t table1")
+        :param args: HBase command arguments as list (e.g., ["backup", "create", "full", "/backup", "-t", "table1"])
         :return: Command output
         """
         # Get connection for Kerberos settings
         conn = self.get_conn()
         extra = conn.extra_dejson if conn.extra else {}
 
+        # Build base HBase command
+        hbase_cmd = self._build_hbase_command(args)
+
         # Check if Kerberos authentication is needed
         kerberos_keytab = extra.get("kerberos_keytab")
-
-        # Use hbase_home to construct full command path
-        hbase_command = f"{self.hbase_home}/bin/{self.hbase_cmd} {command}"
 
         # Run as hbase user if Kerberos is enabled (hbase user has access to WALs)
         if kerberos_keytab:
@@ -110,12 +148,10 @@ class HBaseCLIHook(BaseHook):
                 realm = extra.get("kerberos_realm", "KRB5-TEST")
                 hbase_principal = f"hbase/{hostname}@{realm}"
 
-            # Do kinit as hbase user, then run command
-            kinit_cmd = f"sudo -u hbase kinit -kt {hbase_keytab} {hbase_principal}"
-            full_command = f"{kinit_cmd} && sudo -u hbase {hbase_command}"
+            full_command = self._build_kerberos_command(hbase_cmd, hbase_keytab, hbase_principal)
             logger.info("Running as hbase user with Kerberos: %s", hbase_principal)
         else:
-            full_command = hbase_command
+            full_command = hbase_cmd
 
         # Set environment variables
         env = os.environ.copy()
@@ -123,13 +159,13 @@ class HBaseCLIHook(BaseHook):
         # Suppress SLF4J internal warnings
         env["HBASE_OPTS"] = env.get("HBASE_OPTS", "") + " -Dslf4j.internal.verbosity=warn"
 
-        logger.info("Executing HBase command: %s", self._mask_sensitive(full_command))
+        logger.info("Executing HBase command: %s", " ".join(self._mask_cmd(full_command)))
         logger.info("Using JAVA_HOME: %s", self.java_home)
         logger.info("Using HBASE_HOME: %s", self.hbase_home)
 
         try:
             result = subprocess.run(
-                full_command, shell=True, capture_output=True, text=True, check=True, env=env
+                full_command, capture_output=True, text=True, check=True, env=env
             )
             logger.info("Command completed successfully")
             return result.stdout.strip()
@@ -140,11 +176,7 @@ class HBaseCLIHook(BaseHook):
 
             raise RuntimeError(f"HBase command failed (exit code {e.returncode}): {error_msg}") from e
 
-    def _mask_sensitive(self, text: str) -> str:
-        """Mask sensitive information in logs."""
-        # Mask potential paths that might contain sensitive info
-        text = re.sub(r"(/[\w/.-]*\.keytab)", "***KEYTAB***", text)
-        return text
+
 
     def create_backup_set(self, backup_set_name: str, tables: list[str]) -> str:
         """
@@ -154,9 +186,8 @@ class HBaseCLIHook(BaseHook):
         :param tables: List of tables to include in backup set.
         :return: Result message.
         """
-        tables_str = ",".join(tables)
-        command = f"backup set add {backup_set_name} {tables_str}"
-        return self._execute_hbase_command(command)
+        cmd = ["backup", "set", "add", backup_set_name, ",".join(tables)]
+        return self._execute_hbase_command(cmd)
 
     def list_backup_sets(self) -> str:
         """
@@ -164,8 +195,8 @@ class HBaseCLIHook(BaseHook):
 
         :return: List of backup sets.
         """
-        command = "backup set list"
-        return self._execute_hbase_command(command)
+        cmd = ["backup", "set", "list"]
+        return self._execute_hbase_command(cmd)
 
     def create_full_backup(
         self,
@@ -183,20 +214,19 @@ class HBaseCLIHook(BaseHook):
         :param workers: Number of workers for backup operation.
         :return: Backup ID.
         """
-        command = f"backup create full {backup_root}"
+        cmd = ["backup", "create", "full", backup_root]
 
         if backup_set_name:
-            command += f" -s {backup_set_name}"
+            cmd += ["-s", backup_set_name]
         elif tables:
-            tables_str = ",".join(tables)
-            command += f" -t {tables_str}"
+            cmd += ["-t", ",".join(tables)]
         else:
             raise ValueError("Either backup_set_name or tables must be provided")
 
         if workers:
-            command += f" -w {workers}"
+            cmd += ["-w", str(workers)]
 
-        return self._execute_hbase_command(command)
+        return self._execute_hbase_command(cmd)
 
     def create_incremental_backup(
         self,
@@ -214,20 +244,19 @@ class HBaseCLIHook(BaseHook):
         :param workers: Number of workers for backup operation.
         :return: Backup ID.
         """
-        command = f"backup create incremental {backup_root}"
+        cmd = ["backup", "create", "incremental", backup_root]
 
         if backup_set_name:
-            command += f" -s {backup_set_name}"
+            cmd += ["-s", backup_set_name]
         elif tables:
-            tables_str = ",".join(tables)
-            command += f" -t {tables_str}"
+            cmd += ["-t", ",".join(tables)]
         else:
             raise ValueError("Either backup_set_name or tables must be provided")
 
         if workers:
-            command += f" -w {workers}"
+            cmd += ["-w", str(workers)]
 
-        return self._execute_hbase_command(command)
+        return self._execute_hbase_command(cmd)
 
     def get_backup_history(self, backup_set_name: str | None = None) -> str:
         """
@@ -236,10 +265,10 @@ class HBaseCLIHook(BaseHook):
         :param backup_set_name: Name of backup set (optional).
         :return: Backup history.
         """
-        command = "backup history"
+        cmd = ["backup", "history"]
         if backup_set_name:
-            command += f" -s {backup_set_name}"
-        return self._execute_hbase_command(command)
+            cmd += ["-s", backup_set_name]
+        return self._execute_hbase_command(cmd)
 
     def describe_backup(self, backup_id: str) -> str:
         """
@@ -248,8 +277,8 @@ class HBaseCLIHook(BaseHook):
         :param backup_id: Backup ID.
         :return: Backup description.
         """
-        command = f"backup describe {backup_id}"
-        return self._execute_hbase_command(command)
+        cmd = ["backup", "describe", backup_id]
+        return self._execute_hbase_command(cmd)
 
     def restore_backup(
         self,
@@ -267,25 +296,31 @@ class HBaseCLIHook(BaseHook):
         :param overwrite: Whether to overwrite existing tables.
         :return: Result message.
         """
-        command = f"restore {backup_root} {backup_id}"
+        cmd = ["restore", backup_root, backup_id]
 
         if tables:
-            tables_str = ",".join(tables)
-            command += f" -t {tables_str}"
+            cmd += ["-t", ",".join(tables)]
 
         if overwrite:
-            command += " -o"
+            cmd.append("-o")
 
-        return self._execute_hbase_command(command)
+        return self._execute_hbase_command(cmd)
 
-    def execute_command(self, command: str) -> str:
+    def execute_command(self, command: str | list[str]) -> str:
         """
         Execute arbitrary HBase CLI command.
 
         This method allows executing any HBase CLI command that is not wrapped
         in a specialized method.
 
-        :param command: HBase command to execute (e.g., "backup create full /backup -t table1")
+        :param command: HBase command to execute. Can be either:
+            - String: "backup create full /backup -t table1" (will be parsed)
+            - List: ["backup", "create", "full", "/backup", "-t", "table1"] (used directly)
         :return: Command output
         """
-        return self._execute_hbase_command(command)
+        if isinstance(command, str):
+            import shlex
+            args = shlex.split(command)
+        else:
+            args = command
+        return self._execute_hbase_command(args)

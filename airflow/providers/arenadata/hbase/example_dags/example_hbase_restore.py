@@ -34,6 +34,7 @@ task_ids='create_full_backup') }}
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -45,6 +46,8 @@ from airflow.providers.arenadata.hbase.operators.hbase import (
     IfNotExistsAction,
 )
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
+
+logger = logging.getLogger(__name__)
 
 default_args = {
     "owner": "airflow",
@@ -83,59 +86,58 @@ def verify_restored_data(**context):
     ti = context["ti"]
     restore_output = ti.xcom_pull(task_ids="restore_backup")
     if restore_output:
-        print("\nRestore operation output:")
-        print(restore_output)
+        logger.info("Restore operation output:\n%s", restore_output)
 
         # Check if backup is not enabled
         if "Backup is not enabled" in restore_output:
-            print("\n" + "=" * 60)
-            print("HBASE BACKUP IS NOT ENABLED ON THE CLUSTER")
-            print("=" * 60)
-            print("\nTo enable HBase backup, add to hbase-site.xml:")
-            print("")
-            print("  <property>")
-            print("    <name>hbase.backup.enable</name>")
-            print("    <value>true</value>")
-            print("  </property>")
-            print("")
-            print("And configure backup classes (see HBase documentation).")
-            print("Then restart HBase cluster.")
-            print("\nSee: http://hbase.apache.org/book.html#backuprestore")
-            print("=" * 60)
+            logger.warning("=" * 60)
+            logger.warning("HBASE BACKUP IS NOT ENABLED ON THE CLUSTER")
+            logger.warning("=" * 60)
+            logger.info("To enable HBase backup, add to hbase-site.xml:")
+            logger.info("")
+            logger.info("  <property>")
+            logger.info("    <name>hbase.backup.enable</name>")
+            logger.info("    <value>true</value>")
+            logger.info("  </property>")
+            logger.info("")
+            logger.info("And configure backup classes (see HBase documentation).")
+            logger.info("Then restart HBase cluster.")
+            logger.info("See: http://hbase.apache.org/book.html#backuprestore")
+            logger.warning("=" * 60)
             return
 
     # Check if table exists
     if not hook.table_exists(table_name):
-        print(f"\nTable '{table_name}' does not exist after restore!")
-        print("\nPossible reasons:")
-        print("  1. Restore operation failed (check restore task logs above)")
-        print("  2. Incorrect backup_id specified")
-        print("  3. Backup doesn't contain this table")
-        print("  4. Insufficient permissions")
+        logger.error("Table '%s' does not exist after restore!", table_name)
+        logger.info("Possible reasons:")
+        logger.info("  1. Restore operation failed (check restore task logs above)")
+        logger.info("  2. Incorrect backup_id specified")
+        logger.info("  3. Backup doesn't contain this table")
+        logger.info("  4. Insufficient permissions")
         return
 
-    print(f"✓ Table '{table_name}' exists")
+    logger.info("✓ Table '%s' exists", table_name)
 
     # Scan table to get row count
     rows = list(hook.scan_table(table_name, limit=1000))
     row_count = len(rows)
 
-    print(f"Restored table '{table_name}' contains {row_count} rows")
+    logger.info("Restored table '%s' contains %d rows", table_name, row_count)
 
     if row_count == 0:
-        print("\nWARNING: Table exists but is empty after restore!")
-        print("This could mean:")
-        print("  1. The backup was empty")
-        print("  2. The backup_id is incorrect")
-        print("  3. The restore operation didn't complete successfully")
+        logger.warning("Table exists but is empty after restore!")
+        logger.info("This could mean:")
+        logger.info("  1. The backup was empty")
+        logger.info("  2. The backup_id is incorrect")
+        logger.info("  3. The restore operation didn't complete successfully")
         return
 
     # Show sample data
-    print("\nSample restored data (first 5 rows):")
+    logger.info("Sample restored data (first 5 rows):")
     for i, (row_key, data) in enumerate(rows[:5]):
-        print(f"  Row {i+1}: {row_key} -> {data}")
+        logger.info("  Row %d: %s -> %s", i + 1, row_key, data)
 
-    print(f"\nRestore verification successful: {row_count} rows restored")
+    logger.info("Restore verification successful: %d rows restored", row_count)
 
 
 # Step 1: Delete table to simulate data loss (ignore if not exists)
