@@ -21,19 +21,23 @@
 from __future__ import annotations
 
 from airflow.providers.arenadata.ozone.operators.ozone import (
-    LocalFilesystemToOzoneOperator,
+    OzoneCopyOperator,
     OzoneCreateBucketOperator,
+    OzoneCreatePathOperator,
     OzoneCreateVolumeOperator,
     OzoneDeleteBucketOperator,
     OzoneDeleteKeyOperator,
+    OzoneDeletePathOperator,
     OzoneDeleteVolumeOperator,
-    OzoneFsMkdirOperator,
-    OzoneFsPutOperator,
+    OzoneDownloadFileOperator,
     OzoneListOperator,
+    OzoneMoveOperator,
+    OzonePathExistsOperator,
     OzoneS3CreateBucketOperator,
     OzoneS3PutObjectOperator,
     OzoneSetQuotaOperator,
-    OzoneToOzoneOperator,
+    OzoneUploadContentOperator,
+    OzoneUploadFileOperator,
 )
 
 __all__ = [
@@ -42,12 +46,16 @@ __all__ = [
     "OzoneSetQuotaOperator",
     "OzoneDeleteVolumeOperator",
     "OzoneDeleteBucketOperator",
-    "OzoneFsMkdirOperator",
-    "OzoneFsPutOperator",
+    "OzoneCreatePathOperator",
+    "OzoneUploadContentOperator",
+    "OzoneUploadFileOperator",
     "OzoneDeleteKeyOperator",
+    "OzoneDeletePathOperator",
+    "OzonePathExistsOperator",
     "OzoneListOperator",
+    "OzoneCopyOperator",
+    "OzoneMoveOperator",
+    "OzoneDownloadFileOperator",
     "OzoneS3CreateBucketOperator",
     "OzoneS3PutObjectOperator",
-    "LocalFilesystemToOzoneOperator",
-    "OzoneToOzoneOperator",
 ]

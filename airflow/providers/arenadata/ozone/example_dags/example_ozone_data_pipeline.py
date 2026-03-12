@@ -30,30 +30,26 @@ and perform large-scale data migrations efficiently.
 
 from __future__ import annotations
 
-import os
 from datetime import timedelta
 
 from airflow import DAG
 from airflow.providers.arenadata.ozone.operators.ozone import OzoneSetQuotaOperator
 from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
-from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.providers.arenadata.ozone.utils import EnvHelper
 from airflow.utils import timezone
 
-
-def get_env_str(name: str, default: str | None = None) -> str | None:
-    return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
-
-
-OM_HOST = get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
-PIPELINE_CONN_ID = get_env_str("OZONE_EXAMPLE_PIPELINE_CONN_ID", "ozone_admin_default")
-PIPELINE_HDFS_CONN_ID = get_env_str("OZONE_EXAMPLE_PIPELINE_HDFS_CONN_ID")
-PIPELINE_VOLUME = get_env_str("OZONE_EXAMPLE_PIPELINE_VOLUME", "vol1")
-PIPELINE_BUCKET = get_env_str("OZONE_EXAMPLE_PIPELINE_BUCKET", "bucket1")
-PIPELINE_TRIGGER_FILE = get_env_str("OZONE_EXAMPLE_PIPELINE_TRIGGER_FILE", "trigger.lck")
-PIPELINE_QUOTA = get_env_str("OZONE_EXAMPLE_PIPELINE_QUOTA", "500GB")
-PIPELINE_SOURCE_PATH = get_env_str("OZONE_EXAMPLE_PIPELINE_SOURCE_PATH", "hdfs:///user/data/legacy/")
-PIPELINE_DEST_SUBPATH = get_env_str("OZONE_EXAMPLE_PIPELINE_DEST_SUBPATH", "migrated/")
+OM_HOST = EnvHelper.get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
+PIPELINE_CONN_ID = EnvHelper.get_env_str("OZONE_EXAMPLE_PIPELINE_CONN_ID", "ozone_admin_default")
+PIPELINE_HDFS_CONN_ID = EnvHelper.get_env_str("OZONE_EXAMPLE_PIPELINE_HDFS_CONN_ID")
+PIPELINE_VOLUME = EnvHelper.get_env_str("OZONE_EXAMPLE_PIPELINE_VOLUME", "vol1")
+PIPELINE_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_PIPELINE_BUCKET", "bucket1")
+PIPELINE_TRIGGER_FILE = EnvHelper.get_env_str("OZONE_EXAMPLE_PIPELINE_TRIGGER_FILE", "trigger.lck")
+PIPELINE_QUOTA = EnvHelper.get_env_str("OZONE_EXAMPLE_PIPELINE_QUOTA", "500GB")
+PIPELINE_SOURCE_PATH = EnvHelper.get_env_str(
+    "OZONE_EXAMPLE_PIPELINE_SOURCE_PATH", "hdfs:///user/data/legacy/"
+)
+PIPELINE_DEST_SUBPATH = EnvHelper.get_env_str("OZONE_EXAMPLE_PIPELINE_DEST_SUBPATH", "migrated/")
 PIPELINE_TRIGGER_PATH = f"ofs://{OM_HOST}/{PIPELINE_VOLUME}/{PIPELINE_BUCKET}/{PIPELINE_TRIGGER_FILE}"
 PIPELINE_DEST_PATH = f"ofs://{OM_HOST}/{PIPELINE_VOLUME}/{PIPELINE_BUCKET}/{PIPELINE_DEST_SUBPATH}"
 

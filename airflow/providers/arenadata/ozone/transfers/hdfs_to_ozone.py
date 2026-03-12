@@ -82,7 +82,6 @@ class HdfsToOzoneOperator(BaseOperator):
             return SSLConfig.load_from_connection(
                 conn,
                 conn_id=self.hdfs_conn_id,
-                logger=self.log,
                 enabled_flag_keys=("hdfs_ssl_enabled", "dfs.encrypt.data.transfer"),
             )
         except AirflowException as err:

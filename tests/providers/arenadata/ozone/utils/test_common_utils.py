@@ -20,7 +20,8 @@ from __future__ import annotations
 import pytest
 
 from airflow.providers.arenadata.ozone.utils.helpers import (
-    EnvSecretHelper,
+    EnvHelper,
+    SecretHelper,
     TypeNormalizationHelper,
 )
 
@@ -56,7 +57,7 @@ def test_is_true_flag_matches_previous_semantics():
 
 def test_build_mapped_env_handles_plain_and_secret_values():
     extra = {"plain": "x", "secret": "raw_secret"}
-    env = EnvSecretHelper.build_mapped_env(
+    env = EnvHelper.build_mapped_env(
         extra,
         (("plain", "PLAIN_ENV", False), ("secret", "SECRET_ENV", True)),
         resolve_secret=lambda value: f"resolved:{value}",
@@ -66,11 +67,11 @@ def test_build_mapped_env_handles_plain_and_secret_values():
 
 def test_build_mapped_env_requires_secret_resolver_for_secret_fields():
     with pytest.raises(ValueError, match="resolve_secret"):
-        EnvSecretHelper.build_mapped_env({"secret": "x"}, (("secret", "SECRET_ENV", True),))
+        EnvHelper.build_mapped_env({"secret": "x"}, (("secret", "SECRET_ENV", True),))
 
 
 def test_resolve_secret_masked_delegates_and_returns_value():
     assert (
-        EnvSecretHelper.resolve_secret_masked("secret://x", lambda value: f"resolved:{value}")
+        SecretHelper.resolve_secret_masked("secret://x", lambda value: f"resolved:{value}")
         == "resolved:secret://x"
     )

@@ -69,7 +69,6 @@ Requirements
 
 * ``apache-airflow`` >= 2.10.3
 * ``apache-airflow-providers-apache-hdfs``
-* ``apache-airflow-providers-apache-hive``
 * ``boto3`` >= 1.35.0
 
 Example DAGs

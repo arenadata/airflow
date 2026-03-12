@@ -41,11 +41,15 @@ from airflow.utils.log.secrets_masker import redact
 log = logging.getLogger(__name__)
 
 
+DEFAULT_PROCESS_TIMEOUT_SECONDS = 300
+DEFAULT_RETRY_WAIT = wait_exponential(multiplier=2, min=2, max=60)
+
+
 class CliRunner:
     """Subprocess execution helpers grouped by provider use-cases."""
 
-    DEFAULT_PROCESS_TIMEOUT_SECONDS = 300
-    DEFAULT_RETRY_WAIT = wait_exponential(multiplier=2, min=2, max=60)
+    DEFAULT_PROCESS_TIMEOUT_SECONDS = DEFAULT_PROCESS_TIMEOUT_SECONDS
+    DEFAULT_RETRY_WAIT = DEFAULT_RETRY_WAIT
 
     @staticmethod
     def pick_process_output(process_result: subprocess.CompletedProcess[str]) -> str:
@@ -248,6 +252,10 @@ class CliRunner:
 
         return _execute()
 
+
+class OzoneCliRunner(CliRunner):
+    """Ozone CLI specific process helpers and retry policy."""
+
     @staticmethod
     def _is_retryable_ozone_cli_exception(exc: BaseException) -> bool:
         """Return True when Ozone CLI error should be retried."""
@@ -376,6 +384,10 @@ class CliRunner:
             )
 
         return _execute()
+
+
+class KerberosCliRunner(CliRunner):
+    """Kerberos command execution helper."""
 
     @classmethod
     def run_kerberos(

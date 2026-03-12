@@ -32,36 +32,30 @@ S3 Gateway tasks use boto3 (no Amazon provider required).
 
 from __future__ import annotations
 
-import os
 from datetime import timedelta
 
 from airflow import DAG
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
+    OzoneCreatePathOperator,
     OzoneCreateVolumeOperator,
-    OzoneFsMkdirOperator,
-    OzoneFsPutOperator,
     OzoneS3CreateBucketOperator,
     OzoneS3PutObjectOperator,
+    OzoneUploadContentOperator,
 )
 from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor, OzoneS3KeySensor
-from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.providers.arenadata.ozone.utils import EnvHelper
 from airflow.utils import timezone
 
-
-def get_env_str(name: str, default: str | None = None) -> str | None:
-    return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
-
-
-OM_HOST = get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
-NATIVE_VOLUME = get_env_str("OZONE_EXAMPLE_USAGE_VOLUME", "vol1")
-NATIVE_BUCKET = get_env_str("OZONE_EXAMPLE_USAGE_BUCKET", "bucket-native")
-NATIVE_DIR = get_env_str("OZONE_EXAMPLE_USAGE_DIR", "data_dir")
-NATIVE_FILE = get_env_str("OZONE_EXAMPLE_USAGE_FILE", "file.txt")
-S3_BUCKET = get_env_str("OZONE_EXAMPLE_USAGE_S3_BUCKET", "s3bucket")
-S3_KEY = get_env_str("OZONE_EXAMPLE_USAGE_S3_KEY", "s3_data/test.json")
-S3_CONN_ID = get_env_str("OZONE_EXAMPLE_USAGE_S3_CONN_ID", "ozone_s3_default")
-ADMIN_CONN_ID = get_env_str("OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID", "ozone_admin_default")
+OM_HOST = EnvHelper.get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
+NATIVE_VOLUME = EnvHelper.get_env_str("OZONE_EXAMPLE_USAGE_VOLUME", "vol1")
+NATIVE_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_USAGE_BUCKET", "bucket-native")
+NATIVE_DIR = EnvHelper.get_env_str("OZONE_EXAMPLE_USAGE_DIR", "data_dir")
+NATIVE_FILE = EnvHelper.get_env_str("OZONE_EXAMPLE_USAGE_FILE", "file.txt")
+S3_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_USAGE_S3_BUCKET", "s3bucket")
+S3_KEY = EnvHelper.get_env_str("OZONE_EXAMPLE_USAGE_S3_KEY", "s3_data/test.json")
+S3_CONN_ID = EnvHelper.get_env_str("OZONE_EXAMPLE_USAGE_S3_CONN_ID", "ozone_s3_default")
+ADMIN_CONN_ID = EnvHelper.get_env_str("OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID", "ozone_admin_default")
 FS_FILE_PATH = f"ofs://{OM_HOST}/{NATIVE_VOLUME}/{NATIVE_BUCKET}/{NATIVE_DIR}/{NATIVE_FILE}"
 
 default_args = {
@@ -95,14 +89,14 @@ with DAG(
         execution_timeout=timedelta(minutes=5),
     )
 
-    fs_mkdir = OzoneFsMkdirOperator(
+    fs_mkdir = OzoneCreatePathOperator(
         task_id="fs_mkdir",
         path=f"ofs://{OM_HOST}/{NATIVE_VOLUME}/{NATIVE_BUCKET}/{NATIVE_DIR}",
         ozone_conn_id=ADMIN_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )
 
-    fs_put = OzoneFsPutOperator(
+    fs_put = OzoneUploadContentOperator(
         task_id="fs_put_file",
         content="Hello from FS Layer",
         remote_path=FS_FILE_PATH,

@@ -31,31 +31,25 @@ Useful for multi-tenant environments where each project needs isolated storage.
 
 from __future__ import annotations
 
-import os
 from datetime import timedelta
 
 from airflow.models.dag import DAG
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
+    OzoneCreatePathOperator,
     OzoneCreateVolumeOperator,
-    OzoneFsMkdirOperator,
     OzoneSetQuotaOperator,
 )
-from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.providers.arenadata.ozone.utils import EnvHelper
 from airflow.utils import timezone
 
-
-def get_env_str(name: str, default: str | None = None) -> str | None:
-    return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
-
-
-OM_HOST = get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
-MULTI_TENANT_CONN_ID = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_CONN_ID", "ozone_admin_default")
-PROJECT_VOLUME = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_VOLUME", "project-alpha")
-PROJECT_QUOTA = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_QUOTA", "10GB")
-LANDING_BUCKET = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_LANDING_BUCKET", "landing")
-PROCESSED_BUCKET = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROCESSED_BUCKET", "processed")
-BUCKET_QUOTA = get_env_str("OZONE_EXAMPLE_MULTI_TENANT_BUCKET_QUOTA", "1GB")
+OM_HOST = EnvHelper.get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
+MULTI_TENANT_CONN_ID = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_CONN_ID", "ozone_admin_default")
+PROJECT_VOLUME = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_VOLUME", "project-alpha")
+PROJECT_QUOTA = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_QUOTA", "10GB")
+LANDING_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_LANDING_BUCKET", "landing")
+PROCESSED_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROCESSED_BUCKET", "processed")
+BUCKET_QUOTA = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_BUCKET_QUOTA", "1GB")
 
 with DAG(
     dag_id="example_ozone_multi_tenant_management",
@@ -101,14 +95,14 @@ with DAG(
     )
 
     # 4. Create standard subdirectories inside the buckets
-    create_landing_dir = OzoneFsMkdirOperator(
+    create_landing_dir = OzoneCreatePathOperator(
         task_id="create_landing_dir",
         path=f"ofs://{OM_HOST}/{PROJECT_VOLUME}/{LANDING_BUCKET}/data",
         ozone_conn_id=MULTI_TENANT_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
-    create_processed_dir = OzoneFsMkdirOperator(
+    create_processed_dir = OzoneCreatePathOperator(
         task_id="create_processed_dir",
         path=f"ofs://{OM_HOST}/{PROJECT_VOLUME}/{PROCESSED_BUCKET}/data",
         ozone_conn_id=MULTI_TENANT_CONN_ID,

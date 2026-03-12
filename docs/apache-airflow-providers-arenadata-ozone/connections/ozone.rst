@@ -82,6 +82,22 @@ Common keys:
 When Kerberos is enabled, set ``ozone_conf_dir`` or ``hadoop_conf_dir`` explicitly
 in the connection (or provide ``OZONE_CONF_DIR`` / ``HADOOP_CONF_DIR`` in the worker
 environment). The provider no longer injects a default config directory.
+The provider also does not perform hidden XML/bootstrap generation anymore.
+
+Recommended Kerberos extra (explicit paths):
+
+.. code-block:: json
+
+  {
+    "ozone_security_enabled": "true",
+    "hadoop_security_authentication": "kerberos",
+    "kerberos_principal": "testuser@EXAMPLE.COM",
+    "kerberos_keytab": "/opt/airflow/keytabs/testuser.keytab",
+    "kerberos_realm": "EXAMPLE.COM",
+    "krb5_conf": "/opt/airflow/kerberos-config/krb5.conf",
+    "ozone_conf_dir": "/opt/airflow/ozone-conf",
+    "hadoop_conf_dir": "/opt/airflow/ozone-conf"
+  }
 
 Retry and timeout tuning
 ------------------------
@@ -98,6 +114,31 @@ Provider defaults are defined in the CLI hook module:
 Operators, sensors, and transfers pass ``timeout`` and ``retry_attempts``
 to hook methods. Use ``FAST_TIMEOUT_SECONDS`` for quick CLI calls and
 ``SLOW_TIMEOUT_SECONDS`` for long-running operations.
+
+Hook API coverage
+-----------------
+
+The main Native CLI hook module is now fully located in
+``airflow/providers/arenadata/ozone/hooks/ozone.py``.
+
+Key ``OzoneFsHook`` methods include:
+
+* ``list_keys``, ``list_paths``, ``list_wildcard_matches``
+* ``path_exists``, ``delete_key``, ``delete_path``
+* ``create_path``, ``create_key``
+* ``move``, ``copy_path``
+* ``upload_key``, ``download_key``, ``set_key_property``
+
+Key ``OzoneAdminHook`` methods include:
+
+* ``create_volume``, ``delete_volume``
+* ``create_bucket``, ``delete_bucket``
+* ``set_quota``
+
+Key ``OzoneAdminExtraHook`` methods include:
+
+* ``set_bucket_replication_config``, ``create_bucket_link``
+* ``get_container_report``
 
 Ozone S3 Gateway connection
 ---------------------------

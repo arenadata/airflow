@@ -20,8 +20,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from airflow.providers.arenadata.ozone.utils.helpers import EnvSecretHelper, TypeNormalizationHelper
+from airflow.providers.arenadata.ozone.utils.helpers import EnvHelper, SecretHelper, TypeNormalizationHelper
 from airflow.providers.arenadata.ozone.utils.security.secret_resolver import SecretResolver
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -58,7 +60,7 @@ class SSLConfig:
         if TypeNormalizationHelper.is_true_flag(extra, "ozone_security_enabled", "ozone.security.enabled"):
             env["OZONE_SECURITY_ENABLED"] = "true"
             env.update(
-                EnvSecretHelper.build_mapped_env(
+                EnvHelper.build_mapped_env(
                     extra,
                     (
                         ("ozone_om_https_port", "OZONE_OM_HTTPS_PORT", False),
@@ -70,7 +72,7 @@ class SSLConfig:
                         ("ozone_ssl_truststore_password", "OZONE_SSL_TRUSTSTORE_PASSWORD", True),
                         ("ozone_ssl_truststore_type", "OZONE_SSL_TRUSTSTORE_TYPE", False),
                     ),
-                    resolve_secret=lambda value: EnvSecretHelper.resolve_secret_masked(
+                    resolve_secret=lambda value: SecretHelper.resolve_secret_masked(
                         value, lambda v: SecretResolver.get_secret_value(v, conn_id)
                     ),
                 )
@@ -84,7 +86,7 @@ class SSLConfig:
         if TypeNormalizationHelper.is_true_flag(extra, "hive_ssl_enabled", "hive.ssl.enabled"):
             env["HIVE_SSL_ENABLED"] = "true"
             env.update(
-                EnvSecretHelper.build_mapped_env(
+                EnvHelper.build_mapped_env(
                     extra,
                     (
                         ("hive_ssl_keystore_path", "HIVE_SSL_KEYSTORE_PATH", False),
@@ -92,7 +94,7 @@ class SSLConfig:
                         ("hive_ssl_truststore_path", "HIVE_SSL_TRUSTSTORE_PATH", False),
                         ("hive_ssl_truststore_password", "HIVE_SSL_TRUSTSTORE_PASSWORD", True),
                     ),
-                    resolve_secret=lambda value: EnvSecretHelper.resolve_secret_masked(
+                    resolve_secret=lambda value: SecretHelper.resolve_secret_masked(
                         value, lambda v: SecretResolver.get_secret_value(v, conn_id)
                     ),
                 )
@@ -106,7 +108,7 @@ class SSLConfig:
         if TypeNormalizationHelper.is_true_flag(extra, "hdfs_ssl_enabled", "dfs.encrypt.data.transfer"):
             env["HDFS_SSL_ENABLED"] = "true"
             env.update(
-                EnvSecretHelper.build_mapped_env(
+                EnvHelper.build_mapped_env(
                     extra,
                     (
                         ("dfs_encrypt_data_transfer", "DFS_ENCRYPT_DATA_TRANSFER", False),
@@ -118,7 +120,7 @@ class SSLConfig:
                         ("hdfs_ssl_truststore_password", "HDFS_SSL_TRUSTSTORE_PASSWORD", True),
                         ("hdfs_ssl_truststore_type", "HDFS_SSL_TRUSTSTORE_TYPE", False),
                     ),
-                    resolve_secret=lambda value: EnvSecretHelper.resolve_secret_masked(
+                    resolve_secret=lambda value: SecretHelper.resolve_secret_masked(
                         value, lambda v: SecretResolver.get_secret_value(v, conn_id)
                     ),
                 )
@@ -142,20 +144,17 @@ class SSLConfig:
         conn: object,
         *,
         conn_id: str | None = None,
-        logger: logging.Logger | None = None,
         enabled_flag_keys: tuple[str, ...] = (),
     ) -> dict[str, str] | None:
         """Build SSL env from connection extra with unified logging."""
-        extra = EnvSecretHelper.get_connection_extra(conn)
+        extra = SecretHelper.get_connection_extra(conn)
         ssl_env_vars = cls.from_extra(extra, conn_id=conn_id).as_env()
         if not ssl_env_vars:
-            if logger:
-                logger.debug("No SSL/TLS configuration found in connection Extra")
+            log.debug("No SSL/TLS configuration found in connection Extra")
             return None
 
         ssl_env = cls.apply_ssl_env_vars(ssl_env_vars)
-        if logger:
-            logger.debug("SSL/TLS configuration loaded from connection: %s", list(ssl_env_vars.keys()))
-            if enabled_flag_keys and TypeNormalizationHelper.is_true_flag(extra, *enabled_flag_keys):
-                logger.info("SSL/TLS enabled for connection")
+        log.debug("SSL/TLS configuration loaded from connection: %s", list(ssl_env_vars.keys()))
+        if enabled_flag_keys and TypeNormalizationHelper.is_true_flag(extra, *enabled_flag_keys):
+            log.info("SSL/TLS enabled for connection")
         return ssl_env

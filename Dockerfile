@@ -1460,16 +1460,6 @@ ENV VIRTUAL_ENV="${AIRFLOW_USER_HOME_DIR}/.local"
 
 RUN bash /scripts/docker/install_packaging_tools.sh; bash /scripts/docker/create_prod_venv.sh
 
-# When installing from context (sources), hatch build runs compile_www_assets and needs nodejs/yarn.
-# Placed before COPY sources so this layer is cacheable when only sources change.
-USER root
-RUN if [ "${INSTALL_PACKAGES_FROM_CONTEXT}" = "true" ]; then \
-    apt-get update && apt-get install -y --no-install-recommends nodejs npm \
-    && npm install -g yarn@1.22.19 \
-    && rm -rf /var/lib/apt/lists/*; \
-    fi
-USER airflow
-
 COPY --chown=airflow:0 ${AIRFLOW_SOURCES_FROM} ${AIRFLOW_SOURCES_TO}
 
 # Add extra python dependencies

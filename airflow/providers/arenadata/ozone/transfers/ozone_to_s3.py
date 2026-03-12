@@ -74,7 +74,6 @@ class OzoneToS3Operator(BaseOperator):
         if max_workers <= 0:
             raise ValueError("max_workers parameter must be a positive integer")
 
-        # Keep template fields assigned directly; use normalized copies for transfer logic.
         self.ozone_prefix = ozone_prefix
         self.s3_prefix = s3_prefix
         self._ozone_prefix_normalized = self._normalize_prefix(ozone_prefix)

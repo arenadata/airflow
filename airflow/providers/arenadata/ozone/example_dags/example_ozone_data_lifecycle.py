@@ -22,54 +22,40 @@ Complete Data Lifecycle Management Example DAG
 This DAG demonstrates a complete data lifecycle workflow:
 1. Lists all files in a landing directory (OzoneListOperator)
 2. Runs a processing step over the discovered list of files
-3. Archives processed files to a new location (OzoneToOzoneOperator)
-4. Registers archived data as a Hive table partition (OzoneToHiveOperator)
-5. Creates a disaster-recovery snapshot (OzoneBackupOperator)
-6. Cleans up original files from the landing zone
+3. Archives processed files to a new location (OzoneMoveOperator)
+4. Creates a disaster-recovery snapshot (OzoneBackupOperator)
+5. Cleans up original files from the landing zone
 
 This example showcases:
 - Data archiving and lifecycle management
-- Integration with Hive for data lake queries
 - Backup and disaster recovery workflows
-
-Requirements:
-- apache-airflow-providers-apache-hive must be installed.
 """
 
 from __future__ import annotations
 
-import os
 from datetime import timedelta
 
 from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
+    OzoneCreatePathOperator,
     OzoneCreateVolumeOperator,
     OzoneDeleteKeyOperator,
-    OzoneFsMkdirOperator,
     OzoneListOperator,
-    OzoneToOzoneOperator,
+    OzoneMoveOperator,
 )
 from airflow.providers.arenadata.ozone.transfers.ozone_backup import OzoneBackupOperator
-from airflow.providers.arenadata.ozone.transfers.ozone_to_hive import OzoneToHiveOperator
-from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.providers.arenadata.ozone.utils import EnvHelper
 from airflow.utils import timezone
 from airflow.utils.task_group import TaskGroup
 
-
-def get_env_str(name: str, default: str | None = None) -> str | None:
-    return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
-
-
-OM_HOST = get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
-LIFECYCLE_CONN_ID = get_env_str("OZONE_EXAMPLE_LIFECYCLE_CONN_ID", "ozone_admin_default")
-LIFECYCLE_HIVE_CONN_ID = get_env_str("OZONE_EXAMPLE_LIFECYCLE_HIVE_CONN_ID", "hive_cli_default")
-LANDING_VOLUME = get_env_str("OZONE_EXAMPLE_LIFECYCLE_LANDING_VOLUME", "landing")
-LANDING_BUCKET = get_env_str("OZONE_EXAMPLE_LIFECYCLE_LANDING_BUCKET", "raw")
-ARCHIVE_VOLUME = get_env_str("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_VOLUME", "archive")
-ARCHIVE_BUCKET = get_env_str("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_BUCKET", "processed")
-LIFECYCLE_HIVE_TABLE = get_env_str("OZONE_EXAMPLE_LIFECYCLE_HIVE_TABLE", "processed_events")
+OM_HOST = EnvHelper.get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
+LIFECYCLE_CONN_ID = EnvHelper.get_env_str("OZONE_EXAMPLE_LIFECYCLE_CONN_ID", "ozone_admin_default")
+LANDING_VOLUME = EnvHelper.get_env_str("OZONE_EXAMPLE_LIFECYCLE_LANDING_VOLUME", "landing")
+LANDING_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_LIFECYCLE_LANDING_BUCKET", "raw")
+ARCHIVE_VOLUME = EnvHelper.get_env_str("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_VOLUME", "archive")
+ARCHIVE_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_BUCKET", "processed")
 
 with DAG(
     dag_id="example_ozone_data_lifecycle",
@@ -83,12 +69,9 @@ with DAG(
     This DAG demonstrates a complete data lifecycle management workflow:
     1. **List**: Finds all files in a landing directory using `OzoneListOperator`.
     2. **Process**: Runs a processing step over the file list from XCom.
-    3. **Archive**: Moves the processed source files to an archive path using `OzoneToOzoneOperator`.
-    4. **Register**: Registers the archived data as a new partition in Hive with `OzoneToHiveOperator`.
-    5. **Backup**: Creates a disaster-recovery snapshot of the bucket using `OzoneBackupOperator`.
-    6. **Cleanup**: Deletes the original files from the landing directory.
-
-    **Requirement**: `apache-airflow-providers-apache-hive` must be installed.
+    3. **Archive**: Moves the processed source files to an archive path using `OzoneMoveOperator`.
+    4. **Backup**: Creates a disaster-recovery snapshot of the bucket using `OzoneBackupOperator`.
+    5. **Cleanup**: Deletes the original files from the landing directory.
     """,
 ) as dag:
     LANDING_PATH = f"ofs://{OM_HOST}/{LANDING_VOLUME}/{LANDING_BUCKET}"
@@ -142,7 +125,7 @@ with DAG(
         )
 
     # 3. Create archive directory for date-based partitioning
-    create_archive_dir = OzoneFsMkdirOperator(
+    create_archive_dir = OzoneCreatePathOperator(
         task_id="create_archive_dir",
         path=ARCHIVE_BASE_PATH + "/ds={{ ds }}",
         ozone_conn_id=LIFECYCLE_CONN_ID,
@@ -150,7 +133,7 @@ with DAG(
     )
 
     # 4. After processing, move the original files to an archive directory.
-    archive_files = OzoneToOzoneOperator(
+    archive_files = OzoneMoveOperator(
         task_id="archive_landing_files",
         source_path=f"{LANDING_PATH}/*",  # Move all files
         dest_path=ARCHIVE_BASE_PATH + "/ds={{ ds }}",
@@ -158,17 +141,7 @@ with DAG(
         execution_timeout=timedelta(minutes=5),
     )
 
-    # 5a. Register the new archive path as a partition in a Hive table.
-    register_hive_partition = OzoneToHiveOperator(
-        task_id="register_hive_partition",
-        ozone_path=ARCHIVE_BASE_PATH + "/ds={{ ds }}",
-        table_name=LIFECYCLE_HIVE_TABLE,
-        partition_spec={"ds": "{{ ds }}"},
-        hive_cli_conn_id=LIFECYCLE_HIVE_CONN_ID,
-        execution_timeout=timedelta(minutes=5),
-    )
-
-    # 6. Create a snapshot of the entire archive volume for backup.
+    # 5. Create a snapshot of the entire archive volume for backup.
     backup_archive = OzoneBackupOperator(
         task_id="backup_archive_via_snapshot",
         volume=ARCHIVE_VOLUME,
@@ -178,7 +151,7 @@ with DAG(
         execution_timeout=timedelta(minutes=5),
     )
 
-    # 7. Cleanup original files from landing zone.
+    # 6. Cleanup original files from landing zone.
     cleanup_landing_zone = OzoneDeleteKeyOperator(
         task_id="cleanup_landing_zone",
         path=f"{LANDING_PATH}/*",
@@ -194,6 +167,5 @@ with DAG(
     list_files_in_landing_zone >> processing_group
     create_archive_bucket >> create_archive_dir
     processing_group >> create_archive_dir >> archive_files
-    archive_files >> register_hive_partition
     archive_files >> backup_archive
     backup_archive >> cleanup_landing_zone

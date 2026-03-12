@@ -21,7 +21,6 @@ from __future__ import annotations
 import fnmatch
 import re
 from typing import Sequence
-from urllib.parse import urlsplit
 
 from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.hooks.ozone import (
@@ -31,7 +30,7 @@ from airflow.providers.arenadata.ozone.hooks.ozone import (
 )
 from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
 from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
-from airflow.providers.arenadata.ozone.utils.helpers import URIHelper
+from airflow.providers.arenadata.ozone.utils.helpers import PatternHelper, URIHelper
 from airflow.sensors.base import BaseSensorOperator
 from airflow.utils.context import Context  # noqa: TCH001
 
@@ -68,7 +67,7 @@ class OzoneKeySensor(BaseSensorOperator):
             retry_attempts=self.retry_attempts,
         )
         try:
-            if hook.exists(self.path, timeout=self.timeout):
+            if hook.key_exists(self.path, timeout=self.timeout):
                 self.log.info("Key found in Ozone: %s", self.path)
                 return True
             return False
@@ -101,29 +100,9 @@ class OzoneS3KeySensor(BaseSensorOperator):
         self.wildcard_match = wildcard_match
         self.use_regex = use_regex
 
-    def _parse_bucket_and_key(self, key: str) -> tuple[str, str]:
-        """Split full s3:// URL or combine plain key with bucket_name."""
-        bucket_name = self.bucket_name
-        key_use = key
-
-        if not bucket_name:
-            parsed = urlsplit(key)
-            if parsed.scheme != "s3":
-                raise AirflowException(
-                    "bucket_name is required when bucket_key is not a full s3://bucket/key URL."
-                )
-            bucket_name = parsed.netloc
-            key_use = parsed.path.lstrip("/")
-            if not bucket_name or not key_use:
-                raise AirflowException(
-                    f"Invalid s3 URL for OzoneS3KeySensor: {key!r}. Expected s3://bucket/key."
-                )
-
-        return bucket_name, key_use
-
     def _check_key(self, key: str, hook: OzoneS3Hook) -> bool:
         """Check key existence with exact, wildcard, or regex matching."""
-        bucket_name, key_use = self._parse_bucket_and_key(key)
+        bucket_name, key_use = URIHelper.resolve_s3_bucket_and_key(key, self.bucket_name)
 
         if not self.wildcard_match and not self.use_regex and URIHelper.contains_wildcards(key_use):
             self.log.warning(
@@ -133,13 +112,12 @@ class OzoneS3KeySensor(BaseSensorOperator):
             )
 
         if self.wildcard_match:
-            prefix = re.split(r"[\[*?]", key_use, 1)[0]
+            prefix = PatternHelper.literal_prefix_before_glob(key_use)
             files = hook.get_file_metadata(prefix, bucket_name)
             return bool(fnmatch.filter([f["Key"] for f in files], key_use))
 
         if self.use_regex:
-            meta_split = re.split(r"[\\\[\]\^\$\*\+\?\|\(\)]", key_use, 1)
-            prefix = meta_split[0] if meta_split else ""
+            prefix = PatternHelper.literal_prefix_before_regex(key_use)
             files = hook.get_file_metadata(prefix, bucket_name)
             try:
                 pattern = re.compile(key_use)

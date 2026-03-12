@@ -25,21 +25,12 @@ for test and demo scenarios.
 How configuration is applied
 ----------------------------
 
-Each example DAG defines a small local ``get_env_str()`` helper and reads
-values at DAG parse time. That helper uses
-``airflow.providers.arenadata.ozone.utils.helpers.TypeNormalizationHelper.normalize_optional_str()``
-to normalize environment values.
-If a variable is not set, each DAG uses a safe default value.
+Each example DAG reads environment variables at DAG parse time.
+If a variable is not set, the DAG uses a safe default value.
 
-For local testing with helper scripts:
-
-* ``files/run_ozone.sh``
-* ``files/run_ozone_ssl.sh``
-* ``files/run_ozone_kerberos_ssl.sh``
-* ``files/run_af.sh``
-
-these scripts preconfigure and pass environment variables into the Airflow
-container so the examples can run without editing DAG sources.
+For local or CI testing, provide these variables through your runtime
+environment (for example, container env vars, CI variables, or shell export)
+so examples can run without editing DAG sources.
 
 Main variables
 --------------
@@ -81,6 +72,10 @@ SSL + Kerberos example (``example_ozone_usage_ssl_kerberos``):
 * ``OZONE_EXAMPLE_KRB_S3_BUCKET``
 * ``OZONE_EXAMPLE_KRB_S3_KEY``
 
+For this DAG, the ``ozone`` connection extra must include explicit Kerberos/config paths
+(``kerberos_principal``, ``kerberos_keytab``, ``krb5_conf``, ``ozone_conf_dir`` and/or
+``hadoop_conf_dir``).
+
 Data pipeline example (``example_ozone_data_pipeline``):
 
 * ``OZONE_EXAMPLE_PIPELINE_CONN_ID``
@@ -95,12 +90,10 @@ Data pipeline example (``example_ozone_data_pipeline``):
 Data lifecycle example (``example_ozone_data_lifecycle``):
 
 * ``OZONE_EXAMPLE_LIFECYCLE_CONN_ID``
-* ``OZONE_EXAMPLE_LIFECYCLE_HIVE_CONN_ID``
 * ``OZONE_EXAMPLE_LIFECYCLE_LANDING_VOLUME``
 * ``OZONE_EXAMPLE_LIFECYCLE_LANDING_BUCKET``
 * ``OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_VOLUME``
 * ``OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_BUCKET``
-* ``OZONE_EXAMPLE_LIFECYCLE_HIVE_TABLE``
 
 Multi-tenant example (``example_ozone_multi_tenant_management``):
 
@@ -110,15 +103,6 @@ Multi-tenant example (``example_ozone_multi_tenant_management``):
 * ``OZONE_EXAMPLE_MULTI_TENANT_LANDING_BUCKET``
 * ``OZONE_EXAMPLE_MULTI_TENANT_PROCESSED_BUCKET``
 * ``OZONE_EXAMPLE_MULTI_TENANT_BUCKET_QUOTA``
-
-Cross-region replication example (``example_ozone_cross_region_replication``):
-
-* ``OZONE_EXAMPLE_REPLICATION_SOURCE_CLUSTER``
-* ``OZONE_EXAMPLE_REPLICATION_TARGET_CLUSTER``
-* ``OZONE_EXAMPLE_REPLICATION_SOURCE_BASE``
-* ``OZONE_EXAMPLE_REPLICATION_TARGET_BASE``
-* ``OZONE_EXAMPLE_REPLICATION_HDFS_CONN_ID`` (optional)
-* ``OZONE_EXAMPLE_REPLICATION_SCHEDULE``
 
 Provider runtime tuning (for example DAG runs)
 ----------------------------------------------

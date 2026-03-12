@@ -17,12 +17,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+
+from botocore.exceptions import ClientError  # noqa: TCH002
 
 from airflow.exceptions import AirflowException
-
-if TYPE_CHECKING:
-    from botocore.exceptions import ClientError
 
 
 class OzoneCliError(AirflowException):
@@ -111,6 +110,26 @@ class OzoneCliErrors:
         if any(marker in normalized for marker in cls.non_retryable_errors):
             return False
         return any(marker in normalized for marker in cls.retryable_errors)
+
+
+@dataclass(frozen=True)
+class AdminResourceSpec:
+    """CLI markers used for idempotent admin operations."""
+
+    already_exists_marker: str
+    not_found_markers: tuple[str, ...]
+
+
+ADMIN_RESOURCE_SPECS: dict[str, AdminResourceSpec] = {
+    "volume": AdminResourceSpec(
+        already_exists_marker="VOLUME_ALREADY_EXISTS",
+        not_found_markers=("VOLUME_NOT_FOUND",),
+    ),
+    "bucket": AdminResourceSpec(
+        already_exists_marker="BUCKET_ALREADY_EXISTS",
+        not_found_markers=("BUCKET_NOT_FOUND",),
+    ),
+}
 
 
 class OzoneS3Errors:

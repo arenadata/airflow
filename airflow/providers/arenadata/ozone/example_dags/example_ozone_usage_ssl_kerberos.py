@@ -36,36 +36,30 @@ For production, use certificates from a trusted CA and proper Kerberos KDC setup
 
 from __future__ import annotations
 
-import os
 from datetime import timedelta
 
 from airflow import DAG
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
+    OzoneCreatePathOperator,
     OzoneCreateVolumeOperator,
-    OzoneFsMkdirOperator,
-    OzoneFsPutOperator,
     OzoneS3CreateBucketOperator,
     OzoneS3PutObjectOperator,
+    OzoneUploadContentOperator,
 )
 from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor, OzoneS3KeySensor
-from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.providers.arenadata.ozone.utils import EnvHelper
 from airflow.utils import timezone
 
-
-def get_env_str(name: str, default: str | None = None) -> str | None:
-    return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
-
-
-OM_HOST = get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
-KRB_ADMIN_CONN_ID = get_env_str("OZONE_EXAMPLE_KRB_ADMIN_CONN_ID", "ozone_admin_ssl_kerberos")
-KRB_S3_CONN_ID = get_env_str("OZONE_EXAMPLE_KRB_S3_CONN_ID", "ozone_s3_ssl_kerberos")
-KRB_VOLUME = get_env_str("OZONE_EXAMPLE_KRB_VOLUME", "vol1")
-KRB_BUCKET = get_env_str("OZONE_EXAMPLE_KRB_BUCKET", "bucket-native")
-KRB_DIR = get_env_str("OZONE_EXAMPLE_KRB_DIR", "data_dir")
-KRB_FILE = get_env_str("OZONE_EXAMPLE_KRB_FILE", "file.txt")
-KRB_S3_BUCKET = get_env_str("OZONE_EXAMPLE_KRB_S3_BUCKET", "s3bucket-ssl-kerberos")
-KRB_S3_KEY = get_env_str("OZONE_EXAMPLE_KRB_S3_KEY", "s3_data/test.json")
+OM_HOST = EnvHelper.get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
+KRB_ADMIN_CONN_ID = EnvHelper.get_env_str("OZONE_EXAMPLE_KRB_ADMIN_CONN_ID", "ozone_admin_ssl_kerberos")
+KRB_S3_CONN_ID = EnvHelper.get_env_str("OZONE_EXAMPLE_KRB_S3_CONN_ID", "ozone_s3_ssl_kerberos")
+KRB_VOLUME = EnvHelper.get_env_str("OZONE_EXAMPLE_KRB_VOLUME", "vol1")
+KRB_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_KRB_BUCKET", "bucket-native")
+KRB_DIR = EnvHelper.get_env_str("OZONE_EXAMPLE_KRB_DIR", "data_dir")
+KRB_FILE = EnvHelper.get_env_str("OZONE_EXAMPLE_KRB_FILE", "file.txt")
+KRB_S3_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_KRB_S3_BUCKET", "s3bucket-ssl-kerberos")
+KRB_S3_KEY = EnvHelper.get_env_str("OZONE_EXAMPLE_KRB_S3_KEY", "s3_data/test.json")
 KRB_FS_FILE_PATH = f"ofs://{OM_HOST}/{KRB_VOLUME}/{KRB_BUCKET}/{KRB_DIR}/{KRB_FILE}"
 
 default_args = {
@@ -104,14 +98,14 @@ with DAG(
         execution_timeout=timedelta(minutes=1),
     )
 
-    fs_mkdir = OzoneFsMkdirOperator(
+    fs_mkdir = OzoneCreatePathOperator(
         task_id="fs_mkdir_ssl_kerberos",
         path=f"ofs://{OM_HOST}/{KRB_VOLUME}/{KRB_BUCKET}/{KRB_DIR}",
         ozone_conn_id=KRB_ADMIN_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
-    fs_put_file = OzoneFsPutOperator(
+    fs_put_file = OzoneUploadContentOperator(
         task_id="fs_put_file_ssl_kerberos",
         content="Hello from FS Layer with SSL encryption and Kerberos authentication",
         remote_path=KRB_FS_FILE_PATH,

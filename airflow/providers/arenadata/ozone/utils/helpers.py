@@ -15,16 +15,18 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Shared helper utilities for the Ozone provider."""
-
 from __future__ import annotations
 
 import fnmatch
+import json
 import os
+import posixpath
+import re
 from collections.abc import Callable, Mapping, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
-from airflow.utils.log.secrets_masker import mask_secret
+from airflow.exceptions import AirflowException
+from airflow.utils.log.secrets_masker import mask_secret, redact
 
 
 class URIHelper:
@@ -34,7 +36,7 @@ class URIHelper:
 
     @classmethod
     def contains_wildcards(cls, value: str) -> bool:
-        """Return True if path contains glob/wildcard characters."""
+        """Return True if path contains glob or wildcard characters."""
         return bool(value) and any(ch in value for ch in cls.WILDCARD_CHARS)
 
     @staticmethod
@@ -50,7 +52,7 @@ class URIHelper:
 
     @staticmethod
     def build_ozone_uri(scheme: str, netloc: str, path_or_raw: str) -> str:
-        """Build Ozone-style URI from components returned by ``parse_ozone_uri``."""
+        """Build Ozone-style URI from components returned by parse_ozone_uri."""
         if not scheme:
             return path_or_raw
         path = path_or_raw or "/"
@@ -59,18 +61,76 @@ class URIHelper:
         return urlunsplit((scheme, netloc, path, "", ""))
 
     @classmethod
+    def split_ozone_path(cls, value: str) -> tuple[str, str]:
+        """
+        Split Ozone path into parent directory and basename.
+
+        Returns:
+            tuple[parent_path, name]
+        """
+        target_value = (value or "").rstrip("/")
+        if not target_value:
+            return "", ""
+
+        scheme, netloc, parsed_path = cls.parse_ozone_uri(target_value)
+        parent_raw, name = posixpath.split(parsed_path)
+
+        if not parent_raw:
+            return "", name
+
+        if scheme and parent_raw == "/":
+            return "", name
+
+        return cls.build_ozone_uri(scheme, netloc, parent_raw), name
+
+    @classmethod
+    def join_ozone_path(cls, dir_path: str, name: str) -> str:
+        """Join Ozone directory path and child name preserving scheme and netloc."""
+        target_dir = (dir_path or "").rstrip("/")
+        child_name = (name or "").strip("/")
+
+        if not target_dir:
+            return child_name
+        if not child_name:
+            return target_dir
+
+        scheme, netloc, parsed_path = cls.parse_ozone_uri(target_dir)
+        base_path = parsed_path.rstrip("/") or ("/" if scheme else "")
+        full_path = posixpath.join(base_path, child_name)
+        return cls.build_ozone_uri(scheme, netloc, full_path)
+
+    @staticmethod
+    def parse_s3_uri(value: str) -> tuple[str, str]:
+        """Parse s3://bucket/key URI and return (bucket_name, key)."""
+        parsed = urlsplit(value or "")
+        if parsed.scheme != "s3":
+            raise AirflowException(f"Invalid S3 URI: {value!r}. Expected s3://bucket/key.")
+        bucket_name = parsed.netloc or ""
+        key = parsed.path.lstrip("/")
+        if not bucket_name or not key:
+            raise AirflowException(f"Invalid S3 URI: {value!r}. Expected s3://bucket/key.")
+        return bucket_name, key
+
+    @classmethod
+    def resolve_s3_bucket_and_key(cls, key: str, bucket_name: str | None = None) -> tuple[str, str]:
+        """Return (bucket_name, key), accepting either plain key + bucket_name or full s3:// URI."""
+        if bucket_name:
+            return bucket_name, key
+        return cls.parse_s3_uri(key)
+
+    @classmethod
     def split_ozone_wildcard_path(cls, path: str) -> tuple[str, str]:
         """Split wildcard path into source directory URI and basename pattern."""
         scheme, netloc, uri_path = cls.parse_ozone_uri(path)
-        pattern = os.path.basename(uri_path)
-        source_dir_path = os.path.dirname(uri_path) or ("/" if scheme else "")
+        source_dir_path, pattern = posixpath.split(uri_path)
+        source_dir_path = source_dir_path or ("/" if scheme else "")
         source_dir = cls.build_ozone_uri(scheme, netloc, source_dir_path or "/")
         return source_dir, pattern
 
     @staticmethod
     def filter_paths_by_basename_pattern(paths: Sequence[str], pattern: str) -> list[str]:
         """Filter path list by basename using fnmatch semantics."""
-        return [path for path in paths if fnmatch.fnmatch(os.path.basename(path), pattern)]
+        return [path for path in paths if fnmatch.fnmatch(posixpath.basename(path), pattern)]
 
     @classmethod
     def resolve_wildcard_matches(
@@ -84,8 +144,24 @@ class URIHelper:
         return source_dir, cls.filter_paths_by_basename_pattern(listed_paths, pattern)
 
 
-class EnvSecretHelper:
-    """Helpers for environment mapping and secret-safe handling."""
+class PatternHelper:
+    """Helpers for glob and regex pattern handling."""
+
+    @staticmethod
+    def literal_prefix_before_glob(pattern: str) -> str:
+        """Return literal prefix before first glob metacharacter."""
+        parts = re.split(r"[\[*?]", pattern or "", 1)
+        return parts[0] if parts else ""
+
+    @staticmethod
+    def literal_prefix_before_regex(pattern: str) -> str:
+        """Return literal prefix before first regex metacharacter."""
+        parts = re.split(r"[\\\[\]\^\$\*\+\?\|\(\)]", pattern or "", 1)
+        return parts[0] if parts else ""
+
+
+class EnvHelper:
+    """Helpers for environment mapping and env variable reads."""
 
     @staticmethod
     def build_mapped_env(
@@ -94,7 +170,7 @@ class EnvSecretHelper:
         *,
         resolve_secret: Callable[[object], object] | None = None,
     ) -> dict[str, str]:
-        """Build environment variables from ``extra`` according to a mapping."""
+        """Build environment variables from extra according to a mapping."""
         env: dict[str, str] = {}
         for extra_key, env_key, is_secret in mapping:
             if extra_key not in extra:
@@ -106,6 +182,15 @@ class EnvSecretHelper:
                 value = resolve_secret(value)
             env[env_key] = str(value)
         return env
+
+    @staticmethod
+    def get_env_str(name: str, default: str | None = None) -> str | None:
+        """Get environment variable as string or return default if not set."""
+        return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
+
+
+class SecretHelper:
+    """Helpers for secret-safe handling and connection extra extraction."""
 
     @staticmethod
     def resolve_secret_masked(value: object, resolve_secret: Callable[[object], object]) -> object:
@@ -125,7 +210,7 @@ class TypeNormalizationHelper:
 
     @staticmethod
     def normalize_optional_str(value: object | None) -> str | None:
-        """Return stripped string value or None for empty/None input."""
+        """Return stripped string value or None for empty or None input."""
         if value is None:
             return None
         normalized = str(value).strip()
@@ -153,7 +238,7 @@ class TypeNormalizationHelper:
 
     @staticmethod
     def normalize_bool_or_passthrough(value: object, default: object) -> object:
-        """Normalize bool-like values; passthrough non-bool strings/objects."""
+        """Normalize bool-like values; passthrough non-bool strings or objects."""
         if value is None:
             return default
         if isinstance(value, bool):
@@ -171,7 +256,7 @@ class TypeNormalizationHelper:
 
     @classmethod
     def is_true_flag(cls, extra: dict[str, object], *keys: str) -> bool:
-        """Return True if any provided key is present and equals ``true``."""
+        """Return True if any provided key is present and equals true."""
         for key in keys:
             value = extra.get(key)
             if (
@@ -180,3 +265,27 @@ class TypeNormalizationHelper:
             ):
                 return True
         return False
+
+    @staticmethod
+    def parse_json_output(output: str) -> object:
+        """Parse CLI output that may contain plain JSON or logs followed by JSON."""
+        raw_output = (output or "").strip()
+        if not raw_output:
+            raise AirflowException("Empty JSON output.")
+
+        try:
+            return json.loads(raw_output)
+        except json.JSONDecodeError:
+            pass
+
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(raw_output):
+            if char not in "[{":
+                continue
+            try:
+                parsed, _ = decoder.raw_decode(raw_output[index:])
+                return parsed
+            except json.JSONDecodeError:
+                continue
+
+        raise AirflowException(f"Failed to parse JSON output: {redact(raw_output)}")

@@ -22,17 +22,29 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from airflow.exceptions import AirflowException
-from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminHook
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminExtraHook, OzoneAdminHook
 from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
 MOCK_CLI_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliHook.run_cli"
-MOCK_RUN_RETRY_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.CliRunner.run_ozone"
+MOCK_RUN_RETRY_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliRunner.run_ozone"
 
 
 @pytest.fixture
 def admin_hook():
     """Provides a reusable instance of the OzoneAdminHook."""
     hook = OzoneAdminHook(ozone_conn_id="test_admin_conn")
+    conn = MagicMock()
+    conn.host = "ozone-om"
+    conn.port = 9862
+    conn.extra_dejson = {}
+    hook.__dict__["connection"] = conn
+    return hook
+
+
+@pytest.fixture
+def admin_extra_hook():
+    """Provides a reusable instance of the OzoneAdminExtraHook."""
+    hook = OzoneAdminExtraHook(ozone_conn_id="test_admin_conn")
     conn = MagicMock()
     conn.host = "ozone-om"
     conn.port = 9862
@@ -85,16 +97,17 @@ class TestOzoneAdminHook:
             admin_hook.create_bucket(volume_name="test_vol", bucket_name="test_bkt", quota="100GB")
 
     @patch(MOCK_CLI_PATH)
-    def test_get_container_report(self, mock_run_cli: MagicMock, admin_hook: OzoneAdminHook):
+    def test_get_container_report(self, mock_run_cli: MagicMock, admin_extra_hook: OzoneAdminExtraHook):
         """Test that `get_container_report` parses JSON output correctly."""
 
-        # Simulate a JSON string returned by the CLI
-        mock_run_cli.return_value = '{"total": 1, "containers": [{"id": 1}]}'
+        mock_run_cli.return_value = {"total": 1, "containers": [{"id": 1}]}
 
-        result = admin_hook.get_container_report()
+        result = admin_extra_hook.get_container_report()
 
         mock_run_cli.assert_called_once_with(
-            ["ozone", "admin", "container", "report", "--json"], timeout=3600
+            ["ozone", "admin", "container", "report", "--json"],
+            timeout=3600,
+            return_json_result=True,
         )
         assert result["total"] == 1
         assert len(result["containers"]) == 1

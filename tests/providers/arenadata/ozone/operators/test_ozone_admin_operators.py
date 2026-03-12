@@ -66,18 +66,18 @@ class TestOzoneAdminOperators:
         """Test that OzoneSetQuotaOperator sets volume quota."""
 
         mock_hook_instance = mock_admin_hook.return_value
-        mock_hook_instance.run_cli = MagicMock()
+        mock_hook_instance.set_quota = MagicMock()
 
         operator = OzoneSetQuotaOperator(task_id="set_quota_test", volume="test_vol", quota="1TB")
         operator.execute(context={})
 
         mock_admin_hook.assert_called_once()
-        mock_hook_instance.run_cli.assert_called_once()
-        quota_cmd = mock_hook_instance.run_cli.call_args.args[0]
-        assert quota_cmd[:4] == ["ozone", "sh", "volume", "setquota"]
-        assert "/test_vol" in quota_cmd
-        assert "--quota" in quota_cmd
-        assert "1TB" in quota_cmd
+        mock_hook_instance.set_quota.assert_called_once_with(
+            volume="test_vol",
+            quota="1TB",
+            bucket=None,
+            timeout=operator.timeout,
+        )
 
     def test_delete_volume_operator_validation(self):
         """Test that OzoneDeleteVolumeOperator validates force parameter."""

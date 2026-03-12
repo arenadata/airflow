@@ -27,8 +27,8 @@ from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
 # A constant for the path to the mocked run_cli method
 MOCK_CLI_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliHook.run_cli"
-MOCK_RUN_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.CliRunner.run_ozone_once"
-MOCK_RUN_RETRY_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.CliRunner.run_ozone"
+MOCK_RUN_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliRunner.run_ozone_once"
+MOCK_RUN_RETRY_PATH = "airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliRunner.run_ozone"
 
 
 @pytest.fixture
@@ -74,15 +74,15 @@ class TestOzoneFsHook:
             ozone_fs_hook.exists("ofs://path/any")
 
     @patch(MOCK_CLI_PATH)
-    def test_copy_from_local_raises_when_file_missing(
+    def test_upload_key_raises_when_file_missing(
         self, mock_run_cli: MagicMock, ozone_fs_hook: OzoneFsHook, tmp_path
     ):
-        """copy_from_local should raise AirflowException when local file does not exist."""
+        """upload_key should raise AirflowException when local file does not exist."""
 
         missing_path = tmp_path / "missing.txt"
 
         with pytest.raises(AirflowException):
-            ozone_fs_hook.copy_from_local(str(missing_path), "ofs://vol1/bucket1/file.txt")
+            ozone_fs_hook.upload_key(str(missing_path), "ofs://vol1/bucket1/file.txt")
 
         mock_run_cli.assert_not_called()
 

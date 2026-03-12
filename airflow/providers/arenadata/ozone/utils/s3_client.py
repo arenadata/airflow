@@ -28,7 +28,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from airflow.models.connection import Connection  # noqa: TCH001
-from airflow.providers.arenadata.ozone.utils.helpers import EnvSecretHelper, TypeNormalizationHelper
+from airflow.providers.arenadata.ozone.utils.helpers import SecretHelper, TypeNormalizationHelper
 from airflow.providers.arenadata.ozone.utils.security import SecretResolver
 
 
@@ -46,7 +46,7 @@ class OzoneS3Client:
     @staticmethod
     def _parse_s3_connection_config(conn: Connection, region_name: str | None = None) -> OzoneS3Client:
         """Build normalized S3 client configuration from Airflow connection and overrides."""
-        extra = EnvSecretHelper.get_connection_extra(conn)
+        extra = SecretHelper.get_connection_extra(conn)
         endpoint_url = TypeNormalizationHelper.normalize_optional_str(extra.get("endpoint_url"))
         verify = TypeNormalizationHelper.normalize_bool_or_passthrough(extra.get("verify"), default=True)
 
