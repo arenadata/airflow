@@ -74,6 +74,7 @@ class HBaseCLIHook(BaseHook):
         self.java_home: str = java_home or os.getenv("JAVA_HOME") or "/usr/lib/jvm/java-arenadata-openjdk-8"
         self.hbase_home: str = hbase_home or os.getenv("HBASE_HOME") or "/usr/lib/hbase"
         self._connection: Connection | None = None
+        self._process: subprocess.Popen | None = None
 
     def get_conn(self) -> Connection:
         """Get HBase connection."""
@@ -120,48 +121,45 @@ class HBaseCLIHook(BaseHook):
                 masked[idx] = "***KEYTAB***"
         return masked
 
-    def _execute_hbase_command(self, args: list[str]) -> str:  # pylint: disable=too-many-locals
-        """Execute HBase CLI command.
+    def _prepare_command(self, args: list[str]) -> tuple[list[str], dict[str, str]]:
+        """Prepare full command and environment for execution.
 
-        :param args: HBase command arguments as list (e.g., ["backup", "create", "full", "/backup", "-t", "table1"])
-        :return: Command output
+        :param args: HBase command arguments as list
+        :return: Tuple of (full_command, env)
         """
-        # Get connection for Kerberos settings
         conn = self.get_conn()
         extra = conn.extra_dejson if conn.extra else {}
 
-        # Build base HBase command
         hbase_cmd = self._build_hbase_command(args)
 
-        # Check if Kerberos authentication is needed
         kerberos_keytab = extra.get("kerberos_keytab")
-
-        # Run as hbase user if Kerberos is enabled (hbase user has access to WALs)
         if kerberos_keytab:
-            # Get hbase service keytab and principal from connection extra
             hbase_keytab = extra.get("hbase_service_keytab", "/etc/security/keytabs/hbase.service.keytab")
             hbase_principal: str | None = extra.get("hbase_service_principal")
-
             if not hbase_principal:
-                # Construct default principal if not provided
                 hostname = socket.getfqdn()
                 realm = extra.get("kerberos_realm", "KRB5-TEST")
                 hbase_principal = f"hbase/{hostname}@{realm}"
-
             full_command = self._build_kerberos_command(hbase_cmd, hbase_keytab, hbase_principal)
             logger.info("Running as hbase user with Kerberos: %s", hbase_principal)
         else:
             full_command = hbase_cmd
 
-        # Set environment variables
         env = os.environ.copy()
         env["JAVA_HOME"] = self.java_home
-        # Suppress SLF4J internal warnings
         env["HBASE_OPTS"] = env.get("HBASE_OPTS", "") + " -Dslf4j.internal.verbosity=warn"
 
         logger.info("Executing HBase command: %s", " ".join(self._mask_cmd(full_command)))
-        logger.info("Using JAVA_HOME: %s", self.java_home)
-        logger.info("Using HBASE_HOME: %s", self.hbase_home)
+
+        return full_command, env
+
+    def _execute_hbase_command(self, args: list[str]) -> str:
+        """Execute HBase CLI command.
+
+        :param args: HBase command arguments as list
+        :return: Command output
+        """
+        full_command, env = self._prepare_command(args)
 
         try:
             result = subprocess.run(
@@ -173,8 +171,50 @@ class HBaseCLIHook(BaseHook):
             error_msg = e.stderr.strip() or e.stdout.strip() or "Unknown error"
             logger.error("Command failed with exit code %d", e.returncode)
             logger.error("Error output: %s", error_msg)
-
             raise RuntimeError(f"HBase command failed (exit code {e.returncode}): {error_msg}") from e
+
+    def _execute_hbase_command_stream(self, args: list[str]) -> str:
+        """Execute long-running HBase CLI command with real-time log streaming.
+
+        Uses Popen for backup/restore operations that may run for hours.
+
+        :param args: HBase command arguments as list
+        :return: Command output
+        """
+        full_command, env = self._prepare_command(args)
+
+        self._process = subprocess.Popen(
+            full_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=-1,
+            universal_newlines=True,
+            env=env,
+        )
+
+        output_lines: list[str] = []
+        for line in iter(self._process.stdout.readline, ""):
+            line = line.strip()
+            if line:
+                logger.info(line)
+                output_lines.append(line)
+
+        returncode = self._process.wait()
+        self._process = None
+
+        if returncode:
+            raise RuntimeError(
+                f"HBase command failed (exit code {returncode}): {' '.join(output_lines[-5:])}"
+            )
+
+        logger.info("Command completed successfully")
+        return "\n".join(output_lines)
+
+    def on_kill(self) -> None:
+        """Kill running HBase process."""
+        if self._process and self._process.poll() is None:
+            logger.info("Killing HBase process")
+            self._process.kill()
 
 
 
@@ -226,7 +266,7 @@ class HBaseCLIHook(BaseHook):
         if workers:
             cmd += ["-w", str(workers)]
 
-        return self._execute_hbase_command(cmd)
+        return self._execute_hbase_command_stream(cmd)
 
     def create_incremental_backup(
         self,
@@ -256,7 +296,7 @@ class HBaseCLIHook(BaseHook):
         if workers:
             cmd += ["-w", str(workers)]
 
-        return self._execute_hbase_command(cmd)
+        return self._execute_hbase_command_stream(cmd)
 
     def get_backup_history(self, backup_set_name: str | None = None) -> str:
         """
@@ -304,7 +344,7 @@ class HBaseCLIHook(BaseHook):
         if overwrite:
             cmd.append("-o")
 
-        return self._execute_hbase_command(cmd)
+        return self._execute_hbase_command_stream(cmd)
 
     def execute_command(self, command: str | list[str]) -> str:
         """
