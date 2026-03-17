@@ -403,7 +403,21 @@ class OzoneFsHook(OzoneCliHook):
     def list_paths(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> list[str]:
         """List file system paths under the provided Ozone URI."""
         output = self.run_cli(self._fs_cmd("-ls", "-C", path), timeout=timeout)
-        return output.splitlines() if output else []
+        paths, skipped_lines = CliRunner.extract_meaningful_output_lines(
+            output,
+            accept_line=lambda line: (
+                URIHelper.parse_ozone_uri(line)[0] in {"ofs", "o3fs", "o3"} or line.startswith("/")
+            ),
+        )
+
+        if skipped_lines:
+            self.log.debug(
+                "Ignored %d non-path line(s) from `ozone fs -ls` output: %s",
+                len(skipped_lines),
+                skipped_lines[:3],
+            )
+
+        return paths
 
     def delete_path(
         self,

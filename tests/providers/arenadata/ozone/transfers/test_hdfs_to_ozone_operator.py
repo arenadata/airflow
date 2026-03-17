@@ -21,14 +21,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
 
 
 class TestHdfsToOzoneOperator:
     """Unit tests for HdfsToOzoneOperator."""
 
+    @patch(
+        "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which",
+        return_value="/usr/bin/hadoop",
+    )
     @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.CliRunner.run_process")
-    def test_execute(self, mock_run_with_retry: MagicMock):
+    def test_execute(self, mock_run_with_retry: MagicMock, _mock_which: MagicMock):
         """Verify that the operator calls CliRunner with DistCp command."""
 
         operator = HdfsToOzoneOperator(
@@ -50,6 +55,61 @@ class TestHdfsToOzoneOperator:
         mock_run_with_retry.assert_called_once()
         call_args = mock_run_with_retry.call_args.args[0]
         assert call_args == expected_cmd
+
+    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which", return_value=None)
+    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.CliRunner.run_process")
+    def test_execute_missing_hadoop_fails_fast(self, mock_run_process: MagicMock, _mock_which: MagicMock):
+        """Missing hadoop binary should fail before subprocess runner."""
+        operator = HdfsToOzoneOperator(
+            task_id="hdfs_to_ozone_missing_hadoop",
+            source_path="hdfs://nn:8020/user/data",
+            dest_path="ofs://om:9862/vol1/bucket1/data",
+        )
+
+        with pytest.raises(AirflowException, match="executable 'hadoop' was not found in PATH"):
+            operator.execute(context={})
+
+        mock_run_process.assert_not_called()
+
+    @patch(
+        "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which",
+        return_value="/usr/bin/hadoop",
+    )
+    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.CliRunner.run_process")
+    def test_execute_empty_source_fails_before_runner(
+        self, mock_run_process: MagicMock, _mock_which: MagicMock
+    ):
+        """Invalid source path should fail fast with a clear error."""
+        operator = HdfsToOzoneOperator(
+            task_id="hdfs_to_ozone_empty_source",
+            source_path="   ",
+            dest_path="ofs://om:9862/vol1/bucket1/data",
+        )
+
+        with pytest.raises(AirflowException, match="requires non-empty source_path"):
+            operator.execute(context={})
+
+        mock_run_process.assert_not_called()
+
+    @patch(
+        "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which",
+        return_value="/usr/bin/hadoop",
+    )
+    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.CliRunner.run_process")
+    def test_execute_empty_dest_fails_before_runner(
+        self, mock_run_process: MagicMock, _mock_which: MagicMock
+    ):
+        """Invalid destination path should fail fast with a clear error."""
+        operator = HdfsToOzoneOperator(
+            task_id="hdfs_to_ozone_empty_dest",
+            source_path="hdfs://nn:8020/user/data",
+            dest_path="",
+        )
+
+        with pytest.raises(AirflowException, match="requires non-empty dest_path"):
+            operator.execute(context={})
+
+        mock_run_process.assert_not_called()
 
     def test_init_invalid_optional_conn_type(self):
         """hdfs_conn_id should reject non-string values when provided."""

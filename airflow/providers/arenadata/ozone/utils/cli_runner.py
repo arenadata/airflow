@@ -50,11 +50,60 @@ class CliRunner:
 
     DEFAULT_PROCESS_TIMEOUT_SECONDS = DEFAULT_PROCESS_TIMEOUT_SECONDS
     DEFAULT_RETRY_WAIT = DEFAULT_RETRY_WAIT
+    NOISE_LINE_PREFIXES = (
+        "log4j:",
+        "usage:",
+        "the general command line syntax is:",
+        "generic options supported are:",
+    )
+    NOISE_LINE_CONTAINS = (
+        "please initialize the log4j system properly",
+        "see http://logging.apache.org/log4j",
+    )
 
     @staticmethod
     def pick_process_output(process_result: subprocess.CompletedProcess[str]) -> str:
         """Return output with stdout-first fallback to stderr."""
         return ((process_result.stdout or "").strip()) or ((process_result.stderr or "").strip())
+
+    @classmethod
+    def is_noise_output_line(cls, line: str) -> bool:
+        """Return True for non-data CLI noise lines."""
+        lowered = (line or "").strip().lower()
+        if not lowered:
+            return True
+        if lowered.startswith(cls.NOISE_LINE_PREFIXES):
+            return True
+        return any(fragment in lowered for fragment in cls.NOISE_LINE_CONTAINS)
+
+    @classmethod
+    def extract_meaningful_output_lines(
+        cls,
+        output: str | None,
+        *,
+        accept_line: Callable[[str], bool] | None = None,
+    ) -> tuple[list[str], list[str]]:
+        """
+        Split output into (accepted, skipped) lines after noise filtering.
+
+        If ``accept_line`` is not provided, all non-noise lines are accepted.
+        """
+        if not output:
+            return [], []
+
+        accepted: list[str] = []
+        skipped: list[str] = []
+        for raw_line in output.splitlines():
+            line = raw_line.strip()
+            if cls.is_noise_output_line(line):
+                if line:
+                    skipped.append(line)
+                continue
+            if accept_line is None or accept_line(line):
+                accepted.append(line)
+            else:
+                skipped.append(line)
+        return accepted, skipped
 
     @staticmethod
     def merge_env(env_overrides: Mapping[str, object] | None) -> dict[str, str]:

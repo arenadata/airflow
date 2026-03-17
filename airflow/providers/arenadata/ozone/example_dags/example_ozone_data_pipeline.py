@@ -24,8 +24,9 @@ This DAG demonstrates a typical ETL workflow with Ozone:
 2. Sets storage quota for the destination volume
 3. Migrates data from HDFS to Ozone using HdfsToOzoneOperator (distcp)
 
-This example shows how to integrate Ozone into existing Hadoop/HDFS workflows
-and perform large-scale data migrations efficiently.
+This example is import-safe even when the HDFS provider is not installed.
+HdfsToOzoneOperator relies on Hadoop DistCp runtime, and runtime validation
+happens only when task `migrate_legacy_data` executes.
 """
 
 from __future__ import annotations

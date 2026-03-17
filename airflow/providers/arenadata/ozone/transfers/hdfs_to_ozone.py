@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from functools import cached_property
 
 from airflow.exceptions import AirflowException
@@ -89,10 +90,43 @@ class HdfsToOzoneOperator(BaseOperator):
             self.log.debug("Could not load HDFS SSL configuration (connection may not exist): %s", str(err))
         return None
 
+    def _build_distcp_command(self) -> list[str]:
+        """Build the DistCp command for the current transfer."""
+        return [*DISTCP_BASE_COMMAND, self.source_path, self.dest_path]
+
+    def _validate_runtime_inputs(self) -> None:
+        """Validate operator inputs right before DistCp execution."""
+        if not isinstance(self.source_path, str):
+            raise AirflowException("HdfsToOzoneOperator requires source_path to be a string")
+        if not self.source_path.strip():
+            raise AirflowException("HdfsToOzoneOperator requires non-empty source_path")
+
+        if not isinstance(self.dest_path, str):
+            raise AirflowException("HdfsToOzoneOperator requires dest_path to be a string")
+        if not self.dest_path.strip():
+            raise AirflowException("HdfsToOzoneOperator requires non-empty dest_path")
+
+    def _validate_hadoop_runtime(self) -> str:
+        """Check that the Hadoop DistCp runtime binary is available."""
+        hadoop_bin = shutil.which("hadoop")
+        if not hadoop_bin:
+            raise AirflowException(
+                "HdfsToOzoneOperator is loaded, but Hadoop DistCp runtime is unavailable: "
+                "executable 'hadoop' was not found in PATH. "
+                "Install Hadoop client tools or provide 'hadoop' in PATH on the worker that runs this task"
+            )
+        return hadoop_bin
+
+    def _validate_runtime_dependencies(self) -> None:
+        """Run fail-first runtime validation for DistCp prerequisites."""
+        self._validate_runtime_inputs()
+        self._validate_hadoop_runtime()
+
     def execute(self, context):
         self.log.info("Starting DistCp migration: %s -> %s", self.source_path, self.dest_path)
 
-        cmd = [*DISTCP_BASE_COMMAND, self.source_path, self.dest_path]
+        self._validate_runtime_dependencies()
+        cmd = self._build_distcp_command()
 
         if self._hdfs_ssl_env:
             self.log.debug("Applying SSL environment variables for HDFS DistCp")
