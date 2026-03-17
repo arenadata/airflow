@@ -404,11 +404,17 @@ class PooledThrift2Strategy(HBaseStrategy):
             try:
                 with self.pool.connection() as client:
                     puts = []
+                    skipped = 0
                     for row in chunk:
                         if "row_key" in row:
                             row_key = row.get("row_key")
                             row_data = {k: v for k, v in row.items() if k != "row_key"}
                             puts.append((row_key, row_data))
+                        else:
+                            skipped += 1
+
+                    if skipped:
+                        self.log.warning("Skipped %d rows missing 'row_key' field", skipped)
 
                     if puts:
                         client.put_multiple(table_name, puts)
