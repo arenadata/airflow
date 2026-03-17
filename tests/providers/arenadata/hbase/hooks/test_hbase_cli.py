@@ -365,3 +365,10 @@ class TestHBaseCLIHook:
         tokens = shlex.split(shell_cmd)
 
         assert "/backup dir/my backup" in tokens
+
+    @pytest.mark.parametrize("command", ["", "   ", []])
+    def test_execute_command_empty_input(self, command):
+        """Test that empty or whitespace-only commands raise ValueError."""
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        with pytest.raises(ValueError, match="Сommand must not be empty"):
+            hook.execute_command(command)

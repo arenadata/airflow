@@ -365,8 +365,11 @@ class HBaseCLIHook(BaseHook):
         :return: Command output
         """
         if isinstance(command, str):
-            import shlex
             args = shlex.split(command)
         else:
             args = command
+
+        if not args:
+            raise ValueError("Сommand must not be empty")
+
         return self._execute_hbase_command(args)
