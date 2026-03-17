@@ -118,6 +118,34 @@ class HBaseThrift2Client:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
+    def _create_ssl_context(self) -> ssl_module.SSLContext | None:
+        """Create SSL context from connection config.
+
+        Returns:
+            Configured SSLContext or None if SSL is not configured.
+        """
+        if not self.config.ssl_options:
+            return None
+
+        validate = self.config.ssl_options.get("validate", True)
+        ca_certs = self.config.ssl_options.get("ca_certs")
+
+        if validate and ca_certs:
+            ctx = ssl_module.create_default_context(cafile=ca_certs)
+        elif validate:
+            ctx = ssl_module.create_default_context()
+        else:
+            ctx = ssl_module.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl_module.CERT_NONE
+
+        cert_file = self.config.ssl_options.get("cert_file")
+        key_file = self.config.ssl_options.get("key_file")
+        if cert_file:
+            ctx.load_cert_chain(certfile=cert_file, keyfile=key_file)
+
+        return ctx
+
     def _create_socket(self) -> TSocket.TSocket | TSSLSocket.TSSLSocket:
         """Create socket (SSL or regular).
 
@@ -125,22 +153,11 @@ class HBaseThrift2Client:
             Configured socket instance
         """
         if self.config.ssl_options:
-            # Map our options to TSSLSocket parameters
             ssl_params = {
                 "host": self.config.host,
                 "port": self.config.port,
+                "ssl_context": self._create_ssl_context(),
             }
-            if "ca_certs" in self.config.ssl_options:
-                ssl_params["ca_certs"] = self.config.ssl_options["ca_certs"]
-            if "cert_file" in self.config.ssl_options:
-                ssl_params["certfile"] = self.config.ssl_options["cert_file"]
-            if "key_file" in self.config.ssl_options:
-                ssl_params["keyfile"] = self.config.ssl_options["key_file"]
-            if "validate" in self.config.ssl_options:
-                ssl_params["cert_reqs"] = (
-                    ssl_module.CERT_REQUIRED if self.config.ssl_options["validate"] else ssl_module.CERT_NONE
-                )
-
             sock = TSSLSocket.TSSLSocket(**ssl_params)
         else:
             sock = TSocket.TSocket(self.config.host, self.config.port)
@@ -332,15 +349,7 @@ class HBaseThrift2Client:
                     scheme = "https" if self.config.ssl_options else "http"
                     uri = f"{scheme}://{self.config.host}:{self.config.port}"
 
-                    # Create SSL context if needed
-                    ssl_context = None
-                    if self.config.ssl_options and "ca_certs" in self.config.ssl_options:
-                        ssl_context = ssl_module.create_default_context(cafile=self.config.ssl_options["ca_certs"])
-                        if "validate" in self.config.ssl_options and not self.config.ssl_options["validate"]:
-                            ssl_context.check_hostname = False
-                            ssl_context.verify_mode = ssl_module.CERT_NONE
-
-                    http_client = THttpClient.THttpClient(uri, ssl_context=ssl_context)
+                    http_client = THttpClient.THttpClient(uri, ssl_context=self._create_ssl_context())
                     http_client.setTimeout(self.config.timeout)
 
                     self._transport = http_client
