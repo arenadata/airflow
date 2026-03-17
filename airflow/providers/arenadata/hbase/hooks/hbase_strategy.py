@@ -418,8 +418,7 @@ class PooledThrift2Strategy(HBaseStrategy):
                 self.log.error(f"Chunk processing failed: {e}")
                 raise
 
-        chunk_size = max(1, len(rows) // max_workers) if max_workers > 1 else batch_size
-        chunks = self._create_chunks(rows, chunk_size)
+        chunks = self._create_chunks(rows, batch_size)
 
         self.log.info(
             f"Processing {len(rows)} rows in {len(chunks)} chunks "
@@ -470,8 +469,7 @@ class PooledThrift2Strategy(HBaseStrategy):
                 self.log.error(f"Chunk deletion failed: {e}")
                 raise
 
-        chunk_size = max(1, len(row_keys) // max_workers) if max_workers > 1 else batch_size
-        chunks = self._create_chunks(row_keys, chunk_size)
+        chunks = self._create_chunks(row_keys, batch_size)
 
         self.log.info(
             f"Deleting {len(row_keys)} rows in {len(chunks)} chunks "
