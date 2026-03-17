@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import socket
 import subprocess
 from typing import TYPE_CHECKING
@@ -103,8 +104,13 @@ class HBaseCLIHook(BaseHook):
         """
         kinit_cmd = ["sudo", "-u", "hbase", "kinit", "-kt", keytab, principal]
         sudo_hbase_cmd = ["sudo", "-u", "hbase", *hbase_cmd]
-        # Use shell to chain commands with &&
-        return ["sh", "-c", " ".join(kinit_cmd) + " && " + " ".join(sudo_hbase_cmd)]
+        # Use shlex to chain commands with &&; shlex.quote preserves args with spaces/metacharacters
+        shell_str = (
+            " ".join(shlex.quote(arg) for arg in kinit_cmd)
+            + " && "
+            + " ".join(shlex.quote(arg) for arg in sudo_hbase_cmd)
+        )
+        return ["sh", "-c", shell_str]
 
     def _mask_cmd(self, cmd: list[str]) -> list[str]:
         """Mask sensitive parameters in command for logging.
