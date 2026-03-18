@@ -24,7 +24,6 @@ import os
 from typing import Any
 
 from airflow.hooks.base import BaseHook
-from airflow.providers.openlineage.sqlparser import DatabaseInfo
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
 from airflow.providers.arenadata.hbase.hooks.hbase_strategy import (
     HBaseStrategy,
@@ -246,6 +245,8 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
     def get_openlineage_database_info(self, connection):
         """Return HBase specific information for OpenLineage."""
         try:
+            from airflow.providers.openlineage.sqlparser import DatabaseInfo
+
             return DatabaseInfo(
                 scheme="hbase",
                 authority=f"{connection.host}:{connection.port or 9090}",
