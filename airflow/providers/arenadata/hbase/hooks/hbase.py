@@ -279,8 +279,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
         """Close HBase connection."""
         if self._strategy:
             if isinstance(self._strategy, PooledThrift2Strategy):
-                # Close all connections in pool
                 self._strategy.pool.close_all()
             elif hasattr(self._strategy, "client") and self._strategy.client:
-                # Close single client connection
                 self._strategy.client.close()
+            self._strategy = None
