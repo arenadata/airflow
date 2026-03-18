@@ -381,13 +381,15 @@ class HBaseCreateBackupOperator(BaseOperator):  # pylint: disable=too-few-public
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
-        if not isinstance(self.backup_type, BackupType):
+        try:
+            backup_type = BackupType(self.backup_type)
+        except ValueError:
             raise ValueError("backup_type must be 'full' or 'incremental'")
 
         if not self.backup_set_name and not self.tables:
             raise ValueError("Either backup_set_name or tables must be specified")
 
-        if self.backup_type == BackupType.FULL:
+        if backup_type == BackupType.FULL:
             output = hook.create_full_backup(
                 backup_root=self.backup_path,
                 backup_set_name=self.backup_set_name,
