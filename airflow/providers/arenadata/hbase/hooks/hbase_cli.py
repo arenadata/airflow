@@ -304,16 +304,23 @@ class HBaseCLIHook(BaseHook):
 
         return self._execute_hbase_command_stream(cmd)
 
-    def get_backup_history(self, backup_set_name: str | None = None) -> str:
+    def get_backup_history(
+        self,
+        backup_set_name: str | None = None,
+        backup_path: str | None = None,
+    ) -> str:
         """
         Get backup history.
 
         :param backup_set_name: Name of backup set (optional).
+        :param backup_path: HDFS backup root path to filter history (optional).
         :return: Backup history.
         """
         cmd = ["backup", "history"]
         if backup_set_name:
             cmd += ["-s", backup_set_name]
+        if backup_path:
+            cmd += ["-p", backup_path]
         return self._execute_hbase_command(cmd)
 
     def describe_backup(self, backup_id: str) -> str:

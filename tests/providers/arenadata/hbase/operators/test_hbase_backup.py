@@ -235,10 +235,9 @@ class TestHBaseBackupHistoryOperator:
 
         result = operator.execute()
 
-        # Operator calls get_backup_history twice: once with filter, once without
-        assert mock_hook.get_backup_history.call_count == 2
-        mock_hook.get_backup_history.assert_any_call(backup_set_name="test_set")
-        mock_hook.get_backup_history.assert_any_call()
+        mock_hook.get_backup_history.assert_called_once_with(
+            backup_set_name="test_set", backup_path=None
+        )
         assert result == "backup_123 COMPLETE"
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
@@ -255,7 +254,9 @@ class TestHBaseBackupHistoryOperator:
 
         result = operator.execute()
 
-        mock_hook.get_backup_history.assert_called_once_with(backup_set_name=None)
+        mock_hook.get_backup_history.assert_called_once_with(
+            backup_set_name=None, backup_path="/tmp/backup"
+        )
         assert result == "backup_456 COMPLETE"
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
@@ -271,5 +272,7 @@ class TestHBaseBackupHistoryOperator:
 
         result = operator.execute()
 
-        mock_hook.get_backup_history.assert_called_once_with(backup_set_name=None)
+        mock_hook.get_backup_history.assert_called_once_with(
+            backup_set_name=None, backup_path=None
+        )
         assert result == "All backups"

@@ -485,18 +485,14 @@ class HBaseBackupHistoryOperator(BaseOperator):  # pylint: disable=too-few-publi
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
-        history = hook.get_backup_history(backup_set_name=self.backup_set_name)
+        history = hook.get_backup_history(
+            backup_set_name=self.backup_set_name,
+            backup_path=self.backup_path,
+        )
         self.log.info(
-            "Backup history (with filter -s %s):\n%s",
+            "Backup history (set=%s, path=%s):\n%s",
             self.backup_set_name or "(none)",
+            self.backup_path or "(none)",
             history if history else "(empty)",
         )
-
-        # Also get full history without filter for debugging
-        if self.backup_set_name:
-            full_history = hook.get_backup_history()
-            self.log.info(
-                "Full backup history (without filter):\n%s", full_history if full_history else "(empty)"
-            )
-
         return history

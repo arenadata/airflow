@@ -169,6 +169,36 @@ class TestHBaseCLIHook:
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_get_backup_history_with_path(self, mock_run, mock_get_conn):
+        """Test get backup history with backup path."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.return_value = MagicMock(returncode=0, stdout="backup_1234567890")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        result = hook.get_backup_history(backup_path="/tmp/backup")
+
+        assert "backup_1234567890" in result
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert call_args[-4:] == ["backup", "history", "-p", "/tmp/backup"]
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_get_backup_history_with_set_and_path(self, mock_run, mock_get_conn):
+        """Test get backup history with both backup set and path."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.return_value = MagicMock(returncode=0, stdout="backup_1234567890")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        result = hook.get_backup_history(backup_set_name="test_set", backup_path="/tmp/backup")
+
+        assert "backup_1234567890" in result
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert call_args[-6:] == ["backup", "history", "-s", "test_set", "-p", "/tmp/backup"]
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
     def test_describe_backup(self, mock_run, mock_get_conn):
         """Test describe backup."""
         mock_get_conn.return_value = MagicMock(extra_dejson={})
