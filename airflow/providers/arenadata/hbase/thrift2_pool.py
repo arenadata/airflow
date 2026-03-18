@@ -101,7 +101,7 @@ class Thrift2ConnectionPool:
         try:
             self.close_all()
         except Exception:  # pylint: disable=broad-exception-caught
-            pass
+            logger.debug("Failed to close connections during pool cleanup", exc_info=True)
 
     def _create_connection(self) -> HBaseThrift2Client:
         """Create new Thrift2 client connection."""
