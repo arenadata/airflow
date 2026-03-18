@@ -214,9 +214,6 @@ class Thrift2Strategy(HBaseStrategy):
                 "Thrift2 doesn't support parallel processing (no connection pool). Ignoring max_workers."
             )
 
-        # Debug: check row format
-        if rows:
-            self.log.info(f"First row type: {type(rows[0])}, content: {rows[0]}")
 
         def process_chunk(chunk):
             """Process chunk using batch API."""
@@ -246,11 +243,8 @@ class Thrift2Strategy(HBaseStrategy):
                     else:
                         self.log.warning(f"Unknown row format: {type(row)}, {row}")
 
-                self.log.info(f"Prepared {len(puts)} puts for batch insert")
                 if puts:
-                    self.log.info(f"Sample put: {puts[0] if puts else 'none'}")
                     self.client.put_multiple(table_name, puts)
-                    self.log.info(f"Successfully inserted {len(puts)} rows")
                 else:
                     self.log.warning("No puts prepared - check row format")
 
