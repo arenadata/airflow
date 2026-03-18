@@ -31,6 +31,9 @@ from airflow.providers.arenadata.hbase.thrift2_pool import Thrift2ConnectionPool
 # Delay between batch operations to avoid overwhelming HBase
 BATCH_DELAY = float(os.getenv("HBASE_BATCH_DELAY", "0.1"))
 
+# Maximum chunk payload size in bytes (default 64 MB)
+MAX_CHUNK_BYTES = int(os.getenv("HBASE_MAX_CHUNK_BYTES", str(64 * 1024 * 1024)))
+
 
 class HBaseStrategy(ABC):
     """Abstract base class for HBase connection strategies."""
@@ -217,8 +220,15 @@ class Thrift2Strategy(HBaseStrategy):
 
         def process_chunk(chunk):
             """Process chunk using batch API."""
-            chunk_size = sum(len(str(row)) for row in chunk)
-            self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_size} bytes")
+            chunk_bytes = sum(len(str(row)) for row in chunk)
+            if chunk_bytes > MAX_CHUNK_BYTES:
+                self.log.warning(
+                    "Chunk payload ~%d bytes exceeds limit %d bytes. "
+                    "Consider reducing batch_size.",
+                    chunk_bytes,
+                    MAX_CHUNK_BYTES,
+                )
+            self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_bytes} bytes")
 
             try:
                 puts = []
@@ -398,8 +408,15 @@ class PooledThrift2Strategy(HBaseStrategy):
 
         def process_chunk(chunk):
             """Process chunk using pooled connection."""
-            chunk_size = sum(len(str(row)) for row in chunk)
-            self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_size} bytes")
+            chunk_bytes = sum(len(str(row)) for row in chunk)
+            if chunk_bytes > MAX_CHUNK_BYTES:
+                self.log.warning(
+                    "Chunk payload ~%d bytes exceeds limit %d bytes. "
+                    "Consider reducing batch_size.",
+                    chunk_bytes,
+                    MAX_CHUNK_BYTES,
+                )
+            self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_bytes} bytes")
 
             try:
                 with self.pool.connection() as client:
