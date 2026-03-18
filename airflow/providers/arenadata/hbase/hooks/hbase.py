@@ -112,6 +112,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
                     kerberos_keytab=kerberos_keytab,
                     namespace=namespace,
                     use_http=use_http,
+                    borrow_timeout=float(pool_config.get("timeout", 30)),
                     **retry_config,
                 )
                 # pylint: enable=duplicate-code

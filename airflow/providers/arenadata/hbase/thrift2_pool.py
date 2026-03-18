@@ -55,6 +55,7 @@ class Thrift2ConnectionPool:
         retry_delay: float = 1.0,
         retry_backoff_factor: float = 2.0,
         use_http: bool = False,
+        borrow_timeout: float | None = None,
     ):
         """Initialize connection pool.
 
@@ -76,6 +77,7 @@ class Thrift2ConnectionPool:
             hbase.regionserver.thrift.http=true)
         """
         self.size = size
+        self.borrow_timeout = borrow_timeout if borrow_timeout is not None else POOL_CONNECTION_TIMEOUT
         self.config = create_connection_config(
             host=host,
             port=port,
@@ -134,17 +136,20 @@ class Thrift2ConnectionPool:
             return False
 
     @contextmanager
-    def connection(self, timeout: float = POOL_CONNECTION_TIMEOUT):
+    def connection(self, timeout: float | None = None):
         """Get connection from pool.
 
         Args:
             timeout: Timeout in seconds to wait for available connection from pool.
+                Defaults to the borrow_timeout configured on the pool.
                 Warning: If pool is exhausted and timeout is too low, requests may fail.
                 Consider increasing timeout or pool size for high-load scenarios.
 
         Yields:
             HBaseThrift2Client instance
         """
+        if timeout is None:
+            timeout = self.borrow_timeout
         client = None
 
         try:
@@ -227,6 +232,7 @@ def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-p
     retry_delay: float = 1.0,
     retry_backoff_factor: float = 2.0,
     use_http: bool = False,
+    borrow_timeout: float | None = None,
 ) -> Thrift2ConnectionPool:
     """Get existing Thrift2 pool or create new one.
 
@@ -268,6 +274,7 @@ def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-p
                 retry_delay=retry_delay,
                 retry_backoff_factor=retry_backoff_factor,
                 use_http=use_http,
+                borrow_timeout=borrow_timeout,
             )
         return _thrift2_pools[conn_id]
 

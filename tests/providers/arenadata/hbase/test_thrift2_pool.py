@@ -120,3 +120,28 @@ class TestThrift2ConnectionPool:
                 retry_backoff_factor=3.0,
                 use_http=False
             )
+
+    @patch("airflow.providers.arenadata.hbase.thrift2_pool.HBaseThrift2Client")
+    def test_borrow_timeout_from_config(self, mock_client_class):
+        """Test that borrow_timeout is stored and used as default in connection()."""
+        pool = Thrift2ConnectionPool(
+            size=1,
+            host="localhost",
+            port=9090,
+            borrow_timeout=15.0,
+        )
+
+        assert pool.borrow_timeout == 15.0
+
+    @patch("airflow.providers.arenadata.hbase.thrift2_pool.HBaseThrift2Client")
+    def test_borrow_timeout_defaults_to_global(self, mock_client_class):
+        """Test that borrow_timeout falls back to POOL_CONNECTION_TIMEOUT when not set."""
+        from airflow.providers.arenadata.hbase.thrift2_pool import POOL_CONNECTION_TIMEOUT
+
+        pool = Thrift2ConnectionPool(
+            size=1,
+            host="localhost",
+            port=9090,
+        )
+
+        assert pool.borrow_timeout == POOL_CONNECTION_TIMEOUT
