@@ -178,6 +178,8 @@ class HBaseCLIHook(BaseHook):
             logger.error("Command failed with exit code %d", e.returncode)
             logger.error("Error output: %s", error_msg)
             raise RuntimeError(f"HBase command failed (exit code {e.returncode}): {error_msg}") from e
+        except OSError as e:
+            raise RuntimeError(f"Failed to execute HBase command: {e}") from e
 
     def _execute_hbase_command_stream(self, args: list[str]) -> str:
         """Execute long-running HBase CLI command with real-time log streaming.
@@ -189,14 +191,17 @@ class HBaseCLIHook(BaseHook):
         """
         full_command, env = self._prepare_command(args)
 
-        self._process = subprocess.Popen(
-            full_command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            bufsize=-1,
-            universal_newlines=True,
-            env=env,
-        )
+        try:
+            self._process = subprocess.Popen(
+                full_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=-1,
+                universal_newlines=True,
+                env=env,
+            )
+        except OSError as e:
+            raise RuntimeError(f"Failed to execute HBase command: {e}") from e
 
         output_lines: list[str] = []
         for line in iter(self._process.stdout.readline, ""):
