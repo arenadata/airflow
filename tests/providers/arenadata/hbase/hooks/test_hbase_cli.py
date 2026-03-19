@@ -19,6 +19,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+import shlex
 
 from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 
@@ -58,48 +59,57 @@ class TestHBaseCLIHook:
         assert call_args[-3:] == ["backup", "set", "list"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
-    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
-    def test_create_full_backup_with_set(self, mock_run, mock_get_conn):
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.Popen")
+    def test_create_full_backup_with_set(self, mock_popen, mock_get_conn):
         """Test create full backup with backup set."""
         mock_get_conn.return_value = MagicMock(extra_dejson={})
-        mock_run.return_value = MagicMock(returncode=0, stdout="backup_1234567890")
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["backup_1234567890\n", ""]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
 
         hook = HBaseCLIHook(hbase_conn_id="hbase_default")
         result = hook.create_full_backup("/backup", backup_set_name="test_set")
 
         assert "backup_1234567890" in result
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args[0][0]
+        mock_popen.assert_called_once()
+        call_args = mock_popen.call_args[0][0]
         assert call_args[-6:] == ["backup", "create", "full", "/backup", "-s", "test_set"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
-    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
-    def test_create_full_backup_with_tables(self, mock_run, mock_get_conn):
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.Popen")
+    def test_create_full_backup_with_tables(self, mock_popen, mock_get_conn):
         """Test create full backup with tables."""
         mock_get_conn.return_value = MagicMock(extra_dejson={})
-        mock_run.return_value = MagicMock(returncode=0, stdout="backup_1234567890")
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["backup_1234567890\n", ""]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
 
         hook = HBaseCLIHook(hbase_conn_id="hbase_default")
         result = hook.create_full_backup("/backup", tables=["table1", "table2"])
 
         assert "backup_1234567890" in result
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args[0][0]
+        mock_popen.assert_called_once()
+        call_args = mock_popen.call_args[0][0]
         assert call_args[-6:] == ["backup", "create", "full", "/backup", "-t", "table1,table2"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
-    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
-    def test_create_full_backup_with_workers(self, mock_run, mock_get_conn):
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.Popen")
+    def test_create_full_backup_with_workers(self, mock_popen, mock_get_conn):
         """Test create full backup with workers."""
         mock_get_conn.return_value = MagicMock(extra_dejson={})
-        mock_run.return_value = MagicMock(returncode=0, stdout="backup_1234567890")
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["backup_1234567890\n", ""]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
 
         hook = HBaseCLIHook(hbase_conn_id="hbase_default")
         result = hook.create_full_backup("/backup", tables=["table1"], workers=4)
 
         assert "backup_1234567890" in result
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args[0][0]
+        mock_popen.assert_called_once()
+        call_args = mock_popen.call_args[0][0]
         assert call_args[-8:] == ["backup", "create", "full", "/backup", "-t", "table1", "-w", "4"]
 
     def test_create_full_backup_no_tables_or_set(self):
@@ -110,18 +120,21 @@ class TestHBaseCLIHook:
             hook.create_full_backup("/backup")
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
-    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
-    def test_create_incremental_backup(self, mock_run, mock_get_conn):
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.Popen")
+    def test_create_incremental_backup(self, mock_popen, mock_get_conn):
         """Test create incremental backup."""
         mock_get_conn.return_value = MagicMock(extra_dejson={})
-        mock_run.return_value = MagicMock(returncode=0, stdout="backup_1234567891")
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["backup_1234567891\n", ""]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
 
         hook = HBaseCLIHook(hbase_conn_id="hbase_default")
         result = hook.create_incremental_backup("/backup", backup_set_name="test_set")
 
         assert "backup_1234567891" in result
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args[0][0]
+        mock_popen.assert_called_once()
+        call_args = mock_popen.call_args[0][0]
         assert call_args[-6:] == ["backup", "create", "incremental", "/backup", "-s", "test_set"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
@@ -156,6 +169,36 @@ class TestHBaseCLIHook:
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_get_backup_history_with_path(self, mock_run, mock_get_conn):
+        """Test get backup history with backup path."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.return_value = MagicMock(returncode=0, stdout="backup_1234567890")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        result = hook.get_backup_history(backup_path="/tmp/backup")
+
+        assert "backup_1234567890" in result
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert call_args[-4:] == ["backup", "history", "-p", "/tmp/backup"]
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_get_backup_history_with_set_and_path(self, mock_run, mock_get_conn):
+        """Test get backup history with both backup set and path."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.return_value = MagicMock(returncode=0, stdout="backup_1234567890")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        result = hook.get_backup_history(backup_set_name="test_set", backup_path="/tmp/backup")
+
+        assert "backup_1234567890" in result
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert call_args[-6:] == ["backup", "history", "-s", "test_set", "-p", "/tmp/backup"]
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
     def test_describe_backup(self, mock_run, mock_get_conn):
         """Test describe backup."""
         mock_get_conn.return_value = MagicMock(extra_dejson={})
@@ -170,48 +213,57 @@ class TestHBaseCLIHook:
         assert call_args[-3:] == ["backup", "describe", "backup_1234567890"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
-    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
-    def test_restore_backup(self, mock_run, mock_get_conn):
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.Popen")
+    def test_restore_backup(self, mock_popen, mock_get_conn):
         """Test restore backup."""
         mock_get_conn.return_value = MagicMock(extra_dejson={})
-        mock_run.return_value = MagicMock(returncode=0, stdout="Restore completed successfully")
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["Restore completed successfully\n", ""]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
 
         hook = HBaseCLIHook(hbase_conn_id="hbase_default")
         result = hook.restore_backup("/backup", "backup_1234567890")
 
         assert "successfully" in result
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args[0][0]
+        mock_popen.assert_called_once()
+        call_args = mock_popen.call_args[0][0]
         assert call_args[-3:] == ["restore", "/backup", "backup_1234567890"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
-    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
-    def test_restore_backup_with_tables(self, mock_run, mock_get_conn):
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.Popen")
+    def test_restore_backup_with_tables(self, mock_popen, mock_get_conn):
         """Test restore backup with specific tables."""
         mock_get_conn.return_value = MagicMock(extra_dejson={})
-        mock_run.return_value = MagicMock(returncode=0, stdout="Restore completed successfully")
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["Restore completed successfully\n", ""]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
 
         hook = HBaseCLIHook(hbase_conn_id="hbase_default")
         result = hook.restore_backup("/backup", "backup_1234567890", tables=["table1"])
 
         assert "successfully" in result
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args[0][0]
+        mock_popen.assert_called_once()
+        call_args = mock_popen.call_args[0][0]
         assert call_args[-5:] == ["restore", "/backup", "backup_1234567890", "-t", "table1"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
-    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
-    def test_restore_backup_with_overwrite(self, mock_run, mock_get_conn):
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.Popen")
+    def test_restore_backup_with_overwrite(self, mock_popen, mock_get_conn):
         """Test restore backup with overwrite."""
         mock_get_conn.return_value = MagicMock(extra_dejson={})
-        mock_run.return_value = MagicMock(returncode=0, stdout="Restore completed successfully")
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["Restore completed successfully\n", ""]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
 
         hook = HBaseCLIHook(hbase_conn_id="hbase_default")
         result = hook.restore_backup("/backup", "backup_1234567890", overwrite=True)
 
         assert "successfully" in result
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args[0][0]
+        mock_popen.assert_called_once()
+        call_args = mock_popen.call_args[0][0]
         assert call_args[-4:] == ["restore", "/backup", "backup_1234567890", "-o"]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -267,3 +319,86 @@ class TestHBaseCLIHook:
         # Check that the command starts with the custom hbase path and ends with version
         assert call_args[0].endswith("/custom/hbase")
         assert call_args[-1] == "version"
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_execute_command_shlex_quoted_args(self, mock_run, mock_get_conn):
+        """Test that shlex correctly parses quoted arguments with spaces."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.return_value = MagicMock(returncode=0, stdout="OK")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        hook.execute_command('backup create full "/backup dir/my backup" -t table1')
+
+        call_args = mock_run.call_args[0][0]
+        assert call_args[-6:] == [
+            "backup", "create", "full", "/backup dir/my backup", "-t", "table1"
+        ]
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_execute_command_list_input(self, mock_run, mock_get_conn):
+        """Test that list input is passed directly without shlex parsing."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.return_value = MagicMock(returncode=0, stdout="OK")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        hook.execute_command(["backup", "set", "list"])
+
+        call_args = mock_run.call_args[0][0]
+        assert call_args[-3:] == ["backup", "set", "list"]
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.socket.getfqdn", return_value="worker1.example.com")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_execute_command_kerberos(self, mock_run, mock_get_conn, mock_fqdn):
+        """Test that Kerberos mode wraps command with kinit and sudo."""
+        mock_get_conn.return_value = MagicMock(
+            extra='{"kerberos_keytab": "/etc/keytabs/airflow.keytab", "kerberos_realm": "EXAMPLE.COM"}',
+            extra_dejson={
+                "kerberos_keytab": "/etc/keytabs/airflow.keytab",
+                "kerberos_realm": "EXAMPLE.COM",
+            },
+        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="OK")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        hook.execute_command("backup set list")
+
+        call_args = mock_run.call_args[0][0]
+        assert call_args[:2] == ["sh", "-c"]
+        shell_cmd = call_args[2]
+        assert "sudo -u hbase kinit -kt" in shell_cmd
+        assert "hbase/worker1.example.com@EXAMPLE.COM" in shell_cmd
+        assert "&& sudo -u hbase" in shell_cmd
+        assert "backup set list" in shell_cmd
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.socket.getfqdn", return_value="worker1.example.com")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_execute_command_kerberos_with_spaces_in_args(self, mock_run, mock_get_conn, mock_fqdn):
+        """Test that Kerberos mode preserves arguments containing spaces."""
+        mock_get_conn.return_value = MagicMock(
+            extra='{"kerberos_keytab": "/etc/keytabs/airflow.keytab", "kerberos_realm": "EXAMPLE.COM"}',
+            extra_dejson={
+                "kerberos_keytab": "/etc/keytabs/airflow.keytab",
+                "kerberos_realm": "EXAMPLE.COM",
+            },
+        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="OK")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        hook.execute_command(["backup", "create", "full", "/backup dir/my backup", "-t", "table1"])
+
+        call_args = mock_run.call_args[0][0]
+        shell_cmd = call_args[2]
+        tokens = shlex.split(shell_cmd)
+
+        assert "/backup dir/my backup" in tokens
+
+    @pytest.mark.parametrize("command", ["", "   ", []])
+    def test_execute_command_empty_input(self, command):
+        """Test that empty or whitespace-only commands raise ValueError."""
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        with pytest.raises(ValueError, match="Сommand must not be empty"):
+            hook.execute_command(command)

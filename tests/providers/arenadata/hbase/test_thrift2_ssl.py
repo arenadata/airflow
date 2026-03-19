@@ -33,36 +33,28 @@ class TestThrift2SSL:
         mock_socket = MagicMock()
         mock_ssl_socket.return_value = mock_socket
         mock_socket.setTimeout = MagicMock()
-        
+
         mock_transport_instance = MagicMock()
         mock_transport.return_value = mock_transport_instance
-        
+
         ssl_options = {
             "ca_certs": "/path/to/ca.crt",
             "cert_file": "/path/to/client.crt",
             "key_file": "/path/to/client.key",
-            "validate": True
+            "validate": True,
         }
-        
-        client = HBaseThrift2Client(
-            host="localhost",
-            port=9090,
-            ssl_options=ssl_options
-        )
-        client.open()
-        
-        # Verify TSSLSocket was created with correct parameters (mapped to TSSLSocket names)
-        import ssl as ssl_module
+
+        mock_ssl_ctx = MagicMock()
+
+        client = HBaseThrift2Client(host="localhost", port=9090, ssl_options=ssl_options)
+        with patch.object(client, "_create_ssl_context", return_value=mock_ssl_ctx):
+            client.open()
+
         mock_ssl_socket.assert_called_once_with(
             host="localhost",
             port=9090,
-            ca_certs="/path/to/ca.crt",
-            certfile="/path/to/client.crt",
-            keyfile="/path/to/client.key",
-            cert_reqs=ssl_module.CERT_REQUIRED
+            ssl_context=mock_ssl_ctx,
         )
-        
-        # Verify transport was opened
         mock_transport_instance.open.assert_called_once()
 
     @patch("airflow.providers.arenadata.hbase.client.thrift2_client.TSocket.TSocket")
@@ -104,24 +96,19 @@ class TestThrift2SSL:
         mock_socket = MagicMock()
         mock_ssl_socket.return_value = mock_socket
         mock_socket.setTimeout = MagicMock()
-        
+
         mock_transport_instance = MagicMock()
         mock_transport.return_value = mock_transport_instance
-        
-        ssl_options = {
-            "ca_certs": "/path/to/ca.crt"
-        }
-        
-        client = HBaseThrift2Client(
-            host="localhost",
-            port=9090,
-            ssl_options=ssl_options
-        )
-        client.open()
-        
-        # Verify TSSLSocket was created with ca_certs only
+
+        ssl_options = {"ca_certs": "/path/to/ca.crt"}
+        mock_ssl_ctx = MagicMock()
+
+        client = HBaseThrift2Client(host="localhost", port=9090, ssl_options=ssl_options)
+        with patch.object(client, "_create_ssl_context", return_value=mock_ssl_ctx):
+            client.open()
+
         mock_ssl_socket.assert_called_once_with(
             host="localhost",
             port=9090,
-            ca_certs="/path/to/ca.crt"
+            ssl_context=mock_ssl_ctx,
         )

@@ -24,7 +24,6 @@ import os
 from typing import Any
 
 from airflow.hooks.base import BaseHook
-from airflow.providers.openlineage.sqlparser import DatabaseInfo
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
 from airflow.providers.arenadata.hbase.hooks.hbase_strategy import (
     HBaseStrategy,
@@ -112,6 +111,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
                     kerberos_keytab=kerberos_keytab,
                     namespace=namespace,
                     use_http=use_http,
+                    borrow_timeout=float(pool_config.get("timeout", 30)),
                     **retry_config,
                 )
                 # pylint: enable=duplicate-code
@@ -245,6 +245,8 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
     def get_openlineage_database_info(self, connection):
         """Return HBase specific information for OpenLineage."""
         try:
+            from airflow.providers.openlineage.sqlparser import DatabaseInfo
+
             return DatabaseInfo(
                 scheme="hbase",
                 authority=f"{connection.host}:{connection.port or 9090}",
@@ -278,8 +280,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
         """Close HBase connection."""
         if self._strategy:
             if isinstance(self._strategy, PooledThrift2Strategy):
-                # Close all connections in pool
                 self._strategy.pool.close_all()
             elif hasattr(self._strategy, "client") and self._strategy.client:
-                # Close single client connection
                 self._strategy.client.close()
+            self._strategy = None

@@ -31,6 +31,9 @@ from airflow.providers.arenadata.hbase.thrift2_pool import Thrift2ConnectionPool
 # Delay between batch operations to avoid overwhelming HBase
 BATCH_DELAY = float(os.getenv("HBASE_BATCH_DELAY", "0.1"))
 
+# Maximum chunk payload size in bytes (default 64 MB)
+MAX_CHUNK_BYTES = int(os.getenv("HBASE_MAX_CHUNK_BYTES", str(64 * 1024 * 1024)))
+
 
 class HBaseStrategy(ABC):
     """Abstract base class for HBase connection strategies."""
@@ -211,14 +214,18 @@ class Thrift2Strategy(HBaseStrategy):
                 "Thrift2 doesn't support parallel processing (no connection pool). Ignoring max_workers."
             )
 
-        # Debug: check row format
-        if rows:
-            self.log.info(f"First row type: {type(rows[0])}, content: {rows[0]}")
 
         def process_chunk(chunk):
             """Process chunk using batch API."""
-            chunk_size = sum(len(str(row)) for row in chunk)
-            self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_size} bytes")
+            chunk_bytes = sum(len(str(row)) for row in chunk)
+            if chunk_bytes > MAX_CHUNK_BYTES:
+                self.log.warning(
+                    "Chunk payload ~%d bytes exceeds limit %d bytes. "
+                    "Consider reducing batch_size.",
+                    chunk_bytes,
+                    MAX_CHUNK_BYTES,
+                )
+            self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_bytes} bytes")
 
             try:
                 puts = []
@@ -236,11 +243,8 @@ class Thrift2Strategy(HBaseStrategy):
                     else:
                         self.log.warning(f"Unknown row format: {type(row)}, {row}")
 
-                self.log.info(f"Prepared {len(puts)} puts for batch insert")
                 if puts:
-                    self.log.info(f"Sample put: {puts[0] if puts else 'none'}")
                     self.client.put_multiple(table_name, puts)
-                    self.log.info(f"Successfully inserted {len(puts)} rows")
                 else:
                     self.log.warning("No puts prepared - check row format")
 
@@ -398,17 +402,30 @@ class PooledThrift2Strategy(HBaseStrategy):
 
         def process_chunk(chunk):
             """Process chunk using pooled connection."""
-            chunk_size = sum(len(str(row)) for row in chunk)
-            self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_size} bytes")
+            chunk_bytes = sum(len(str(row)) for row in chunk)
+            if chunk_bytes > MAX_CHUNK_BYTES:
+                self.log.warning(
+                    "Chunk payload ~%d bytes exceeds limit %d bytes. "
+                    "Consider reducing batch_size.",
+                    chunk_bytes,
+                    MAX_CHUNK_BYTES,
+                )
+            self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_bytes} bytes")
 
             try:
                 with self.pool.connection() as client:
                     puts = []
+                    skipped = 0
                     for row in chunk:
                         if "row_key" in row:
                             row_key = row.get("row_key")
                             row_data = {k: v for k, v in row.items() if k != "row_key"}
                             puts.append((row_key, row_data))
+                        else:
+                            skipped += 1
+
+                    if skipped:
+                        self.log.warning("Skipped %d rows missing 'row_key' field", skipped)
 
                     if puts:
                         client.put_multiple(table_name, puts)
@@ -418,8 +435,7 @@ class PooledThrift2Strategy(HBaseStrategy):
                 self.log.error(f"Chunk processing failed: {e}")
                 raise
 
-        chunk_size = max(1, len(rows) // max_workers) if max_workers > 1 else batch_size
-        chunks = self._create_chunks(rows, chunk_size)
+        chunks = self._create_chunks(rows, batch_size)
 
         self.log.info(
             f"Processing {len(rows)} rows in {len(chunks)} chunks "
@@ -470,8 +486,7 @@ class PooledThrift2Strategy(HBaseStrategy):
                 self.log.error(f"Chunk deletion failed: {e}")
                 raise
 
-        chunk_size = max(1, len(row_keys) // max_workers) if max_workers > 1 else batch_size
-        chunks = self._create_chunks(row_keys, chunk_size)
+        chunks = self._create_chunks(row_keys, batch_size)
 
         self.log.info(
             f"Deleting {len(row_keys)} rows in {len(chunks)} chunks "

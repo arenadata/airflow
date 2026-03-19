@@ -137,6 +137,44 @@ class TestHBaseCreateBackupOperator:
         )
         assert result == "Incremental backup created"
 
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_create_full_backup_with_string_type(self, mock_hook_class):
+        """Test creating full backup with string backup_type (e.g. from dag_run.conf)."""
+        mock_hook = MagicMock()
+        mock_hook_class.return_value = mock_hook
+        mock_hook.create_full_backup.return_value = "Backup created: backup_789"
+
+        operator = HBaseCreateBackupOperator(
+            task_id="test_task",
+            backup_type="full",
+            backup_path="/tmp/backup",
+            backup_set_name="test_set",
+        )
+
+        result = operator.execute()
+
+        mock_hook.create_full_backup.assert_called_once()
+        assert result == "backup_789"
+
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_create_incremental_backup_with_string_type(self, mock_hook_class):
+        """Test creating incremental backup with string backup_type."""
+        mock_hook = MagicMock()
+        mock_hook_class.return_value = mock_hook
+        mock_hook.create_incremental_backup.return_value = "Incremental backup created"
+
+        operator = HBaseCreateBackupOperator(
+            task_id="test_task",
+            backup_type="incremental",
+            backup_path="/tmp/backup",
+            backup_set_name="test_set",
+        )
+
+        result = operator.execute()
+
+        mock_hook.create_incremental_backup.assert_called_once()
+        assert result == "Incremental backup created"
+
     def test_create_backup_invalid_type(self):
         """Test creating backup with invalid type."""
         operator = HBaseCreateBackupOperator(
@@ -235,10 +273,9 @@ class TestHBaseBackupHistoryOperator:
 
         result = operator.execute()
 
-        # Operator calls get_backup_history twice: once with filter, once without
-        assert mock_hook.get_backup_history.call_count == 2
-        mock_hook.get_backup_history.assert_any_call(backup_set_name="test_set")
-        mock_hook.get_backup_history.assert_any_call()
+        mock_hook.get_backup_history.assert_called_once_with(
+            backup_set_name="test_set", backup_path=None
+        )
         assert result == "backup_123 COMPLETE"
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
@@ -255,7 +292,9 @@ class TestHBaseBackupHistoryOperator:
 
         result = operator.execute()
 
-        mock_hook.get_backup_history.assert_called_once_with(backup_set_name=None)
+        mock_hook.get_backup_history.assert_called_once_with(
+            backup_set_name=None, backup_path="/tmp/backup"
+        )
         assert result == "backup_456 COMPLETE"
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
@@ -271,5 +310,7 @@ class TestHBaseBackupHistoryOperator:
 
         result = operator.execute()
 
-        mock_hook.get_backup_history.assert_called_once_with(backup_set_name=None)
+        mock_hook.get_backup_history.assert_called_once_with(
+            backup_set_name=None, backup_path=None
+        )
         assert result == "All backups"

@@ -121,3 +121,58 @@ class TestHBaseThrift2Client:
         
         assert result is True
         mock_client.tableExists.assert_called_once()
+
+
+class TestResolveTableName:
+    """Test namespace resolution for data-plane operations."""
+
+    def _make_client(self, namespace="default"):
+        client = HBaseThrift2Client(host="localhost", port=9090, namespace=namespace)
+        client._client = MagicMock()
+        return client
+
+    def test_default_namespace_no_prefix(self):
+        """Default namespace should not add prefix."""
+        client = self._make_client(namespace="default")
+        assert client._resolve_table_name("users") == b"users"
+
+    def test_custom_namespace_adds_prefix(self):
+        """Non-default namespace should be prepended."""
+        client = self._make_client(namespace="production")
+        assert client._resolve_table_name("users") == b"production:users"
+
+    def test_fully_qualified_name_unchanged(self):
+        """Table name with ':' should not be modified."""
+        client = self._make_client(namespace="production")
+        assert client._resolve_table_name("staging:users") == b"staging:users"
+
+    def test_put_uses_namespace(self):
+        """put() should resolve table name with namespace."""
+        client = self._make_client(namespace="production")
+        client.put("users", "row1", {"cf:name": "Alice"})
+        table_arg = client._client.put.call_args[0][0]
+        assert table_arg == b"production:users"
+
+    def test_get_uses_namespace(self):
+        """get() should resolve table name with namespace."""
+        client = self._make_client(namespace="production")
+        client._client.get.return_value = MagicMock(columnValues=[])
+        client.get("users", "row1")
+        table_arg = client._client.get.call_args[0][0]
+        assert table_arg == b"production:users"
+
+    def test_delete_uses_namespace(self):
+        """delete() should resolve table name with namespace."""
+        client = self._make_client(namespace="production")
+        client.delete("users", "row1")
+        table_arg = client._client.deleteSingle.call_args[0][0]
+        assert table_arg == b"production:users"
+
+    def test_scan_uses_namespace(self):
+        """scan() should resolve table name with namespace."""
+        client = self._make_client(namespace="production")
+        client._client.openScanner.return_value = 1
+        client._client.getScannerRows.return_value = []
+        client.scan("users")
+        table_arg = client._client.openScanner.call_args[0][0]
+        assert table_arg == b"production:users"
