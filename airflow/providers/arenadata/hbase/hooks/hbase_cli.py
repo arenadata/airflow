@@ -342,6 +342,7 @@ class HBaseCLIHook(BaseHook):
         self,
         backup_root: str,
         backup_id: str,
+        backup_set_name: str | None = None,
         tables: list[str] | None = None,
         overwrite: bool = False,
     ) -> str:
@@ -350,13 +351,16 @@ class HBaseCLIHook(BaseHook):
 
         :param backup_root: Root directory where backup is stored.
         :param backup_id: Backup ID to restore.
-        :param tables: List of tables to restore (optional).
+        :param backup_set_name: Name of backup set to restore (optional).
+        :param tables: List of tables to restore (optional, alternative to backup_set_name).
         :param overwrite: Whether to overwrite existing tables.
         :return: Result message.
         """
         cmd = ["restore", backup_root, backup_id]
 
-        if tables:
+        if backup_set_name:
+            cmd += ["-s", backup_set_name]
+        elif tables:
             cmd += ["-t", ",".join(tables)]
 
         if overwrite:

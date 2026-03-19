@@ -266,6 +266,43 @@ class TestHBaseCLIHook:
         call_args = mock_popen.call_args[0][0]
         assert call_args[-4:] == ["restore", "/backup", "backup_1234567890", "-o"]
 
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.Popen")
+    def test_restore_backup_with_backup_set(self, mock_popen, mock_get_conn):
+        """Test restore backup with backup_set_name passes -s flag."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["Restore completed successfully\n", ""]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        result = hook.restore_backup("/backup", "backup_123", backup_set_name="test_set")
+
+        assert "successfully" in result
+        call_args = mock_popen.call_args[0][0]
+        assert call_args[-5:] == ["restore", "/backup", "backup_123", "-s", "test_set"]
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.Popen")
+    def test_restore_backup_set_takes_priority_over_tables(self, mock_popen, mock_get_conn):
+        """Test that backup_set_name takes priority over tables when both provided."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["Restore completed\n", ""]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default")
+        hook.restore_backup(
+            "/backup", "backup_123", backup_set_name="my_set", tables=["table1"]
+        )
+
+        call_args = mock_popen.call_args[0][0]
+        assert "-s" in call_args
+        assert "my_set" in call_args
+        assert "-t" not in call_args
+
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
     def test_command_failure(self, mock_run):
         """Test command failure raises RuntimeError."""

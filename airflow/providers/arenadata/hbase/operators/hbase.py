@@ -455,6 +455,7 @@ class HBaseRestoreOperator(BaseOperator):  # pylint: disable=too-few-public-meth
         return hook.restore_backup(
             backup_root=self.backup_path,
             backup_id=self.backup_id,
+            backup_set_name=self.backup_set_name,
             tables=self.tables,
             overwrite=self.overwrite,
         )

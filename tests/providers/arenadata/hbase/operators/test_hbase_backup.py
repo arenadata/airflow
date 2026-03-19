@@ -208,7 +208,7 @@ class TestHBaseRestoreOperator:
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
     def test_restore_with_backup_set(self, mock_hook_class):
-        """Test restore with backup set."""
+        """Test restore with backup set passes backup_set_name to hook."""
         mock_hook = MagicMock()
         mock_hook_class.return_value = mock_hook
         mock_hook.restore_backup.return_value = "Restore completed"
@@ -226,8 +226,9 @@ class TestHBaseRestoreOperator:
         mock_hook.restore_backup.assert_called_once_with(
             backup_root="/tmp/backup",
             backup_id="backup_123",
+            backup_set_name="test_set",
             tables=None,
-            overwrite=True
+            overwrite=True,
         )
         assert result == "Restore completed"
 
@@ -250,8 +251,33 @@ class TestHBaseRestoreOperator:
         mock_hook.restore_backup.assert_called_once_with(
             backup_root="/tmp/backup",
             backup_id="backup_123",
+            backup_set_name=None,
             tables=["table1", "table2"],
-            overwrite=False
+            overwrite=False,
+        )
+        assert result == "Restore completed"
+
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_restore_without_set_or_tables(self, mock_hook_class):
+        """Test restore without backup_set_name or tables restores entire backup."""
+        mock_hook = MagicMock()
+        mock_hook_class.return_value = mock_hook
+        mock_hook.restore_backup.return_value = "Restore completed"
+
+        operator = HBaseRestoreOperator(
+            task_id="test_task",
+            backup_path="/tmp/backup",
+            backup_id="backup_123",
+        )
+
+        result = operator.execute()
+
+        mock_hook.restore_backup.assert_called_once_with(
+            backup_root="/tmp/backup",
+            backup_id="backup_123",
+            backup_set_name=None,
+            tables=None,
+            overwrite=False,
         )
         assert result == "Restore completed"
 
