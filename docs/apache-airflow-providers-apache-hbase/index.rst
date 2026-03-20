@@ -42,21 +42,21 @@
     :maxdepth: 1
     :caption: References
 
-    Python API <_api/airflow/providers/apache/hbase/index>
+    Python API <_api/airflow/providers/arenadata/hbase/index>
 
 .. toctree::
     :hidden:
     :maxdepth: 1
     :caption: System tests
 
-    System Tests <_api/tests/system/providers/apache/hbase/index>
+    System Tests <_api/tests/system/providers/arenadata/hbase/index>
 
 .. toctree::
     :hidden:
     :maxdepth: 1
     :caption: Resources
 
-    Example DAGs <https://github.com/apache/airflow/tree/main/airflow/providers/hbase/example_dags>
+    Example DAGs <https://github.com/apache/airflow/tree/main/airflow/providers/arenadata/hbase/example_dags>
 
 .. THE REMAINDER OF THE FILE IS AUTOMATICALLY GENERATED. IT WILL BE OVERWRITTEN AT RELEASE TIME!
 
@@ -82,7 +82,7 @@ This provider package contains operators, hooks, and sensors for interacting wit
 - **Data Operations**: Insert, retrieve, scan, and batch operations on table data
 - **Backup & Restore**: Full and incremental backup operations with restore capabilities
 - **Monitoring**: Sensors for table existence, row counts, and column values
-- **Security**: SSL/TLS encryption and Kerberos authentication support
+- **Security**: SSL/TLS encryption
 - **Performance**: Connection pooling and optimized batch operations
 - **Integration**: Seamless integration with Airflow Secrets Backend
 
@@ -92,7 +92,7 @@ Provider package
 ----------------
 
 This package is for the ``hbase`` provider.
-All classes for this package are included in the ``airflow.providers.hbase`` python package.
+All classes for this package are included in the ``airflow.providers.arenadata.hbase`` python package.
 
 Installation
 ------------
@@ -104,7 +104,7 @@ Configuration
 -------------
 
 To use this provider, you need to configure an HBase connection in Airflow.
-The provider supports Thrift2 protocol connections with optional Kerberos authentication and connection pooling.
+The provider supports Thrift2 protocol connections with optional connection pooling and ssl encryption.
 
 For detailed connection configuration examples, see the :doc:`connections guide <connections/hbase>`.
 
@@ -117,8 +117,9 @@ The minimum Apache Airflow version supported by this provider package is ``2.7.0
 PIP package                Version required
 =========================  ==================
 ``apache-airflow``         ``>=2.7.0``
-``thrift``                 ``>=0.16.0``
-``kerberos``               ``>=1.3.0``
+``thrift``                 ``>=0.13.0``
+``thrift_sasl``            ``>=0.4.3``
+``sasl``                   ``>=0.3.1``
 =========================  ==================
 
 Features
@@ -141,15 +142,15 @@ Features
 
 - ``HBaseTableSensor`` - Monitor table existence
 - ``HBaseRowSensor`` - Monitor row existence
-- ``HBaseRowCountSensor`` - Monitor row count thresholds
-- ``HBaseColumnValueSensor`` - Monitor specific column values
 
 **Hooks**
 
 - ``HBaseHook`` - Core hook for HBase operations via Thrift API and shell commands
+- ``HBaseCLIHook`` - Hook for HBase CLI operations (backup/restore)
+
 
 **Security Features**
 
-- **Kerberos Authentication** - Enterprise authentication with keytab support
+- **SSL Encryption** - SSL encrypted connections
 - **Secrets Integration** - Keytab management via Airflow Secrets Backend
 - **Connection Pooling** - Efficient connection reuse for high-performance operations

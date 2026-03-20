@@ -60,6 +60,7 @@ Connection Features
 * **Connection Pooling** - Built-in connection pool for high-throughput operations with configurable pool size
 * **Retry Logic** - Configurable retry mechanism with exponential backoff
 * **Multiple Strategies** - ThriftStrategy for single connections, PooledThrift2Strategy for pooled connections
+* **SSL Encryption** - SSL encrypted connections
 
 Performance Features
 ~~~~~~~~~~~~~~~~~~~~
