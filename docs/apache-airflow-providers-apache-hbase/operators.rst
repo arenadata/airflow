@@ -34,12 +34,18 @@ Creating a Table
 
 The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseCreateTableOperator` operator is used to create a new table in HBase.
 
-Use the ``table_name`` parameter to specify the table name and ``column_families`` parameter to define the column families for the table.
+Use the ``table_name`` parameter to specify the table name and ``families`` parameter to define the column families for the table.
+The ``if_exists`` parameter controls behavior when the table already exists (default: ``ignore``).
 
-.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase.py
-    :language: python
-    :start-after: [START howto_operator_hbase_create_table]
-    :end-before: [END howto_operator_hbase_create_table]
+.. code-block:: python
+
+    create_table = HBaseCreateTableOperator(
+        task_id="create_table",
+        table_name="my_table",
+        families={"cf1": {}, "cf2": {}},
+        if_exists="ignore",
+        hbase_conn_id="hbase_default",
+    )
 
 .. _howto/operator:HBasePutOperator:
 
@@ -50,10 +56,15 @@ The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBasePutOperator`
 
 Use the ``table_name`` parameter to specify the table, ``row_key`` for the row identifier, and ``data`` for the column values.
 
-.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase.py
-    :language: python
-    :start-after: [START howto_operator_hbase_put]
-    :end-before: [END howto_operator_hbase_put]
+.. code-block:: python
+
+    put_row = HBasePutOperator(
+        task_id="put_row",
+        table_name="my_table",
+        row_key="row1",
+        data={"cf1:col1": "value1", "cf1:col2": "value2"},
+        hbase_conn_id="hbase_default",
+    )
 
 .. _howto/operator:HBaseBatchPutOperator:
 
@@ -63,33 +74,26 @@ Batch Insert Operations
 The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseBatchPutOperator` operator is used to insert multiple rows into an HBase table in a single batch operation.
 
 Use the ``table_name`` parameter to specify the table and ``rows`` parameter to provide a list of row data.
-For optimal performance, configure ``batch_size`` (default: 200) and ``max_workers`` (default: 4) parameters.
-
-.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase_advanced.py
-    :language: python
-    :start-after: [START howto_operator_hbase_batch_put]
-    :end-before: [END howto_operator_hbase_batch_put]
-
-Performance Optimization
-""""""""""""""""""""""""
-
-For high-throughput batch operations, use connection pooling and configure batch parameters:
+Configure ``batch_size`` (default: 200) to control the number of rows per Thrift request and ``max_workers`` (default: 4) to control parallelism.
 
 .. code-block:: python
 
-    # Optimized batch insert with connection pooling
-    optimized_batch_put = HBaseBatchPutOperator(
-        task_id="optimized_batch_put",
+    batch_put = HBaseBatchPutOperator(
+        task_id="batch_put",
         table_name="my_table",
-        rows=large_dataset,
-        batch_size=500,  # Process 500 rows per batch
-        max_workers=8,   # Use 8 parallel workers
-        hbase_conn_id="hbase_pooled",  # Connection with pool_size > 1
+        rows=[
+            {"row_key": "row1", "cf1:col1": "value1"},
+            {"row_key": "row2", "cf1:col1": "value2"},
+        ],
+        batch_size=200,
+        max_workers=4,
+        hbase_conn_id="hbase_default",
     )
 
 .. note::
-    Connection pooling is automatically enabled when ``pool_size`` > 1 in the connection configuration.
-    This provides significant performance improvements for concurrent operations.
+    ``batch_size`` controls the maximum number of rows per Thrift request.
+    ``max_workers`` controls the number of parallel threads sending requests.
+    For pooled connections, ensure ``connection_pool.size`` >= ``max_workers``.
 
 .. _howto/operator:HBaseBatchGetOperator:
 
@@ -98,12 +102,18 @@ Batch Retrieve Operations
 
 The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseBatchGetOperator` operator is used to retrieve multiple rows from an HBase table in a single batch operation.
 
-Use the ``table_name`` parameter to specify the table and ``row_keys`` parameter to provide a list of row keys to retrieve.
+Use the ``table_name`` parameter to specify the table, ``row_keys`` parameter to provide a list of row keys to retrieve,
+and optional ``columns`` to limit which columns are returned.
 
-.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase_advanced.py
-    :language: python
-    :start-after: [START howto_operator_hbase_batch_get]
-    :end-before: [END howto_operator_hbase_batch_get]
+.. code-block:: python
+
+    batch_get = HBaseBatchGetOperator(
+        task_id="batch_get",
+        table_name="my_table",
+        row_keys=["row1", "row2", "row3"],
+        columns=["cf1:col1", "cf1:col2"],
+        hbase_conn_id="hbase_default",
+    )
 
 .. _howto/operator:HBaseScanOperator:
 
@@ -112,12 +122,19 @@ Scanning Tables
 
 The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseScanOperator` operator is used to scan and retrieve multiple rows from an HBase table based on specified criteria.
 
-Use the ``table_name`` parameter to specify the table, and optional parameters like ``row_start``, ``row_stop``, ``columns``, and ``filter`` to control the scan operation.
+Use the ``table_name`` parameter to specify the table, and optional parameters ``row_start``, ``row_stop``, ``columns``, and ``limit`` to control the scan operation.
 
-.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase_advanced.py
-    :language: python
-    :start-after: [START howto_operator_hbase_scan]
-    :end-before: [END howto_operator_hbase_scan]
+.. code-block:: python
+
+    scan_table = HBaseScanOperator(
+        task_id="scan_table",
+        table_name="my_table",
+        row_start="row_000",
+        row_stop="row_100",
+        columns=["cf1:col1"],
+        limit=50,
+        hbase_conn_id="hbase_default",
+    )
 
 .. _howto/operator:HBaseDeleteTableOperator:
 
@@ -127,11 +144,16 @@ Deleting a Table
 The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseDeleteTableOperator` operator is used to delete an existing table from HBase.
 
 Use the ``table_name`` parameter to specify the table to delete.
+The ``if_not_exists`` parameter controls behavior when the table does not exist (default: ``ignore``).
 
-.. exampleinclude:: /../../airflow/providers/arenadata/hbase/example_dags/example_hbase.py
-    :language: python
-    :start-after: [START howto_operator_hbase_delete_table]
-    :end-before: [END howto_operator_hbase_delete_table]
+.. code-block:: python
+
+    delete_table = HBaseDeleteTableOperator(
+        task_id="delete_table",
+        table_name="my_table",
+        if_not_exists="ignore",
+        hbase_conn_id="hbase_default",
+    )
 
 Backup and Restore Operations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -143,15 +165,14 @@ HBase provides built-in backup and restore functionality for data protection and
 Managing Backup Sets
 """"""""""""""""""""
 
-The :class:`~airflow.providers.arenadata.hbase.operators.hbase_backup.HBaseBackupSetOperator` operator is used to manage backup sets containing one or more tables.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseBackupSetOperator` operator is used to manage backup sets containing one or more tables.
 
 Supported actions:
+
 - ``add``: Create a new backup set with specified tables
 - ``list``: List all existing backup sets
-- ``describe``: Get details about a specific backup set
-- ``delete``: Remove a backup set
 
-Use the ``action`` parameter to specify the operation, ``backup_set_name`` for the backup set name, and ``tables`` parameter to list the tables (for 'add' action).
+Use the ``action`` parameter to specify the operation, ``backup_set_name`` for the backup set name, and ``tables`` parameter to list the tables (for ``add`` action).
 
 .. code-block:: python
 
@@ -176,9 +197,10 @@ Use the ``action`` parameter to specify the operation, ``backup_set_name`` for t
 Creating Backups
 """"""""""""""""
 
-The :class:`~airflow.providers.arenadata.hbase.operators.hbase_backup.HBaseCreateBackupOperator` operator is used to create full or incremental backups of HBase tables.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseCreateBackupOperator` operator is used to create full or incremental backups of HBase tables.
 
-Use the ``backup_type`` parameter to specify 'full' or 'incremental', ``backup_path`` for the HDFS storage location, and either ``backup_set_name`` or ``tables`` to specify what to backup.
+Use the ``backup_type`` parameter to specify ``full`` or ``incremental``, ``backup_path`` for the HDFS storage location, and either ``backup_set_name`` or ``tables`` to specify what to backup.
+The ``backup_type`` parameter accepts both ``BackupType`` enum values and strings (e.g., from ``dag_run.conf``).
 
 .. code-block:: python
 
@@ -195,10 +217,10 @@ Use the ``backup_type`` parameter to specify 'full' or 'incremental', ``backup_p
     # Incremental backup with specific tables
     incremental_backup = HBaseCreateBackupOperator(
         task_id="incremental_backup",
-        backup_type="incremental",
-        backup_path="hdfs://namenode:9000/hbase/backup",
-        tables=["table1", "table2"],
-        workers=2,
+        backup_type=BackupType.INCREMENTAL,
+        backup_path="hdfs:///hbase/backup",  # Same path as FULL
+        backup_set_name="my_backup_set",
+        workers=1,
         hbase_conn_id="hbase_default",
     )
 
@@ -207,28 +229,20 @@ Use the ``backup_type`` parameter to specify 'full' or 'incremental', ``backup_p
 Restoring from Backup
 """""""""""""""""""""
 
-The :class:`~airflow.providers.arenadata.hbase.operators.hbase_backup.HBaseRestoreOperator` operator is used to restore tables from a backup to a specific point in time.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseRestoreOperator` operator is used to restore tables from a backup.
 
-Use the ``backup_path`` parameter for the backup location, ``backup_id`` for the specific backup to restore, and either ``backup_set_name`` or ``tables`` to specify what to restore.
+Use the ``backup_path`` parameter for the backup location, ``backup_id`` for the specific backup to restore,
+and optionally ``backup_set_name`` or ``tables`` to filter which tables to restore.
+Without ``backup_set_name`` or ``tables``, all tables from the backup are restored.
 
 .. code-block:: python
 
-    # Restore from backup set
     restore_backup = HBaseRestoreOperator(
         task_id="restore_backup",
         backup_path="hdfs://namenode:9000/hbase/backup",
         backup_id="backup_1234567890123",
-        backup_set_name="my_backup_set",
+        tables=["test_table_backup_v2"],
         overwrite=True,
-        hbase_conn_id="hbase_default",
-    )
-
-    # Restore specific tables
-    restore_tables = HBaseRestoreOperator(
-        task_id="restore_tables",
-        backup_path="hdfs://namenode:9000/hbase/backup",
-        backup_id="backup_1234567890123",
-        tables=["table1", "table2"],
         hbase_conn_id="hbase_default",
     )
 
@@ -237,9 +251,9 @@ Use the ``backup_path`` parameter for the backup location, ``backup_id`` for the
 Viewing Backup History
 """"""""""""""""""""""
 
-The :class:`~airflow.providers.apache.hbase.operators.hbase.HBaseBackupHistoryOperator` operator is used to retrieve backup history information.
+The :class:`~airflow.providers.arenadata.hbase.operators.hbase.HBaseBackupHistoryOperator` operator is used to retrieve backup history information.
 
-Use the ``backup_set_name`` parameter to get history for a specific backup set, or ``backup_path`` to get history for a backup location.
+Use the ``backup_set_name`` parameter to filter history by backup set, or ``backup_path`` to filter by backup location.
 
 .. code-block:: python
 
@@ -247,13 +261,6 @@ Use the ``backup_set_name`` parameter to get history for a specific backup set, 
     backup_history = HBaseBackupHistoryOperator(
         task_id="backup_history",
         backup_set_name="my_backup_set",
-        hbase_conn_id="hbase_default",
-    )
-
-    # Get backup history for a path
-    path_history = HBaseBackupHistoryOperator(
-        task_id="path_history",
-        backup_path="hdfs://namenode:9000/hbase/backup",
         hbase_conn_id="hbase_default",
     )
 
