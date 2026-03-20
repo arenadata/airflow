@@ -18,49 +18,44 @@
 Security
 --------
 
-The Apache HBase provider uses the Thrift2 protocol to connect to HBase with Kerberos authentication support.
+The Apache HBase provider uses the Thrift2 protocol to connect to HBase with SSL/TLS support
+for encrypted communication.
 
-Kerberos Authentication
-~~~~~~~~~~~~~~~~~~~~~~~
+SSL/TLS Encryption
+~~~~~~~~~~~~~~~~~~
 
-The provider supports Kerberos authentication for secure access to HBase clusters:
+The provider supports SSL/TLS for secure communication with HBase Thrift2 servers.
 
-**Kerberos Features:**
+**SSL/TLS Features:**
 
-* SASL/GSSAPI authentication mechanism
-* Keytab-based authentication
-* Principal and realm configuration
-* Integration with Airflow Secrets Backend for keytab storage
+* Server certificate verification via CA certificate bundle
+* Configurable certificate validation
+* Compatible with both binary socket and HTTP transport modes
 
 **Configuration Example:**
 
 .. code-block:: python
 
-    # Kerberos connection
-    kerberos_connection = Connection(
-        conn_id="hbase_kerberos",
+    from airflow.models import Connection
+
+    ssl_connection = Connection(
+        conn_id="hbase_ssl",
         conn_type="hbase",
-        host="hbase-kerb.example.com",
+        host="hbase-server.example.com",
         port=9090,
         extra={
-            "use_kerberos": True,
-            "kerberos_principal": "airflow@EXAMPLE.COM",
-            "kerberos_keytab_path": "/etc/security/keytabs/airflow.keytab"
-        }
+            "ca_certs": "/etc/ssl/hbase_certs.pem",
+            "validate": True,
+            "use_http": True,
+        },
     )
 
-    # Kerberos with keytab from Secrets Backend
-    kerberos_secrets_connection = Connection(
-        conn_id="hbase_kerberos_secrets",
-        conn_type="hbase",
-        host="hbase-kerb.example.com",
-        port=9090,
-        extra={
-            "use_kerberos": True,
-            "kerberos_principal": "airflow@EXAMPLE.COM",
-            "kerberos_keytab_secret_key": "hbase_keytab"
-        }
-    )
+**Parameters:**
+
+* ``ca_certs`` - Path to CA certificate bundle (PEM format) for server verification.
+* ``validate`` - Whether to validate the server certificate (default: ``true``).
+* ``use_http`` - Use HTTP transport (typically required when HBase Thrift2 is configured
+  with ``hbase.regionserver.thrift.http=true``).
 
 Connection Pooling
 ~~~~~~~~~~~~~~~~~~
@@ -70,23 +65,26 @@ The provider supports connection pooling for improved performance:
 **Pooling Features:**
 
 * Configurable pool size for concurrent connections
+* Configurable borrow timeout
 * Automatic connection lifecycle management
 * Thread-safe connection reuse
-* Reduced connection overhead for batch operations
 
 **Configuration Example:**
 
 .. code-block:: python
 
-    # Connection with pooling
     pooled_connection = Connection(
         conn_id="hbase_pooled",
         conn_type="hbase",
-        host="hbase.example.com",
+        host="hbase-server.example.com",
         port=9090,
         extra={
-            "pool_size": 5
-        }
+            "connection_pool": {
+                "enabled": True,
+                "size": 10,
+                "timeout": 30,
+            }
+        },
     )
 
 Security Best Practices
@@ -94,10 +92,9 @@ Security Best Practices
 
 **Connection Security:**
 
-* Use Kerberos authentication in production environments
-* Store keytabs securely using Airflow Secrets Backend
-* Regularly rotate Kerberos principals and keytabs
-* Use connection pooling to minimize authentication overhead
+* Enable SSL/TLS (``ca_certs`` + ``validate``) for all production connections
+* Use connection pooling to reduce connection overhead
+* Set appropriate connection timeouts
 
 **Access Control:**
 
@@ -110,7 +107,6 @@ Security Best Practices
 
 * Store sensitive information in Airflow's connection management system
 * Avoid hardcoding credentials in DAG files
-* Use Airflow's secrets backend for keytab storage
 * Regularly update HBase and Airflow to latest security patches
 
 **Network Security:**
@@ -118,10 +114,8 @@ Security Best Practices
 * Deploy HBase in a secure network environment
 * Use VPNs or private networks for HBase communication
 * Implement proper DNS security and hostname verification
-* Monitor network traffic for anomalies
 
 For comprehensive security configuration, consult:
 
 * `HBase Security Guide <https://hbase.apache.org/book.html#security>`_
 * `Airflow Security Documentation <https://airflow.apache.org/docs/apache-airflow/stable/security/index.html>`_
-* `Kerberos Authentication Guide <https://web.mit.edu/kerberos/krb5-latest/doc/>`_
