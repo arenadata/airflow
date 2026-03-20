@@ -40,10 +40,10 @@ Connection Strategies
 
 The provider supports two connection strategies for optimal performance:
 
-* **ThriftStrategy** - Single connection for simple operations
-* **PooledThriftStrategy** - Connection pooling for high-throughput operations
+* **Thrift2Strategy** - Single connection for simple operations
+* **PooledThrift2Strategy** - Connection pooling for high-throughput operations
 
-Connection pooling is automatically enabled when ``pool_size`` is specified in the connection Extra field.
+Connection pooling is enabled when ``connection_pool.enabled`` is set to ``true`` in the connection Extra field.
 Pooled connections provide better performance for batch operations and concurrent access.
 
 Connection Pool Configuration
@@ -54,12 +54,16 @@ To enable connection pooling, add the following to your connection's Extra field
 .. code-block:: json
 
     {
-      "pool_size": 10,
-      "pool_timeout": 30
+      "connection_pool": {
+        "enabled": true,
+        "size": 10,
+        "timeout": 30
+      }
     }
 
-* ``pool_size`` - Maximum number of connections in the pool (default: 1, no pooling)
-* ``pool_timeout`` - Timeout in seconds for getting connection from pool (default: 30)
+* ``connection_pool.enabled`` - Enable connection pooling (default: false).
+* ``connection_pool.size`` - Maximum number of connections in the pool (default: 10).
+* ``connection_pool.timeout`` - Timeout in seconds for borrowing a connection from the pool (default: 30).
 
 Connection Examples
 -------------------
@@ -76,7 +80,9 @@ Basic Thrift2 Connection (No Authentication)
 
 .. code-block:: json
 
-    {}
+    {
+      "use_http": false
+    }
 
 Pooled Thrift2 Connection
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -91,6 +97,7 @@ Pooled Thrift2 Connection
     {
       "java_home": "/usr/lib/jvm/java-arenadata-openjdk-8",
       "hbase_home": "/usr/lib/hbase",
+      "use_http": false,
       "connection_pool": {
         "enabled": true,
         "size": 10
@@ -101,8 +108,8 @@ Pooled Thrift2 Connection
     Connection pooling significantly improves performance for batch operations
     and concurrent access patterns. Use pooled connections for production workloads.
 
-Kerberos Authentication
-^^^^^^^^^^^^^^^^^^^^^^^
+SSL/TLS Connection
+^^^^^^^^^^^^^^^^^^
 
 :Connection Type: ``hbase``
 :Host: ``hbase-server.example.com``
@@ -112,13 +119,17 @@ Kerberos Authentication
 .. code-block:: json
 
     {
-      "auth_method": "GSSAPI",
-      "kerberos_service_name": "hbase",
-      "kerberos_keytab": "/etc/security/keytabs/airflow.service.keytab"
+      "ca_certs": "/etc/ssl/hbase_certs.pem",
+      "validate": true,
+      "use_http": true
     }
 
-Kerberos with Connection Pool
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. note::
+    When using SSL with HBase Thrift2, ``use_http`` should typically be set to ``true``
+    if the HBase server is configured with ``hbase.regionserver.thrift.http=true``.
+
+SSL/TLS with Connection Pool
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :Connection Type: ``hbase``
 :Host: ``hbase-server.example.com``
@@ -128,12 +139,9 @@ Kerberos with Connection Pool
 .. code-block:: json
 
     {
-      "auth_method": "GSSAPI",
-      "kerberos_service_name": "hbase",
-      "kerberos_principal": "airflow@KRB5-TEST",
-      "kerberos_keytab": "/etc/security/keytabs/airflow.service.keytab",
-      "java_home": "/usr/lib/jvm/java-arenadata-openjdk-8",
-      "hbase_home": "/usr/lib/hbase",
+      "ca_certs": "/etc/ssl/hbase_certs.pem",
+      "validate": true,
+      "use_http": true,
       "connection_pool": {
         "enabled": true,
         "size": 10
@@ -158,7 +166,7 @@ Extra (optional)
 
     * ``timeout`` - Connection timeout in milliseconds (default: 30000).
     * ``namespace`` - HBase namespace (default: "default").
-    * ``use_http`` - Use HTTP transport instead of binary socket (default: false for non-SSL, true for SSL connections).
+    * ``use_http`` - Use HTTP transport instead of binary socket (default: false).
     * ``retry_max_attempts`` - Maximum number of connection retry attempts (default: 3).
     * ``retry_delay`` - Initial delay between retry attempts in seconds (default: 1.0).
     * ``retry_backoff_factor`` - Multiplier for delay after each failed attempt (default: 2.0).
@@ -169,14 +177,12 @@ Extra (optional)
 
       * ``enabled`` - Enable connection pooling (default: false).
       * ``size`` - Pool size (default: 10).
-      * ``timeout`` - Pool connection timeout in seconds (default: 30).
+      * ``timeout`` - Timeout in seconds for borrowing a connection from the pool (default: 30).
 
-    **Authentication parameters:**
+    **SSL/TLS parameters (flat format):**
 
-    * ``auth_method`` - Authentication method. Set to ``GSSAPI`` for Kerberos authentication.
-    * ``kerberos_service_name`` - Kerberos service name (default: "hbase").
-    * ``kerberos_principal`` - Kerberos principal username (e.g., "airflow@REALM").
-    * ``kerberos_keytab`` - Path to keytab file (e.g., "/etc/security/keytabs/airflow.service.keytab").
+    * ``ca_certs`` - Path to CA certificate bundle for server verification.
+    * ``validate`` - Whether to validate the server certificate (default: true).
 
     **CLI operation parameters:**
 
@@ -190,7 +196,9 @@ Examples for the **Extra** field
 
 .. code-block:: json
 
-    {}
+    {
+      "use_http": false
+    }
 
 2. Connection with timeout and namespace
 
@@ -201,18 +209,7 @@ Examples for the **Extra** field
       "namespace": "production"
     }
 
-3. Kerberos authentication with keytab file
-
-.. code-block:: json
-
-    {
-      "auth_method": "GSSAPI",
-      "kerberos_service_name": "hbase",
-      "kerberos_principal": "airflow@REALM",
-      "kerberos_keytab": "/etc/security/keytabs/airflow.service.keytab"
-    }
-
-4. Connection with pooling
+3. Connection with pooling
 
 .. code-block:: json
 
@@ -224,6 +221,16 @@ Examples for the **Extra** field
       }
     }
 
+4. SSL/TLS connection
+
+.. code-block:: json
+
+    {
+      "ca_certs": "/etc/ssl/hbase_certs.pem",
+      "validate": true,
+      "use_http": true
+    }
+
 5. Connection with retry configuration
 
 .. code-block:: json
@@ -232,27 +239,4 @@ Examples for the **Extra** field
       "retry_max_attempts": 5,
       "retry_delay": 2.0,
       "retry_backoff_factor": 3.0
-    }
-
-6. Full configuration with all options
-
-.. code-block:: json
-
-    {
-      "timeout": 30000,
-      "namespace": "production",
-      "auth_method": "GSSAPI",
-      "kerberos_service_name": "hbase",
-      "kerberos_principal": "airflow@REALM",
-      "kerberos_keytab": "/etc/security/keytabs/airflow.service.keytab",
-      "java_home": "/usr/lib/jvm/java-arenadata-openjdk-8",
-      "hbase_home": "/usr/lib/hbase",
-      "connection_pool": {
-        "enabled": true,
-        "size": 10,
-        "timeout": 30
-      },
-      "retry_max_attempts": 3,
-      "retry_delay": 1.0,
-      "retry_backoff_factor": 2.0
     }
