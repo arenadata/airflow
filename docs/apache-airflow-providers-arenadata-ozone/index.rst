@@ -62,14 +62,13 @@ Provider package
 ----------------
 
 All classes are in the ``airflow.providers.arenadata.ozone`` Python package.
-Supports Native CLI (``ofs://`` / ``o3fs://``) and S3 Gateway.
+Supports Native CLI (``ofs://`` / ``o3fs://``), admin, and filesystem workflows.
 
 Requirements
 ------------
 
 * ``apache-airflow`` >= 2.10.3
 * ``apache-airflow-providers-apache-hdfs``
-* ``boto3`` >= 1.35.0
 
 Example DAGs
 ------------

@@ -18,19 +18,12 @@
 
 from __future__ import annotations
 
-import fnmatch
-import re
-from typing import Sequence
-
-from airflow.exceptions import AirflowException
-from airflow.providers.arenadata.ozone.hooks.ozone import (
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneFsHook
+from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
+from airflow.providers.arenadata.ozone.utils.params import (
     FAST_TIMEOUT_SECONDS,
     RETRY_ATTEMPTS,
-    OzoneFsHook,
 )
-from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
-from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
-from airflow.providers.arenadata.ozone.utils.helpers import PatternHelper, URIHelper
 from airflow.sensors.base import BaseSensorOperator
 from airflow.utils.context import Context  # noqa: TCH001
 
@@ -76,66 +69,3 @@ class OzoneKeySensor(BaseSensorOperator):
                 self.log.warning("Retryable error while checking key existence (will retry): %s", str(e))
                 return False
             raise
-
-
-class OzoneS3KeySensor(BaseSensorOperator):
-    """Waits for a key (or keys) to be present in an Ozone S3 bucket."""
-
-    template_fields: Sequence[str] = ("bucket_key", "bucket_name")
-
-    def __init__(
-        self,
-        *,
-        bucket_key: str | list[str],
-        bucket_name: str | None = None,
-        ozone_conn_id: str = OzoneS3Hook.default_conn_name,
-        wildcard_match: bool = False,
-        use_regex: bool = False,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.bucket_name = bucket_name
-        self.bucket_key = bucket_key
-        self.ozone_conn_id = ozone_conn_id
-        self.wildcard_match = wildcard_match
-        self.use_regex = use_regex
-
-    def _check_key(self, key: str, hook: OzoneS3Hook) -> bool:
-        """Check key existence with exact, wildcard, or regex matching."""
-        bucket_name, key_use = URIHelper.resolve_s3_bucket_and_key(key, self.bucket_name)
-
-        if not self.wildcard_match and not self.use_regex and URIHelper.contains_wildcards(key_use):
-            self.log.warning(
-                "bucket_key %r contains wildcard characters, but wildcard_match=False and use_regex=False. "
-                "Key will be treated as literal. If you expect glob matching, set wildcard_match=True.",
-                key_use,
-            )
-
-        if self.wildcard_match:
-            prefix = PatternHelper.literal_prefix_before_glob(key_use)
-            files = hook.get_file_metadata(prefix, bucket_name)
-            return bool(fnmatch.filter([f["Key"] for f in files], key_use))
-
-        if self.use_regex:
-            prefix = PatternHelper.literal_prefix_before_regex(key_use)
-            files = hook.get_file_metadata(prefix, bucket_name)
-            try:
-                pattern = re.compile(key_use)
-            except re.error as e:
-                raise AirflowException(f"Invalid regex pattern for bucket_key: {key_use!r} ({e})")
-            return any(pattern.match(f["Key"]) for f in files)
-
-        return hook.check_for_key(key_use, bucket_name)
-
-    def poke(self, context: Context) -> bool:
-        """Return True when all requested S3 keys are found."""
-        hook = OzoneS3Hook(ozone_conn_id=self.ozone_conn_id)
-        if isinstance(self.bucket_key, str):
-            result = self._check_key(self.bucket_key, hook)
-        else:
-            result = all(self._check_key(k, hook) for k in self.bucket_key)
-        if result:
-            self.log.info("S3 key(s) found in Ozone: %s", self.bucket_key)
-        else:
-            self.log.debug("S3 key(s) not found yet in Ozone: %s", self.bucket_key)
-        return result

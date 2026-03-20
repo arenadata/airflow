@@ -31,6 +31,7 @@ Useful for multi-tenant environments where each project needs isolated storage.
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
 
 from airflow.models.dag import DAG
@@ -40,16 +41,24 @@ from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateVolumeOperator,
     OzoneSetQuotaOperator,
 )
-from airflow.providers.arenadata.ozone.utils import EnvHelper
 from airflow.utils import timezone
 
-OM_HOST = EnvHelper.get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
-MULTI_TENANT_CONN_ID = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_CONN_ID", "ozone_admin_default")
-PROJECT_VOLUME = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_VOLUME", "project-alpha")
-PROJECT_QUOTA = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_QUOTA", "10GB")
-LANDING_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_LANDING_BUCKET", "landing")
-PROCESSED_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_PROCESSED_BUCKET", "processed")
-BUCKET_QUOTA = EnvHelper.get_env_str("OZONE_EXAMPLE_MULTI_TENANT_BUCKET_QUOTA", "1GB")
+
+def _example_env(name: str, default: str | None = None) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip()
+    return normalized if normalized else default
+
+
+OM_HOST = _example_env("OZONE_EXAMPLE_OM_HOST", "om")
+MULTI_TENANT_CONN_ID = _example_env("OZONE_EXAMPLE_MULTI_TENANT_CONN_ID", "ozone_admin_default")
+PROJECT_VOLUME = _example_env("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_VOLUME", "project-alpha")
+PROJECT_QUOTA = _example_env("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_QUOTA", "10GB")
+LANDING_BUCKET = _example_env("OZONE_EXAMPLE_MULTI_TENANT_LANDING_BUCKET", "landing")
+PROCESSED_BUCKET = _example_env("OZONE_EXAMPLE_MULTI_TENANT_PROCESSED_BUCKET", "processed")
+BUCKET_QUOTA = _example_env("OZONE_EXAMPLE_MULTI_TENANT_BUCKET_QUOTA", "1GB")
 
 with DAG(
     dag_id="example_ozone_multi_tenant_management",

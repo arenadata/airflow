@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import shlex
 import subprocess
-from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
@@ -29,32 +28,30 @@ from airflow.hooks.base import BaseHook
 from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner, OzoneCliRunner
 from airflow.providers.arenadata.ozone.utils.errors import ADMIN_RESOURCE_SPECS, OzoneCliError
 from airflow.providers.arenadata.ozone.utils.helpers import (
-    SecretHelper,
+    ConnectionExtraHelper,
     TypeNormalizationHelper,
     URIHelper,
 )
+from airflow.providers.arenadata.ozone.utils.params import (
+    DEFAULT_OZONE_ADMIN_CONN_ID,
+    DEFAULT_OZONE_CONN_ID,
+    FAST_TIMEOUT_SECONDS,
+    OZONE_CONN_NAME_ATTR,
+    OZONE_CONNECTION_UI_FIELD_BEHAVIOUR,
+    OZONE_SSL_ENABLED_KEY,
+    RETRY_ATTEMPTS,
+    SLOW_TIMEOUT_SECONDS,
+    OzoneConnSnapshot,
+)
 from airflow.providers.arenadata.ozone.utils.security import KerberosConfig, SSLConfig
 from airflow.utils.log.secrets_masker import redact
-
-RETRY_ATTEMPTS = 3
-FAST_TIMEOUT_SECONDS = 5 * 60
-SLOW_TIMEOUT_SECONDS = 60 * 60
-
-
-@dataclass(frozen=True)
-class OzoneConnSnapshot:
-    """Lightweight connection snapshot to reduce repeated connection reads."""
-
-    host: str
-    port: int
-    extra: dict[str, object]
 
 
 class OzoneCliHook(BaseHook):
     """Base hook for Ozone CLI commands with retry and auth handling."""
 
-    conn_name_attr = "ozone_conn_id"
-    default_conn_name = "ozone_default"
+    conn_name_attr = OZONE_CONN_NAME_ATTR
+    default_conn_name = DEFAULT_OZONE_CONN_ID
     conn_type = "ozone"
     hook_name = "Ozone"
 
@@ -78,7 +75,7 @@ class OzoneCliHook(BaseHook):
     def connection_snapshot(self) -> OzoneConnSnapshot:
         """Validate and cache required host, port and extra connection fields."""
         conn = self.connection
-        extra = SecretHelper.get_connection_extra(conn)
+        extra = ConnectionExtraHelper.get_connection_extra(conn)
         raw_host = getattr(conn, "host", None)
         raw_port = getattr(conn, "port", None)
 
@@ -104,7 +101,8 @@ class OzoneCliHook(BaseHook):
             return SSLConfig.load_from_connection(
                 self.connection,
                 conn_id=self.ozone_conn_id,
-                enabled_flag_keys=("ozone_security_enabled", "ozone.security.enabled"),
+                scope="ozone",
+                enabled_flag_key=OZONE_SSL_ENABLED_KEY,
             )
         except AirflowException as err:
             self.log.debug("Could not load SSL configuration: %s", str(err))
@@ -121,6 +119,12 @@ class OzoneCliHook(BaseHook):
     @cached_property
     def _cached_effective_config_dir(self) -> str | None:
         """Config dir used for CLI --config and subprocess environment."""
+        # Prefer explicit connection-level config dir for all modes (plain/SSL/Kerberos).
+        extra_config_dir = ConnectionExtraHelper.get_extra(
+            self.connection_snapshot.extra, "ozone_conf_dir", default=None
+        )
+        if extra_config_dir:
+            return extra_config_dir
         return KerberosConfig.resolve_config_dir(self._cached_kerberos_env)
 
     def _prepared_cli_env(self) -> dict[str, str]:
@@ -144,22 +148,7 @@ class OzoneCliHook(BaseHook):
     @classmethod
     def get_ui_field_behaviour(cls) -> dict[str, object]:
         """Describe Ozone connection extras in Airflow UI."""
-        return {
-            "hidden_fields": ["schema"],
-            "relabeling": {"host": "Ozone OM Host", "port": "Ozone OM Port"},
-            "placeholders": {
-                "host": "ozone-om",
-                "port": "9862",
-                "extra": (
-                    '{"ozone_security_enabled": "true", '
-                    '"hadoop_security_authentication": "kerberos", "kerberos_principal": "user@REALM", '
-                    '"kerberos_keytab": "/opt/airflow/keytabs/user.keytab", '
-                    '"krb5_conf": "/opt/airflow/kerberos-config/krb5.conf", '
-                    '"ozone_conf_dir": "/opt/airflow/ozone-conf", '
-                    '"hadoop_conf_dir": "/opt/airflow/ozone-conf"}'
-                ),
-            },
-        }
+        return OZONE_CONNECTION_UI_FIELD_BEHAVIOUR
 
     def test_connection(self) -> tuple[bool, str]:
         """Run a minimal CLI command to verify Ozone auth and connectivity."""
@@ -192,7 +181,7 @@ class OzoneCliHook(BaseHook):
         config_dir = self._cached_effective_config_dir
         if not config_dir:
             self.log.warning(
-                "Kerberos enabled but OZONE_CONF_DIR/HADOOP_CONF_DIR not set. "
+                "Kerberos enabled but OZONE_CONF_DIR not set. "
                 "Ozone CLI may not find security configuration files."
             )
             return cmd
@@ -617,7 +606,7 @@ class OzoneResource(str, Enum):
 class OzoneAdminHook(OzoneCliHook):
     """Interact with core namespace admin operations through ozone sh."""
 
-    default_conn_name = "ozone_admin_default"
+    default_conn_name = DEFAULT_OZONE_ADMIN_CONN_ID
     hook_name = "Ozone Admin"
 
     # ==============================

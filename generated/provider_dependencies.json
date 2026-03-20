@@ -315,8 +315,7 @@
   },
   "arenadata.ozone": {
     "deps": [
-      "apache-airflow>=2.10.3",
-      "boto3>=1.35.0"
+      "apache-airflow>=2.10.3"
     ],
     "devel-deps": [],
     "plugins": [],

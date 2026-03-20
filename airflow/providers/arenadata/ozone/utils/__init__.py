@@ -17,6 +17,6 @@
 # under the License.
 from __future__ import annotations
 
-from airflow.providers.arenadata.ozone.utils.helpers import EnvHelper, SecretHelper
+from airflow.providers.arenadata.ozone.utils.helpers import ConnectionExtraHelper
 
-__all__ = ["EnvHelper", "SecretHelper"]
+__all__ = ["ConnectionExtraHelper"]

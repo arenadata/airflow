@@ -26,14 +26,12 @@ from airflow.providers.arenadata.ozone.hooks.ozone import (
     OzoneFsHook,
     OzoneResource,
 )
-from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
 from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
 __all__ = [
     "OzoneCliHook",
     "OzoneFsHook",
     "OzoneAdminHook",
-    "OzoneS3Hook",
     "OzoneResource",
     "OzoneCliError",
 ]

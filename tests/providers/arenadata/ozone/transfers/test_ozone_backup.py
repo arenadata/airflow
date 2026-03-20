@@ -24,19 +24,13 @@ from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
 
 class TestOzoneBackupOperator:
-    """Unit tests for OzoneBackupOperator."""
-
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_backup.OzoneAdminHook")
     def test_execute_create_snapshot(self, mock_admin_hook: MagicMock):
-        """Test that OzoneBackupOperator creates a snapshot correctly."""
-
         mock_hook_instance = mock_admin_hook.return_value
-
         operator = OzoneBackupOperator(
             task_id="test_backup", volume="test_vol", bucket="test_bucket", snapshot_name="snapshot_20240101"
         )
         operator.execute(context={})
-
         mock_admin_hook.assert_called_once()
         assert mock_admin_hook.call_args.kwargs["ozone_conn_id"] == "ozone_admin_default"
         mock_hook_instance.run_cli.assert_called_once()
@@ -47,38 +41,31 @@ class TestOzoneBackupOperator:
 
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_backup.OzoneAdminHook")
     def test_execute_idempotent_snapshot_exists(self, mock_admin_hook: MagicMock):
-        """Existing snapshot is treated as success (no exception)."""
-
         mock_hook_instance = mock_admin_hook.return_value
         mock_hook_instance.run_cli.side_effect = OzoneCliError(
             "Command failed: snapshot already exists",
             stderr="FILE_ALREADY_EXISTS Snapshot already exists",
             returncode=255,
         )
-
         operator = OzoneBackupOperator(
             task_id="test_backup", volume="test_vol", bucket="test_bucket", snapshot_name="snapshot_20240101"
         )
         operator.execute(context={})
-
         mock_hook_instance.run_cli.assert_called_once()
 
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_backup.OzoneAdminHook")
     def test_execute_idempotent_snapshot_exists_human_message(self, mock_admin_hook: MagicMock):
-        """Existing snapshot text message is treated as success (case-insensitive)."""
         mock_hook_instance = mock_admin_hook.return_value
         mock_hook_instance.run_cli.side_effect = OzoneCliError(
             "Command failed: snapshot already exists",
             stderr="snapshot already exists",
             returncode=255,
         )
-
         operator = OzoneBackupOperator(
             task_id="test_backup",
             volume="test_vol",
             bucket="test_bucket",
             snapshot_name="snapshot_20240101",
         )
-
         operator.execute(context={})
         mock_hook_instance.run_cli.assert_called_once()

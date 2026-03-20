@@ -26,7 +26,7 @@ The ``ozone`` connection type is used by the Ozone provider for Native CLI opera
 
 The provider runs the ``ozone`` binary on the worker where the task executes.
 Workers must have Java and Ozone CLI installed and access to Ozone client config
-files (for example via ``OZONE_CONF_DIR`` or ``HADOOP_CONF_DIR``).
+files (via ``OZONE_CONF_DIR``).
 
 Default Connection IDs
 ----------------------
@@ -45,19 +45,21 @@ Port (required)
 
 Extra
     JSON dictionary. The provider reads SSL and Kerberos configuration from this field.
+    For this connection type, use Ozone-native keys (``ozone_*``, ``hadoop_security_authentication``,
+    ``kerberos_*``, ``krb5_conf``, ``ozone_conf_dir``). HDFS transfer-specific keys (``hdfs_*``)
+    belong to HDFS transfer connection scope and are not consumed by Ozone CLI hook runtime.
 
 Native CLI: SSL/TLS fields (Extra)
 ----------------------------------
 
-Set ``ozone_security_enabled`` (or ``ozone.security.enabled``) to ``"true"`` and provide
+Set ``ozone_security_enabled`` to ``"true"`` and provide
 keystore and truststore settings. These values are mapped to environment variables used
 by Ozone CLI.
 
 Common keys:
 
-* ``ozone_security_enabled`` or ``ozone.security.enabled``.
+* ``ozone_security_enabled``.
 * ``ozone_om_https_port``.
-* ``ozone.scm.https.port``.
 * ``ozone_ssl_keystore_location``.
 * ``ozone_ssl_keystore_password`` (supports ``secret://...``).
 * ``ozone_ssl_truststore_location``.
@@ -66,23 +68,20 @@ Common keys:
 Native CLI: Kerberos fields (Extra)
 -----------------------------------
 
-Set ``hadoop_security_authentication`` (or ``hadoop.security.authentication``) to ``"kerberos"``
+Set ``hadoop_security_authentication`` to ``"kerberos"``
 and provide principal and keytab. The provider configures Kerberos environment variables and
 runs ``kinit`` before CLI commands.
 
 Common keys:
 
-* ``hadoop_security_authentication`` or ``hadoop.security.authentication``.
+* ``hadoop_security_authentication``.
 * ``kerberos_principal``.
 * ``kerberos_keytab`` (supports ``secret://...``).
-* ``kerberos_realm``.
 * ``krb5_conf``.
-* ``ozone_conf_dir`` or ``hadoop_conf_dir``.
+* ``ozone_conf_dir``.
 
-When Kerberos is enabled, set ``ozone_conf_dir`` or ``hadoop_conf_dir`` explicitly
-in the connection (or provide ``OZONE_CONF_DIR`` / ``HADOOP_CONF_DIR`` in the worker
-environment). The provider no longer injects a default config directory.
-The provider also does not perform hidden XML/bootstrap generation anymore.
+Set ``ozone_conf_dir`` explicitly in the connection for all modes (plain/SSL/Kerberos).
+The provider derives ``HADOOP_CONF_DIR`` internally from ``ozone_conf_dir`` for subprocess execution.
 
 Recommended Kerberos extra (explicit paths):
 
@@ -93,10 +92,8 @@ Recommended Kerberos extra (explicit paths):
     "hadoop_security_authentication": "kerberos",
     "kerberos_principal": "testuser@EXAMPLE.COM",
     "kerberos_keytab": "/opt/airflow/keytabs/testuser.keytab",
-    "kerberos_realm": "EXAMPLE.COM",
     "krb5_conf": "/opt/airflow/kerberos-config/krb5.conf",
-    "ozone_conf_dir": "/opt/airflow/ozone-conf",
-    "hadoop_conf_dir": "/opt/airflow/ozone-conf"
+    "ozone_conf_dir": "/opt/airflow/ozone-conf"
   }
 
 Retry and timeout tuning
@@ -105,11 +102,17 @@ Retry and timeout tuning
 Process execution helpers are centralized in
 ``airflow/providers/arenadata/ozone/utils/cli_runner.py``.
 
-Provider defaults are defined in the CLI hook module:
+Security runtime helpers are centralized in
+``airflow/providers/arenadata/ozone/utils/security.py``.
+
+Provider defaults are defined in provider params:
 
 * ``RETRY_ATTEMPTS = 3``
 * ``FAST_TIMEOUT_SECONDS = 5 * 60``
 * ``SLOW_TIMEOUT_SECONDS = 60 * 60``
+
+These constants are exported from:
+``airflow/providers/arenadata/ozone/utils/params.py``.
 
 Operators, sensors, and transfers pass ``timeout`` and ``retry_attempts``
 to hook methods. Use ``FAST_TIMEOUT_SECONDS`` for quick CLI calls and
@@ -140,34 +143,9 @@ Key ``OzoneAdminExtraHook`` methods include:
 * ``set_bucket_replication_config``, ``create_bucket_link``
 * ``get_container_report``
 
-Ozone S3 Gateway connection
----------------------------
-
-S3 Gateway operations use the dedicated ``ozone_s3`` connection type.
-The provider builds a boto3 S3 client directly from this connection
-via ``airflow/providers/arenadata/ozone/utils/s3_client.py`` (``OzoneS3Client``).
-S3 error classification and user-facing error translation are centralized in
-``airflow/providers/arenadata/ozone/utils/errors.py`` (``OzoneS3Errors``).
-
-Default S3 connection ID:
-
-* ``ozone_s3_default`` (type ``ozone_s3``)
-
-Connection fields:
-
-* **Login**: optional access key ID (supports ``secret://...``).
-* **Password**: optional secret access key (supports ``secret://...``).
-  If login/password are omitted, boto3 default credential resolution chain is used.
-* **Extra**:
-
-  * ``endpoint_url``: for example ``http://s3g:9878`` or ``https://s3g:9879``.
-  * ``verify``: ``false`` (development only), ``true`` (default), or path to CA bundle.
-  * ``region_name``: optional; if omitted, boto3 default region resolution chain is used.
-
 Testing connections in Airflow UI
 ---------------------------------
 
-Both connection types implement ``test_connection()``:
+The ``ozone`` connection type implements ``test_connection()``:
 
 * ``ozone``: runs a minimal CLI command against Ozone Manager.
-* ``ozone_s3``: runs a minimal S3 API call against configured endpoint.

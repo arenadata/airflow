@@ -33,6 +33,7 @@ This example showcases:
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
 
 from airflow.models.dag import DAG
@@ -46,16 +47,24 @@ from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneMoveOperator,
 )
 from airflow.providers.arenadata.ozone.transfers.ozone_backup import OzoneBackupOperator
-from airflow.providers.arenadata.ozone.utils import EnvHelper
 from airflow.utils import timezone
 from airflow.utils.task_group import TaskGroup
 
-OM_HOST = EnvHelper.get_env_str("OZONE_EXAMPLE_OM_HOST", "om")
-LIFECYCLE_CONN_ID = EnvHelper.get_env_str("OZONE_EXAMPLE_LIFECYCLE_CONN_ID", "ozone_admin_default")
-LANDING_VOLUME = EnvHelper.get_env_str("OZONE_EXAMPLE_LIFECYCLE_LANDING_VOLUME", "landing")
-LANDING_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_LIFECYCLE_LANDING_BUCKET", "raw")
-ARCHIVE_VOLUME = EnvHelper.get_env_str("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_VOLUME", "archive")
-ARCHIVE_BUCKET = EnvHelper.get_env_str("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_BUCKET", "processed")
+
+def _example_env(name: str, default: str | None = None) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip()
+    return normalized if normalized else default
+
+
+OM_HOST = _example_env("OZONE_EXAMPLE_OM_HOST", "om")
+LIFECYCLE_CONN_ID = _example_env("OZONE_EXAMPLE_LIFECYCLE_CONN_ID", "ozone_admin_default")
+LANDING_VOLUME = _example_env("OZONE_EXAMPLE_LIFECYCLE_LANDING_VOLUME", "landing")
+LANDING_BUCKET = _example_env("OZONE_EXAMPLE_LIFECYCLE_LANDING_BUCKET", "raw")
+ARCHIVE_VOLUME = _example_env("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_VOLUME", "archive")
+ARCHIVE_BUCKET = _example_env("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_BUCKET", "processed")
 
 with DAG(
     dag_id="example_ozone_data_lifecycle",

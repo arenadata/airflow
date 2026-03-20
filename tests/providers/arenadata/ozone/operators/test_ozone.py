@@ -21,33 +21,77 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from airflow.providers.arenadata.ozone.hooks.ozone import OzoneFsHook
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminHook, OzoneFsHook
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCopyOperator,
     OzoneCreatePathOperator,
+    OzoneCreateVolumeOperator,
+    OzoneDeleteBucketOperator,
     OzoneDeleteKeyOperator,
     OzoneDeletePathOperator,
+    OzoneDeleteVolumeOperator,
     OzoneDownloadFileOperator,
     OzoneListOperator,
     OzoneMoveOperator,
     OzonePathExistsOperator,
+    OzoneSetQuotaOperator,
 )
 
 
-class TestOzoneFsOperators:
-    """Unit tests for File System Operators."""
+class TestOzoneAdminOperators:
+    @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneAdminHook")
+    def test_create_volume_operator(self, mock_admin_hook: MagicMock):
+        mock_hook_instance = mock_admin_hook.return_value
+        operator = OzoneCreateVolumeOperator(task_id="create_volume_test", volume_name="test_vol")
+        operator.execute(context={})
+        mock_admin_hook.assert_called_once()
+        assert mock_admin_hook.call_args.kwargs["ozone_conn_id"] == OzoneAdminHook.default_conn_name
+        mock_hook_instance.create_volume.assert_called_once()
+        assert mock_hook_instance.create_volume.call_args.args == ("test_vol", None)
 
+    @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneAdminHook")
+    def test_delete_volume_operator_recursive(self, mock_admin_hook: MagicMock):
+        mock_hook_instance = mock_admin_hook.return_value
+        operator = OzoneDeleteVolumeOperator(
+            task_id="delete_volume_test", volume_name="test_vol", recursive=True, force=True
+        )
+        operator.execute(context={})
+        mock_hook_instance.delete_volume.assert_called_once()
+        assert mock_hook_instance.delete_volume.call_args.args == ("test_vol", True, True)
+
+    @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneAdminHook")
+    def test_set_quota_operator_volume(self, mock_admin_hook: MagicMock):
+        mock_hook_instance = mock_admin_hook.return_value
+        mock_hook_instance.set_quota = MagicMock()
+        operator = OzoneSetQuotaOperator(task_id="set_quota_test", volume="test_vol", quota="1TB")
+        operator.execute(context={})
+        mock_admin_hook.assert_called_once()
+        mock_hook_instance.set_quota.assert_called_once_with(
+            volume="test_vol",
+            quota="1TB",
+            bucket=None,
+            timeout=operator.timeout,
+        )
+
+    def test_delete_volume_operator_validation(self):
+        with pytest.raises(ValueError, match="force=True requires recursive=True"):
+            OzoneDeleteVolumeOperator(task_id="test", volume_name="test_vol", force=True, recursive=False)
+
+    def test_delete_bucket_operator_validation(self):
+        with pytest.raises(ValueError, match="force=True requires recursive=True"):
+            OzoneDeleteBucketOperator(
+                task_id="test", volume_name="test_vol", bucket_name="test_bucket", force=True, recursive=False
+            )
+
+
+class TestOzoneFsOperators:
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_ozone_list_operator(self, mock_ozone_fs_hook: MagicMock):
-        """Test that OzoneListOperator calls the hook and returns its result via XCom."""
-
         mock_hook_instance = mock_ozone_fs_hook.return_value
         expected_files = ["ofs://vol1/b1/f1", "ofs://vol1/b1/f2"]
         mock_hook_instance.list_keys.return_value = expected_files
-
         operator = OzoneListOperator(task_id="list_files_test", path="ofs://vol1/b1/")
         result = operator.execute(context={})
-
         mock_ozone_fs_hook.assert_called_once()
         assert mock_ozone_fs_hook.call_args.kwargs["ozone_conn_id"] == OzoneFsHook.default_conn_name
         mock_hook_instance.list_keys.assert_called_once()
@@ -56,48 +100,34 @@ class TestOzoneFsOperators:
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_ozone_delete_key_operator(self, mock_ozone_fs_hook: MagicMock):
-        """Test that OzoneDeleteKeyOperator delegates deletion to the hook."""
-
         mock_hook_instance = mock_ozone_fs_hook.return_value
         mock_hook_instance.delete_key = MagicMock()
-
         operator = OzoneDeleteKeyOperator(task_id="delete_key_test", path="ofs://vol1/b1/f1")
         operator.execute(context={})
-
         mock_hook_instance.delete_key.assert_called_once_with("ofs://vol1/b1/f1", timeout=operator.timeout)
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_ozone_delete_key_operator_idempotent(self, mock_ozone_fs_hook: MagicMock):
-        """DeleteKeyOperator delegates idempotent behavior to the hook."""
-
         mock_hook_instance = mock_ozone_fs_hook.return_value
         mock_hook_instance.delete_key = MagicMock()
-
         operator = OzoneDeleteKeyOperator(task_id="delete_key_test", path="ofs://vol1/b1/f1")
         operator.execute(context={})
-
         mock_hook_instance.delete_key.assert_called_once_with("ofs://vol1/b1/f1", timeout=operator.timeout)
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_ozone_delete_key_operator_wildcard(self, mock_ozone_fs_hook: MagicMock):
-        """Wildcard handling is delegated to hook.delete_key."""
-
         mock_hook_instance = mock_ozone_fs_hook.return_value
         mock_hook_instance.delete_key = MagicMock()
-
         operator = OzoneDeleteKeyOperator(task_id="delete_key_test", path="ofs://vol1/b1/*")
         operator.execute(context={})
-
         mock_hook_instance.delete_key.assert_called_once_with("ofs://vol1/b1/*", timeout=operator.timeout)
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_ozone_delete_key_operator_wildcard_propagates_non_retryable_error(
         self, mock_ozone_fs_hook: MagicMock
     ):
-        """Errors from hook.delete_key should propagate."""
         mock_hook_instance = mock_ozone_fs_hook.return_value
         mock_hook_instance.delete_key.side_effect = RuntimeError("auth failed")
-
         operator = OzoneDeleteKeyOperator(task_id="delete_key_test", path="ofs://vol1/b1/*")
         with pytest.raises(RuntimeError, match="auth failed"):
             operator.execute(context={})
@@ -105,7 +135,6 @@ class TestOzoneFsOperators:
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_create_path_operator(self, mock_ozone_fs_hook: MagicMock):
-        """CreatePathOperator should call hook.create_path."""
         operator = OzoneCreatePathOperator(task_id="create_path", path="ofs://vol1/b1/dir")
         operator.execute(context={})
         mock_hook_instance = mock_ozone_fs_hook.return_value
@@ -113,7 +142,6 @@ class TestOzoneFsOperators:
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_delete_path_operator(self, mock_ozone_fs_hook: MagicMock):
-        """DeletePathOperator should call hook.delete_path."""
         operator = OzoneDeletePathOperator(task_id="delete_path", path="ofs://vol1/b1/dir", recursive=True)
         operator.execute(context={})
         mock_hook_instance = mock_ozone_fs_hook.return_value
@@ -125,7 +153,6 @@ class TestOzoneFsOperators:
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_path_exists_operator(self, mock_ozone_fs_hook: MagicMock):
-        """PathExistsOperator should return hook.path_exists value."""
         mock_hook_instance = mock_ozone_fs_hook.return_value
         mock_hook_instance.path_exists.return_value = True
         operator = OzonePathExistsOperator(task_id="path_exists", path="ofs://vol1/b1/dir")
@@ -135,7 +162,6 @@ class TestOzoneFsOperators:
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_copy_operator(self, mock_ozone_fs_hook: MagicMock):
-        """CopyOperator should call hook.copy_path."""
         operator = OzoneCopyOperator(
             task_id="copy_path",
             source_path="ofs://vol1/b1/src.txt",
@@ -151,7 +177,6 @@ class TestOzoneFsOperators:
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_move_operator(self, mock_ozone_fs_hook: MagicMock):
-        """MoveOperator should call hook.move."""
         operator = OzoneMoveOperator(
             task_id="move_path",
             source_path="ofs://vol1/b1/src.txt",
@@ -167,7 +192,6 @@ class TestOzoneFsOperators:
 
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
     def test_download_file_operator(self, mock_ozone_fs_hook: MagicMock):
-        """DownloadFileOperator should call hook.download_key."""
         operator = OzoneDownloadFileOperator(
             task_id="download_path",
             remote_path="ofs://vol1/b1/src.txt",

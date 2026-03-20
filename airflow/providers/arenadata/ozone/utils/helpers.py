@@ -19,14 +19,12 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import os
 import posixpath
-import re
 from collections.abc import Callable, Mapping, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
 from airflow.exceptions import AirflowException
-from airflow.utils.log.secrets_masker import mask_secret, redact
+from airflow.utils.log.secrets_masker import redact
 
 
 class URIHelper:
@@ -99,25 +97,6 @@ class URIHelper:
         full_path = posixpath.join(base_path, child_name)
         return cls.build_ozone_uri(scheme, netloc, full_path)
 
-    @staticmethod
-    def parse_s3_uri(value: str) -> tuple[str, str]:
-        """Parse s3://bucket/key URI and return (bucket_name, key)."""
-        parsed = urlsplit(value or "")
-        if parsed.scheme != "s3":
-            raise AirflowException(f"Invalid S3 URI: {value!r}. Expected s3://bucket/key.")
-        bucket_name = parsed.netloc or ""
-        key = parsed.path.lstrip("/")
-        if not bucket_name or not key:
-            raise AirflowException(f"Invalid S3 URI: {value!r}. Expected s3://bucket/key.")
-        return bucket_name, key
-
-    @classmethod
-    def resolve_s3_bucket_and_key(cls, key: str, bucket_name: str | None = None) -> tuple[str, str]:
-        """Return (bucket_name, key), accepting either plain key + bucket_name or full s3:// URI."""
-        if bucket_name:
-            return bucket_name, key
-        return cls.parse_s3_uri(key)
-
     @classmethod
     def split_ozone_wildcard_path(cls, path: str) -> tuple[str, str]:
         """Split wildcard path into source directory URI and basename pattern."""
@@ -144,38 +123,40 @@ class URIHelper:
         return source_dir, cls.filter_paths_by_basename_pattern(listed_paths, pattern)
 
 
-class PatternHelper:
-    """Helpers for glob and regex pattern handling."""
+class ConnectionExtraHelper:
+    """Helpers for strict connection-first reads from Connection.extra."""
 
     @staticmethod
-    def literal_prefix_before_glob(pattern: str) -> str:
-        """Return literal prefix before first glob metacharacter."""
-        parts = re.split(r"[\[*?]", pattern or "", 1)
-        return parts[0] if parts else ""
+    def get_connection_extra(conn: object) -> dict[str, object]:
+        """Return connection extra as dict in a consistent way."""
+        return conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
 
-    @staticmethod
-    def literal_prefix_before_regex(pattern: str) -> str:
-        """Return literal prefix before first regex metacharacter."""
-        parts = re.split(r"[\\\[\]\^\$\*\+\?\|\(\)]", pattern or "", 1)
-        return parts[0] if parts else ""
+    @classmethod
+    def get_extra(
+        cls,
+        extra: Mapping[str, object] | None,
+        key: str,
+        default: str | None = None,
+    ) -> str | None:
+        if not extra or key not in extra:
+            return default
+        value = TypeNormalizationHelper.normalize_optional_str(extra.get(key))
+        return value if value is not None else default
 
-
-class EnvHelper:
-    """Helpers for environment mapping and env variable reads."""
-
-    @staticmethod
+    @classmethod
     def build_mapped_env(
+        cls,
         extra: Mapping[str, object],
         mapping: Sequence[tuple[str, str, bool]],
         *,
         resolve_secret: Callable[[object], object] | None = None,
     ) -> dict[str, str]:
-        """Build environment variables from extra according to a mapping."""
+        """Build environment variables from canonical extra keys."""
         env: dict[str, str] = {}
         for extra_key, env_key, is_secret in mapping:
-            if extra_key not in extra:
+            value = cls.get_extra(extra, extra_key, default=None)
+            if value is None:
                 continue
-            value: object = extra[extra_key]
             if is_secret:
                 if resolve_secret is None:
                     raise ValueError("resolve_secret must be provided for secret-mapped values")
@@ -183,26 +164,29 @@ class EnvHelper:
             env[env_key] = str(value)
         return env
 
-    @staticmethod
-    def get_env_str(name: str, default: str | None = None) -> str | None:
-        """Get environment variable as string or return default if not set."""
-        return TypeNormalizationHelper.normalize_optional_str(os.getenv(name)) or default
+    @classmethod
+    def is_true_flag(
+        cls,
+        extra: Mapping[str, object] | None,
+        key: str,
+        default: bool = False,
+    ) -> bool:
+        if not extra or key not in extra:
+            return default
+        return TypeNormalizationHelper.normalize_flag_bool(extra.get(key), default=default)
 
-
-class SecretHelper:
-    """Helpers for secret-safe handling and connection extra extraction."""
-
-    @staticmethod
-    def resolve_secret_masked(value: object, resolve_secret: Callable[[object], object]) -> object:
-        """Resolve a secret-like value and register it in Airflow secret masker."""
-        resolved = resolve_secret(value)
-        mask_secret(resolved)
-        return resolved
-
-    @staticmethod
-    def get_connection_extra(conn: object) -> dict[str, object]:
-        """Return connection extra as dict in a consistent way."""
-        return conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
+    @classmethod
+    def is_equals(
+        cls,
+        extra: Mapping[str, object] | None,
+        key: str,
+        expected: str,
+    ) -> bool:
+        expected_value = TypeNormalizationHelper.normalize_optional_str(expected)
+        if expected_value is None:
+            return False
+        current_value = cls.get_extra(extra=extra, key=key, default=None)
+        return current_value is not None and current_value.lower() == expected_value.lower()
 
 
 class TypeNormalizationHelper:
@@ -229,42 +213,18 @@ class TypeNormalizationHelper:
         return normalized
 
     @staticmethod
-    def parse_int_or_default(value: object, default: int) -> int:
-        """Parse int value or return default when parsing fails."""
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return default
-
-    @staticmethod
-    def normalize_bool_or_passthrough(value: object, default: object) -> object:
-        """Normalize bool-like values; passthrough non-bool strings or objects."""
+    def normalize_flag_bool(value: object, default: bool = False) -> bool:
+        """Normalize feature-flag style values used in connection extras/env."""
         if value is None:
             return default
         if isinstance(value, bool):
             return value
-        if isinstance(value, (int, float)):
-            return bool(value)
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"true", "yes", "1"}:
-                return True
-            if normalized in {"false", "no", "0"}:
-                return False
-            return value
-        return value
-
-    @classmethod
-    def is_true_flag(cls, extra: dict[str, object], *keys: str) -> bool:
-        """Return True if any provided key is present and equals true."""
-        for key in keys:
-            value = extra.get(key)
-            if (
-                isinstance(value, (bool, str))
-                and cls.normalize_bool_or_passthrough(value, default=False) is True
-            ):
-                return True
-        return False
+        normalized = str(value).strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on", "enabled"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off", "disabled"}:
+            return False
+        return default
 
     @staticmethod
     def parse_json_output(output: str) -> object:

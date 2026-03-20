@@ -20,6 +20,6 @@
 
 from __future__ import annotations
 
-from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor, OzoneS3KeySensor
+from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
 
-__all__ = ["OzoneKeySensor", "OzoneS3KeySensor"]
+__all__ = ["OzoneKeySensor"]

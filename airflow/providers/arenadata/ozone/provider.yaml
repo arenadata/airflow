@@ -24,7 +24,7 @@ description: |
   Provider package for interacting with Apache Ozone via:
 
   - Native CLI (``ozone``) for ``ofs://`` / ``o3fs://`` paths
-  - S3 Gateway (S3-compatible API) via a boto3-based hook
+  - Native Ozone administration and filesystem workflows
 
 state: ready
 # note that those versions are maintained by release manager - do not update them manually
@@ -33,7 +33,6 @@ versions:
 
 dependencies:
   - apache-airflow>=2.10.3
-  - boto3>=1.35.0
 
 integrations:
   - integration-name: Apache Ozone
@@ -44,7 +43,6 @@ hooks:
   - integration-name: Apache Ozone
     python-modules:
       - airflow.providers.arenadata.ozone.hooks.ozone
-      - airflow.providers.arenadata.ozone.hooks.ozone_s3
 
 operators:
   - integration-name: Apache Ozone
@@ -63,12 +61,7 @@ transfers:
   - source-integration-name: Apache Ozone
     target-integration-name: Apache Ozone
     python-module: airflow.providers.arenadata.ozone.transfers.ozone_backup
-  - source-integration-name: Apache Ozone
-    target-integration-name: Amazon Simple Storage Service (S3)
-    python-module: airflow.providers.arenadata.ozone.transfers.ozone_to_s3
 
 connection-types:
   - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliHook
     connection-type: ozone
-  - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone_s3.OzoneS3Hook
-    connection-type: ozone_s3

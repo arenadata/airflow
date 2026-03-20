@@ -42,39 +42,29 @@ Common:
 Basic example (``example_ozone_usage``):
 
 * ``OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID``
-* ``OZONE_EXAMPLE_USAGE_S3_CONN_ID``
 * ``OZONE_EXAMPLE_USAGE_VOLUME``
 * ``OZONE_EXAMPLE_USAGE_BUCKET``
 * ``OZONE_EXAMPLE_USAGE_DIR``
 * ``OZONE_EXAMPLE_USAGE_FILE``
-* ``OZONE_EXAMPLE_USAGE_S3_BUCKET``
-* ``OZONE_EXAMPLE_USAGE_S3_KEY``
 
 SSL example (``example_ozone_usage_ssl``):
 
 * ``OZONE_EXAMPLE_SSL_ADMIN_CONN_ID``
-* ``OZONE_EXAMPLE_SSL_S3_CONN_ID``
 * ``OZONE_EXAMPLE_SSL_VOLUME``
 * ``OZONE_EXAMPLE_SSL_BUCKET``
 * ``OZONE_EXAMPLE_SSL_DIR``
 * ``OZONE_EXAMPLE_SSL_FILE``
-* ``OZONE_EXAMPLE_SSL_S3_BUCKET``
-* ``OZONE_EXAMPLE_SSL_S3_KEY``
 
 SSL + Kerberos example (``example_ozone_usage_ssl_kerberos``):
 
 * ``OZONE_EXAMPLE_KRB_ADMIN_CONN_ID``
-* ``OZONE_EXAMPLE_KRB_S3_CONN_ID``
 * ``OZONE_EXAMPLE_KRB_VOLUME``
 * ``OZONE_EXAMPLE_KRB_BUCKET``
 * ``OZONE_EXAMPLE_KRB_DIR``
 * ``OZONE_EXAMPLE_KRB_FILE``
-* ``OZONE_EXAMPLE_KRB_S3_BUCKET``
-* ``OZONE_EXAMPLE_KRB_S3_KEY``
 
 For this DAG, the ``ozone`` connection extra must include explicit Kerberos/config paths
-(``kerberos_principal``, ``kerberos_keytab``, ``krb5_conf``, ``ozone_conf_dir`` and/or
-``hadoop_conf_dir``).
+(``kerberos_principal``, ``kerberos_keytab``, ``krb5_conf``, ``ozone_conf_dir``).
 
 Data pipeline example (``example_ozone_data_pipeline``):
 
@@ -111,6 +101,6 @@ Example DAGs use the same provider runtime policy as regular tasks.
 Retry and timeout behavior is configured in provider code and task parameters:
 
 * Hook defaults: ``RETRY_ATTEMPTS``, ``FAST_TIMEOUT_SECONDS``, ``SLOW_TIMEOUT_SECONDS``
-  (see ``airflow/providers/arenadata/ozone/hooks/ozone.py``).
+  (see ``airflow/providers/arenadata/ozone/utils/params.py``).
 * Operators/transfers/sensors can override ``retry_attempts`` and ``timeout``
   per task where needed.

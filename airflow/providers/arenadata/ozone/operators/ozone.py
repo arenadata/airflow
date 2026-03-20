@@ -17,23 +17,22 @@
 
 from __future__ import annotations
 
-import io
-import json
 import tempfile
 from pathlib import Path
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.hooks.ozone import (
-    FAST_TIMEOUT_SECONDS,
-    RETRY_ATTEMPTS,
-    SLOW_TIMEOUT_SECONDS,
     OzoneAdminHook,
     OzoneFsHook,
 )
-from airflow.providers.arenadata.ozone.hooks.ozone_s3 import OzoneS3Hook
 from airflow.providers.arenadata.ozone.utils.helpers import (
     TypeNormalizationHelper,
+)
+from airflow.providers.arenadata.ozone.utils.params import (
+    FAST_TIMEOUT_SECONDS,
+    RETRY_ATTEMPTS,
+    SLOW_TIMEOUT_SECONDS,
 )
 from airflow.utils.context import Context  # noqa: TCH001
 
@@ -537,73 +536,4 @@ class OzoneDownloadFileOperator(BaseOperator):
             self.local_path,
             overwrite=self.overwrite,
             timeout=self.timeout,
-        )
-
-
-class OzoneS3CreateBucketOperator(BaseOperator):
-    """Create a bucket via S3 Gateway."""
-
-    template_fields = ("bucket_name",)
-
-    def __init__(self, bucket_name: str, ozone_conn_id: str = OzoneS3Hook.default_conn_name, **kwargs):
-        super().__init__(**kwargs)
-        self.bucket_name = bucket_name
-        self.ozone_conn_id = ozone_conn_id
-
-    def execute(self, context: Context):
-        """Create a bucket through the S3 gateway hook."""
-        hook = OzoneS3Hook(ozone_conn_id=self.ozone_conn_id)
-        hook.create_bucket_with_retry(bucket_name=self.bucket_name)
-
-
-class OzoneS3PutObjectOperator(BaseOperator):
-    """
-    Put object via S3 Gateway.
-
-    ``data`` supports ``str``, ``bytes``, and JSON-serializable objects.
-    Strings are uploaded as-is, bytes are uploaded as binary streams, and
-    other objects are JSON-serialized before upload.
-    """
-
-    template_fields = ("bucket_name", "key", "data")
-
-    def __init__(
-        self,
-        bucket_name: str,
-        key: str,
-        data: object,
-        ozone_conn_id: str = OzoneS3Hook.default_conn_name,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.bucket_name = bucket_name
-        self.key = key
-        self.ozone_conn_id = ozone_conn_id
-        if data is None:
-            raise ValueError("data parameter cannot be None")
-        self.data = data
-
-    def execute(self, context: Context):
-        """Upload object content through the S3 gateway hook."""
-        hook = OzoneS3Hook(ozone_conn_id=self.ozone_conn_id)
-        if isinstance(self.data, bytes):
-            data_stream = io.BytesIO(self.data)
-            hook.load_file_obj_with_retry(
-                file_obj=data_stream, key=self.key, bucket_name=self.bucket_name, replace=True
-            )
-            return
-
-        if isinstance(self.data, str):
-            payload = self.data
-        else:
-            try:
-                payload = json.dumps(self.data)
-            except (TypeError, ValueError) as e:
-                raise AirflowException(
-                    "data must be str, bytes, or a JSON-serializable object "
-                    f"(got {type(self.data).__name__})"
-                ) from e
-
-        hook.load_string_with_retry(
-            string_data=payload, key=self.key, bucket_name=self.bucket_name, replace=True
         )

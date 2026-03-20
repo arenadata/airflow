@@ -21,8 +21,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from airflow.exceptions import AirflowException
-from airflow.providers.arenadata.ozone.hooks.ozone import OzoneCliHook
 from airflow.providers.arenadata.ozone.utils.security import (
     KerberosConfig,
     SecretResolver,
@@ -33,7 +31,7 @@ from airflow.providers.arenadata.ozone.utils.security import (
 class TestGetSecretValue:
     """Tests for get_secret_value."""
 
-    @patch("airflow.providers.arenadata.ozone.utils.security.secret_resolver.ensure_secrets_loaded")
+    @patch("airflow.providers.arenadata.ozone.utils.security.ensure_secrets_loaded")
     def test_resolves_secret_uri_from_backend(self, mock_ensure_loaded):
         mock_backend = MagicMock()
         mock_backend.get_config.return_value = "resolved_secret"
@@ -44,7 +42,7 @@ class TestGetSecretValue:
         assert result == "resolved_secret"
         mock_backend.get_config.assert_called_once_with("secret://vault/ozone/password")
 
-    @patch("airflow.providers.arenadata.ozone.utils.security.secret_resolver.ensure_secrets_loaded")
+    @patch("airflow.providers.arenadata.ozone.utils.security.ensure_secrets_loaded")
     def test_secret_not_found_raises(self, mock_ensure_loaded):
         mock_backend = MagicMock()
         mock_backend.get_config.return_value = None
@@ -53,12 +51,23 @@ class TestGetSecretValue:
         with pytest.raises(ValueError, match="Secret not found"):
             SecretResolver.get_secret_value("secret://missing/uri")
 
+    def test_get_secret_value_masks_plain_value_when_requested(self, monkeypatch):
+        masked: dict[str, object] = {}
+
+        def _capture_masked(value: object) -> None:
+            masked["value"] = value
+
+        monkeypatch.setattr("airflow.providers.arenadata.ozone.utils.security.mask_secret", _capture_masked)
+        result = SecretResolver.get_secret_value("plain_secret", mask=True)
+        assert result == "plain_secret"
+        assert masked["value"] == "plain_secret"
+
 
 class TestGetKerberosEnvVars:
     """Tests for KerberosConfig.get_env_vars."""
 
     def test_empty_extra_returns_empty(self):
-        assert KerberosConfig.get_env_vars({}) == {}
+        assert KerberosConfig.get_env_vars({}, scope="ozone") == {}
 
     def test_ozone_kerberos_from_extra(self):
         extra = {
@@ -66,26 +75,38 @@ class TestGetKerberosEnvVars:
             "kerberos_principal": "user@REALM",
             "kerberos_keytab": "/etc/keytab/user.keytab",
         }
-        result = KerberosConfig.get_env_vars(extra)
+        result = KerberosConfig.get_env_vars(extra, scope="ozone")
         assert result["HADOOP_SECURITY_AUTHENTICATION"] == "kerberos"
         assert result["KERBEROS_PRINCIPAL"] == "user@REALM"
         assert result["KERBEROS_KEYTAB"] == "/etc/keytab/user.keytab"
 
-    def test_ozone_kerberos_with_dot_key(self):
-        extra = {"hadoop.security.authentication": "kerberos", "kerberos_principal": "u@R"}
-        result = KerberosConfig.get_env_vars(extra)
-        assert result["HADOOP_SECURITY_AUTHENTICATION"] == "kerberos"
-        assert result["KERBEROS_PRINCIPAL"] == "u@R"
-
-    def test_hive_kerberos_block(self):
+    def test_ozone_scope_does_not_include_hdfs_kerberos_env(self):
         extra = {
-            "hive_kerberos_enabled": "true",
-            "hive_kerberos_principal": "hive@R",
-            "hive_kerberos_keytab": "/path/hive.keytab",
+            "hadoop_security_authentication": "kerberos",
+            "kerberos_principal": "user@REALM",
+            "kerberos_keytab": "/etc/keytab/user.keytab",
+            "hdfs_kerberos_enabled": "true",
+            "hdfs_kerberos_principal": "hdfs@REALM",
+            "hdfs_kerberos_keytab": "/etc/keytab/hdfs.keytab",
         }
-        result = KerberosConfig.get_env_vars(extra)
-        assert result["HIVE_KERBEROS_PRINCIPAL"] == "hive@R"
-        assert result["HIVE_KERBEROS_KEYTAB"] == "/path/hive.keytab"
+        result = KerberosConfig.get_env_vars(extra, scope="ozone")
+        assert "HDFS_KERBEROS_PRINCIPAL" not in result
+        assert "HDFS_KERBEROS_KEYTAB" not in result
+
+    def test_hdfs_scope_does_not_include_ozone_kerberos_env(self):
+        extra = {
+            "hadoop_security_authentication": "kerberos",
+            "kerberos_principal": "user@REALM",
+            "kerberos_keytab": "/etc/keytab/user.keytab",
+            "hdfs_kerberos_enabled": "true",
+            "hdfs_kerberos_principal": "hdfs@REALM",
+            "hdfs_kerberos_keytab": "/etc/keytab/hdfs.keytab",
+        }
+        result = KerberosConfig.get_env_vars(extra, scope="hdfs")
+        assert "HADOOP_SECURITY_AUTHENTICATION" not in result
+        assert "KERBEROS_PRINCIPAL" not in result
+        assert result["HDFS_KERBEROS_PRINCIPAL"] == "hdfs@REALM"
+        assert result["HDFS_KERBEROS_KEYTAB"] == "/etc/keytab/hdfs.keytab"
 
 
 class TestApplySslEnvVars:
@@ -97,6 +118,30 @@ class TestApplySslEnvVars:
         result = SSLConfig.apply_ssl_env_vars(overrides, existing)
         assert result == {"A": "1", "B": "2"}
 
+    def test_scope_ozone_does_not_include_hdfs_ssl_env(self):
+        extra = {
+            "ozone_security_enabled": "true",
+            "ozone_om_https_port": "9879",
+            "hdfs_ssl_enabled": "true",
+            "hdfs_ssl_keystore_location": "/etc/hdfs.ks",
+        }
+        config = SSLConfig.from_extra(extra, scope="ozone")
+        env = config.as_env()
+        assert env["OZONE_SECURITY_ENABLED"] == "true"
+        assert "HDFS_SSL_ENABLED" not in env
+
+    def test_scope_hdfs_does_not_include_ozone_ssl_env(self):
+        extra = {
+            "ozone_security_enabled": "true",
+            "ozone_om_https_port": "9879",
+            "hdfs_ssl_enabled": "true",
+            "hdfs_ssl_keystore_location": "/etc/hdfs.ks",
+        }
+        config = SSLConfig.from_extra(extra, scope="hdfs")
+        env = config.as_env()
+        assert env["HDFS_SSL_ENABLED"] == "true"
+        assert "OZONE_SECURITY_ENABLED" not in env
+
 
 class TestApplyKerberosEnvVars:
     """Tests for KerberosConfig.apply_env_vars."""
@@ -107,9 +152,9 @@ class TestApplyKerberosEnvVars:
         assert "-Dhadoop.security.authentication=kerberos" in result.get("HADOOP_OPTS", "")
         assert "-Dhadoop.security.authentication=kerberos" in result.get("OZONE_OPTS", "")
 
-    def test_reuses_existing_conf_dir_when_kerberos_enabled(self):
+    def test_reuses_existing_ozone_conf_dir_when_kerberos_enabled(self):
         env_vars = {"HADOOP_SECURITY_AUTHENTICATION": "kerberos"}
-        existing = {"HADOOP_CONF_DIR": "/opt/airflow/ozone-conf"}
+        existing = {"OZONE_CONF_DIR": "/opt/airflow/ozone-conf"}
         result = KerberosConfig.apply_env_vars(env_vars, existing)
         assert result["HADOOP_CONF_DIR"] == "/opt/airflow/ozone-conf"
         assert result["OZONE_CONF_DIR"] == "/opt/airflow/ozone-conf"
@@ -119,27 +164,3 @@ class TestApplyKerberosEnvVars:
         result = KerberosConfig.apply_env_vars(env_vars, existing_env={})
         assert "HADOOP_CONF_DIR" not in result
         assert "OZONE_CONF_DIR" not in result
-
-
-class TestOzoneCliHookConnectionSnapshot:
-    """Tests for fail-fast host/port validation in OzoneCliHook."""
-
-    def test_connection_snapshot_requires_host(self):
-        conn = MagicMock()
-        conn.host = None
-        conn.port = 9862
-        conn.extra_dejson = {}
-        hook = OzoneCliHook(ozone_conn_id="ozone_default")
-        hook.get_connection = lambda _: conn
-        with pytest.raises(AirflowException, match="must define host"):
-            _ = hook.connection_snapshot
-
-    def test_connection_snapshot_requires_port(self):
-        conn = MagicMock()
-        conn.host = "om-host"
-        conn.port = None
-        conn.extra_dejson = {}
-        hook = OzoneCliHook(ozone_conn_id="ozone_default")
-        hook.get_connection = lambda _: conn
-        with pytest.raises(AirflowException, match="must define port"):
-            _ = hook.connection_snapshot

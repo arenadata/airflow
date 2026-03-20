@@ -22,10 +22,8 @@ from __future__ import annotations
 
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
 from airflow.providers.arenadata.ozone.transfers.ozone_backup import OzoneBackupOperator
-from airflow.providers.arenadata.ozone.transfers.ozone_to_s3 import OzoneToS3Operator
 
 __all__ = [
     "HdfsToOzoneOperator",
     "OzoneBackupOperator",
-    "OzoneToS3Operator",
 ]

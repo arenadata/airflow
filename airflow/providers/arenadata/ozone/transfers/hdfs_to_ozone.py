@@ -24,12 +24,13 @@ from functools import cached_property
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
-from airflow.providers.arenadata.ozone.hooks.ozone import (
+from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner
+from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
+from airflow.providers.arenadata.ozone.utils.params import (
+    HDFS_SSL_ENABLED_KEY,
     RETRY_ATTEMPTS,
     SLOW_TIMEOUT_SECONDS,
 )
-from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner
-from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
 from airflow.providers.arenadata.ozone.utils.security import (
     SSLConfig,
 )
@@ -43,8 +44,8 @@ class HdfsToOzoneOperator(BaseOperator):
     Migrate data from HDFS to Ozone using DistCp.
 
     Supports SSL/TLS configuration via HDFS connection Extra:
-    - hdfs_ssl_enabled: Enable SSL/TLS for HDFS connections
-    - dfs_encrypt_data_transfer: Enable data transfer encryption
+    - hdfs_ssl_enabled: canonical flag that enables HDFS SSL/TLS contract.
+    - dfs_encrypt_data_transfer: optional transport encryption parameter (not an SSL enable flag alias).
     - hdfs_ssl_keystore_location: Path to keystore file
     - hdfs_ssl_keystore_password: Keystore password
     - hdfs_ssl_truststore_location: Path to truststore file
@@ -83,7 +84,8 @@ class HdfsToOzoneOperator(BaseOperator):
             return SSLConfig.load_from_connection(
                 conn,
                 conn_id=self.hdfs_conn_id,
-                enabled_flag_keys=("hdfs_ssl_enabled", "dfs.encrypt.data.transfer"),
+                scope="hdfs",
+                enabled_flag_key=HDFS_SSL_ENABLED_KEY,
             )
         except AirflowException as err:
             # Connection might not exist yet, that's OK

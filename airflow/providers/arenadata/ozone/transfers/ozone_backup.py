@@ -20,11 +20,13 @@ from __future__ import annotations
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.hooks.ozone import (
-    RETRY_ATTEMPTS,
-    SLOW_TIMEOUT_SECONDS,
     OzoneAdminHook,
 )
 from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
+from airflow.providers.arenadata.ozone.utils.params import (
+    RETRY_ATTEMPTS,
+    SLOW_TIMEOUT_SECONDS,
+)
 from airflow.utils.context import Context  # noqa: TCH001
 
 
