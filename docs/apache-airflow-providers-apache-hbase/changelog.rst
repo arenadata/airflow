@@ -58,7 +58,6 @@ Connection Features
 
 * **Thrift2 Protocol** - Native Thrift2 client implementation without external dependencies
 * **Connection Pooling** - Built-in connection pool for high-throughput operations with configurable pool size
-* **Kerberos Authentication** - GSSAPI authentication with keytab support
 * **Retry Logic** - Configurable retry mechanism with exponential backoff
 * **Multiple Strategies** - ThriftStrategy for single connections, PooledThrift2Strategy for pooled connections
 
