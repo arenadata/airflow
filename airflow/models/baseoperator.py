@@ -97,6 +97,7 @@ from airflow.utils.context import Context, context_get_outlet_events
 from airflow.utils.decorators import fixup_decorator_warning_stack
 from airflow.utils.edgemodifier import EdgeModifier
 from airflow.utils.helpers import validate_instance_args, validate_key
+from airflow.utils.log.secrets_masker import redact
 from airflow.utils.operator_helpers import ExecutionCallableRunner
 from airflow.utils.operator_resources import Resources
 from airflow.utils.session import NEW_SESSION, provide_session
@@ -365,6 +366,11 @@ def partial(
     partial_kwargs["end_date"] = timezone.convert_to_utc(partial_kwargs["end_date"])
     if partial_kwargs["pool"] is None:
         partial_kwargs["pool"] = Pool.DEFAULT_POOL_NAME
+    if partial_kwargs["pool_slots"] < 1:
+        dag_str = ""
+        if dag:
+            dag_str = f" in dag {dag.dag_id}"
+        raise ValueError(f"pool slots for {task_id}{dag_str} cannot be less than 1")
     partial_kwargs["retries"] = parse_retries(partial_kwargs["retries"])
     partial_kwargs["retry_delay"] = coerce_timedelta(partial_kwargs["retry_delay"], key="retry_delay")
     if partial_kwargs["max_retry_delay"] is not None:
@@ -405,6 +411,8 @@ class ExecutorSafeguard:
             sentinel = kwargs.pop(sentinel_key, None)
 
             if sentinel:
+                if not getattr(cls._sentinel, "callers", None):
+                    cls._sentinel.callers = {}
                 cls._sentinel.callers[sentinel_key] = sentinel
             else:
                 sentinel = cls._sentinel.callers.pop(f"{func.__qualname__.split('.')[0]}__sentinel", None)
@@ -656,6 +664,8 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         This allows the executor to trigger higher priority tasks before
         others when things get backed up. Set priority_weight as a higher
         number for more important tasks.
+        As not all database engines support 64-bit integers, values are capped with 32-bit.
+        Valid range is from -2,147,483,648 to 2,147,483,647.
     :param weight_rule: weighting method used for the effective total
         priority weight of the task. Options are:
         ``{ downstream | upstream | absolute }`` default is ``downstream``
@@ -677,7 +687,8 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         Additionally, when set to ``absolute``, there is bonus effect of
         significantly speeding up the task creation process as for very large
         DAGs. Options can be set as string or using the constants defined in
-        the static class ``airflow.utils.WeightRule``
+        the static class ``airflow.utils.WeightRule``.
+        Irrespective of the weight rule, resulting priority values are capped with 32-bit.
         |experimental|
         Since 2.9.0, Airflow allows to define custom priority weight strategy,
         by creating a subclass of
@@ -948,21 +959,23 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
             if not conf.getboolean("operators", "ALLOW_ILLEGAL_ARGUMENTS"):
                 raise AirflowException(
                     f"Invalid arguments were passed to {self.__class__.__name__} (task_id: {task_id}). "
-                    f"Invalid arguments were:\n**kwargs: {kwargs}",
+                    f"Invalid arguments were:\n**kwargs: {redact(kwargs)}",
                 )
             warnings.warn(
                 f"Invalid arguments were passed to {self.__class__.__name__} (task_id: {task_id}). "
                 "Support for passing such arguments will be dropped in future. "
-                f"Invalid arguments were:\n**kwargs: {kwargs}",
+                f"Invalid arguments were:\n**kwargs: {redact(kwargs)}",
                 category=RemovedInAirflow3Warning,
                 stacklevel=3,
             )
-        validate_key(task_id)
 
         dag = dag or DagContext.get_current_dag()
         task_group = task_group or TaskGroupContext.get_current_task_group(dag)
 
         self.task_id = task_group.child_id(task_id) if task_group else task_id
+
+        validate_key(self.task_id)
+
         if not self.__from_mapped and task_group:
             task_group.add(self)
 
@@ -998,6 +1011,9 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         self.run_as_user = run_as_user
         self.retries = parse_retries(retries)
         self.queue = queue
+
+        if pool is not None and pool != Pool.DEFAULT_POOL_NAME:
+            validate_key(pool)
         self.pool = Pool.DEFAULT_POOL_NAME if pool is None else pool
         self.pool_slots = pool_slots
         if self.pool_slots < 1:

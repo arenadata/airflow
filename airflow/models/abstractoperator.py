@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime
 import inspect
+import warnings
 from abc import abstractproperty
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Collection, Iterable, Iterator, Sequence
@@ -27,7 +28,7 @@ import methodtools
 from sqlalchemy import select
 
 from airflow.configuration import conf
-from airflow.exceptions import AirflowException
+from airflow.exceptions import AirflowException, RemovedInAirflow3Warning
 from airflow.models.expandinput import NotFullyPopulated
 from airflow.models.taskmixin import DAGNode, DependencyMixin
 from airflow.template.templater import Templater
@@ -40,7 +41,7 @@ from airflow.utils.state import State, TaskInstanceState
 from airflow.utils.task_group import MappedTaskGroup
 from airflow.utils.trigger_rule import TriggerRule
 from airflow.utils.types import NOTSET, ArgNotSet
-from airflow.utils.weight_rule import WeightRule
+from airflow.utils.weight_rule import WeightRule, db_safe_priority
 
 TaskStateChangeCallback = Callable[[Context], None]
 
@@ -467,7 +468,7 @@ class AbstractOperator(Templater, DAGNode):
         )
 
         if isinstance(self.weight_rule, _AbsolutePriorityWeightStrategy):
-            return self.priority_weight
+            return db_safe_priority(self.priority_weight)
         elif isinstance(self.weight_rule, _DownstreamPriorityWeightStrategy):
             upstream = False
         elif isinstance(self.weight_rule, _UpstreamPriorityWeightStrategy):
@@ -476,10 +477,13 @@ class AbstractOperator(Templater, DAGNode):
             upstream = False
         dag = self.get_dag()
         if dag is None:
-            return self.priority_weight
-        return self.priority_weight + sum(
-            dag.task_dict[task_id].priority_weight
-            for task_id in self.get_flat_relative_ids(upstream=upstream)
+            return db_safe_priority(self.priority_weight)
+        return db_safe_priority(
+            self.priority_weight
+            + sum(
+                dag.task_dict[task_id].priority_weight
+                for task_id in self.get_flat_relative_ids(upstream=upstream)
+            )
         )
 
     @cached_property
@@ -537,6 +541,15 @@ class AbstractOperator(Templater, DAGNode):
         old_signature = all(name != "ti_key" for name, p in parameters.items() if p.kind != p.VAR_KEYWORD)
 
         if old_signature:
+            warnings.warn(
+                f"Operator link {link_name!r} uses the deprecated get_link() "
+                "signature that takes an execution date. Change the signature "
+                "to accept 'self, operator, ti_key' instead. See documentation "
+                " *Define an operator extra link* to find what information is "
+                "available in 'ti_key'.",
+                category=RemovedInAirflow3Warning,
+                stacklevel=1,
+            )
             return link.get_link(self.unmap(None), ti.dag_run.logical_date)  # type: ignore[misc]
         return link.get_link(self.unmap(None), ti_key=ti.key)
 

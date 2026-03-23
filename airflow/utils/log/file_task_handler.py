@@ -46,6 +46,7 @@ from airflow.utils.state import State, TaskInstanceState
 if TYPE_CHECKING:
     from pendulum import DateTime
 
+    from airflow.executors.base_executor import BaseExecutor
     from airflow.models import DagRun
     from airflow.models.taskinstance import TaskInstance
     from airflow.models.taskinstancekey import TaskInstanceKey
@@ -89,11 +90,11 @@ def _fetch_logs_from_service(url, log_relative_path):
     # Import occurs in function scope for perf. Ref: https://github.com/apache/airflow/pull/21438
     import requests
 
-    from airflow.utils.jwt_signer import JWTSigner
+    from airflow.utils.jwt_signer import JWTSigner, get_signing_key
 
     timeout = conf.getint("webserver", "log_fetch_timeout_sec", fallback=None)
     signer = JWTSigner(
-        secret_key=conf.get("webserver", "secret_key"),
+        secret_key=get_signing_key("webserver", "secret_key"),
         expiration_time_in_seconds=conf.getint("webserver", "log_request_clock_grace", fallback=30),
         audience="task-instance-logs",
     )
@@ -185,6 +186,8 @@ class FileTaskHandler(logging.Handler):
     inherits_from_empty_operator_log_message = (
         "Operator inherits from empty operator and thus does not have logs"
     )
+    executor_instances: dict[str, BaseExecutor] = {}
+    DEFAULT_EXECUTOR_KEY = "_default_executor"
 
     def __init__(
         self,
@@ -340,11 +343,26 @@ class FileTaskHandler(logging.Handler):
     def _read_grouped_logs(self):
         return False
 
-    @cached_property
-    def _executor_get_task_log(self) -> Callable[[TaskInstance, int], tuple[list[str], list[str]]]:
-        """This cached property avoids loading executor repeatedly."""
-        executor = ExecutorLoader.get_default_executor()
-        return executor.get_task_log
+    def _get_executor_get_task_log(
+        self, ti: TaskInstance
+    ) -> Callable[[TaskInstance, int], tuple[list[str], list[str]]]:
+        """
+        Get the get_task_log method from executor of current task instance.
+
+        Since there might be multiple executors, so we need to get the executor of current task instance instead of getting from default executor.
+        :param ti: task instance object
+        :return: get_task_log method of the executor
+        """
+        executor_name = ti.executor or self.DEFAULT_EXECUTOR_KEY
+        executor = self.executor_instances.get(executor_name)
+        if executor is not None:
+            return executor.get_task_log
+
+        if executor_name == self.DEFAULT_EXECUTOR_KEY:
+            self.executor_instances[executor_name] = ExecutorLoader.get_default_executor()
+        else:
+            self.executor_instances[executor_name] = ExecutorLoader.load_executor(executor_name)
+        return self.executor_instances[executor_name].get_task_log
 
     def _read(
         self,
@@ -386,7 +404,8 @@ class FileTaskHandler(logging.Handler):
             messages_list.extend(remote_messages)
         has_k8s_exec_pod = False
         if ti.state == TaskInstanceState.RUNNING:
-            response = self._executor_get_task_log(ti, try_number)
+            executor_get_task_log = self._get_executor_get_task_log(ti)
+            response = executor_get_task_log(ti, try_number)
             if response:
                 executor_messages, executor_logs = response
             if executor_messages:
@@ -416,7 +435,11 @@ class FileTaskHandler(logging.Handler):
             )
         )
         log_pos = len(logs)
-        messages = "".join([f"*** {x}\n" for x in messages_list])
+        # Log message source details are grouped: they are not relevant for most users and can
+        # distract them from finding the root cause of their errors
+        messages = " INFO - ::group::Log message source details\n"
+        messages += "".join([f"*** {x}\n" for x in messages_list])
+        messages += " INFO - ::endgroup::\n"
         end_of_log = ti.try_number != try_number or ti.state not in (
             TaskInstanceState.RUNNING,
             TaskInstanceState.DEFERRED,

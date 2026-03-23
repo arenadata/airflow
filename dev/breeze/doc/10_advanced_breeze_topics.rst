@@ -29,17 +29,10 @@ Debugging/developing Breeze
 Breeze can be quite easily debugged with PyCharm/VSCode or any other IDE - but it might be less discoverable
 if you never tested modules and if you do not know how to bypass version check of breeze.
 
-For testing, you can create your own virtual environment, or use the one that ``pipx`` created for you if you
-already installed breeze following the recommended ``pipx install -e ./dev/breeze`` command.
+For testing, you can create your own virtual environment, or use the one that ``uv`` or ``pipx`` created
+for you if you already installed breeze following the recommended installation.
 
-For local virtualenv, you can use ``pyenv`` or any other virtualenv wrapper. For example with ``pyenv``,
-you can use ``pyenv virtualenv 3.8.6 airflow-breeze`` to create virtualenv called ``airflow-breeze``
-with Python 3.8.6. Then you can use ``pyenv activate airflow-breeze`` to activate it and install breeze
-in editable mode with ``pip install -e ./dev/breeze``.
-
-For ``pipx`` virtualenv, you can use the virtualenv that ``pipx`` created for you. You can find the name
-where ``pipx`` keeps their venvs via ``pipx list`` command. Usually it is
-``${HOME}/.local/pipx/venvs/apache-airflow-breeze`` where ``$HOME`` is your home directory.
+Or you can change your directory to
 
 The venv can be used for running breeze tests and for debugging breeze. While running tests should
 be usually "out-of-the-box" for most IDEs, once you configure ``./dev/breeze`` project to use the venv,
@@ -56,7 +49,7 @@ make sure to follow these steps:
   this will bypass the check we run in Breeze to see if there are new requirements to install for it
 
 See example configuration for PyCharm which has run/debug configuration for
-``breeze sbom generate-providers-requirements --provider-id sqlite --python 3.8``
+``breeze sbom generate-providers-requirements --provider-id sqlite --python 3.10``
 
 .. raw:: html
 
@@ -156,15 +149,15 @@ If you want to add core dependency that should always be installed - you need to
 to ``dependencies`` section. If you want to add it to one of the optional core extras, you should
 add it in the extra definition in ``pyproject.toml`` (you need to find out where it is defined).
 If you want to add it to one of the providers, you need to add it to the ``provider.yaml`` file in the provider
-directory - but remember that this should be followed by running pre-commit that will automatically update
+directory - but remember that this should be followed by running prek that will automatically update
 the ``pyproject.toml`` with the new dependencies as the ``provider.yaml`` files are not used directly, they
 are used to update ``pyproject.toml`` file:
 
 .. code-block:: bash
 
-    pre-commit run update-providers-dependencies  --all-files
+    prek run update-providers-dependencies  --all-files
 
-You can also run the pre-commit by ``breeze static-checks --type update-providers-dependencies --all-files``
+You can also run the prek by ``breeze static-checks --type update-providers-dependencies --all-files``
 command - which provides autocomplete.
 
 After you've updated the dependencies, you need to rebuild the image:
@@ -198,13 +191,13 @@ scripts are present in ``scripts/docker`` directory and are aptly (!) named ``in
 of the apt dependencies are installed in the ``install_os_dependencies.sh``, but some are installed in
 other scripts (for example ``install_postgres.sh`` or ``install_mysql.sh``).
 
-After you modify the dependencies in the scripts, you need to inline them by running pre-commit:
+After you modify the dependencies in the scripts, you need to inline them by running prek:
 
 .. code-block:: bash
 
-    pre-commit run update-inlined-dockerfile-scripts --all-files
+    prek run update-inlined-dockerfile-scripts --all-files
 
-You can also run the pre-commit by ``breeze static-checks --type update-inlined-dockerfile-scripts --all-files``
+You can also run the prek by ``breeze static-checks --type update-inlined-dockerfile-scripts --all-files``
 command - which provides autocomplete.
 
 

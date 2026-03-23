@@ -22,6 +22,7 @@ import os
 import shutil
 import subprocess
 import sys
+import textwrap
 from copy import copy
 from pathlib import Path
 from typing import Any
@@ -212,14 +213,13 @@ def change_config(
     asciiart_file = "suppress_asciiart"
     cheatsheet_file = "suppress_cheatsheet"
     colour_file = "suppress_colour"
-
     if asciiart is not None:
         if asciiart:
             delete_cache(asciiart_file)
-            get_console().print("[info]Enable ASCIIART![/]")
+            get_console().print("[info]Enable ASCIIART[/]")
         else:
             touch_cache_file(asciiart_file)
-            get_console().print("[info]Disable ASCIIART![/]")
+            get_console().print("[info]Disable ASCIIART[/]")
     if cheatsheet is not None:
         if cheatsheet:
             delete_cache(cheatsheet_file)
@@ -235,28 +235,79 @@ def change_config(
             touch_cache_file(colour_file)
             get_console().print("[info]Disable Colour[/]")
 
-    def get_status(file: str):
+    def get_supress_status(file: str):
         return "disabled" if check_if_cache_exists(file) else "enabled"
+
+    def get_status(file: str):
+        return "enabled" if check_if_cache_exists(file) else "disabled"
 
     get_console().print()
     get_console().print("[info]Current configuration:[/]")
     get_console().print()
     get_console().print(f"[info]* Python: {python}[/]")
     get_console().print(f"[info]* Backend: {backend}[/]")
-    get_console().print()
     get_console().print(f"[info]* Postgres version: {postgres_version}[/]")
     get_console().print(f"[info]* MySQL version: {mysql_version}[/]")
     get_console().print()
-    get_console().print(f"[info]* ASCIIART: {get_status(asciiart_file)}[/]")
-    get_console().print(f"[info]* Cheatsheet: {get_status(cheatsheet_file)}[/]")
+    get_console().print(f"[info]* ASCIIART: {get_supress_status(asciiart_file)}[/]")
+    get_console().print(f"[info]* Cheatsheet: {get_supress_status(cheatsheet_file)}[/]")
     get_console().print()
     get_console().print()
-    get_console().print(f"[info]* Colour: {get_status(colour_file)}[/]")
+    get_console().print(f"[info]* Colour: {get_supress_status(colour_file)}[/]")
     get_console().print()
 
 
-def dict_hash(dictionary: dict[str, Any]) -> str:
-    """MD5 hash of a dictionary. Sorted and dumped via json to account for random sequence)"""
+def dedent_help(dictionary: dict[str, Any]) -> None:
+    """
+    Dedent help stored in the dictionary.
+
+    Python 3.13 automatically dedents docstrings retrieved from functions.
+    See https://github.com/python/cpython/issues/81283
+
+    However, click uses docstrings in the absence of help strings, and we are using click
+    command definition dictionary hash to detect changes in the command definitions, so if the
+    help strings are not dedented, the hash will change.
+
+    That's why we must de-dent all the help strings in the command definition dictionary
+    before we hash it.
+    """
+    for key, value in dictionary.items():
+        if isinstance(value, dict):
+            dedent_help(value)
+        elif key == "help" and isinstance(value, str):
+            dictionary[key] = textwrap.dedent(value)
+
+
+def recursively_sort_opts(object: dict[str, Any] | list[Any]) -> None:
+    if isinstance(object, dict):
+        for key in object:
+            if key == "opts" and isinstance(object[key], list):
+                object[key] = sorted(object[key])
+            elif isinstance(object[key], dict):
+                recursively_sort_opts(object[key])
+            elif isinstance(object[key], list):
+                recursively_sort_opts(object[key])
+    elif isinstance(object, list):
+        for element in object:
+            recursively_sort_opts(element)
+
+
+def dict_hash(dictionary: dict[str, Any], dedent_help_strings: bool = True, sort_opts: bool = True) -> str:
+    """
+    MD5 hash of a dictionary of configuration for click.
+
+    Sorted and dumped via json to account for random sequence of keys in the dictionary. Also it
+    implements a few corrections to the dict because click does not always keep the same sorting order in
+    options or produced differently indented help strings.
+
+    :param dictionary: dictionary to hash
+    :param dedent_help_strings: whether to dedent help strings before hashing
+    :param sort_opts: whether to sort options before hashing
+    """
+    if dedent_help_strings:
+        dedent_help(dictionary)
+    if sort_opts:
+        recursively_sort_opts(dictionary)
     # noinspection InsecureHash
     dhash = hashlib.md5()
     try:
@@ -520,6 +571,7 @@ DEVELOPER_COMMANDS = [
     "exec",
     "shell",
     "compile-www-assets",
+    "compile-ui-assets",
     "cleanup",
     "generate-migration-file",
 ]

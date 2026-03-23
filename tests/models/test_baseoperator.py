@@ -564,6 +564,33 @@ class TestBaseOperator:
         assert [op2] == tgop3.get_direct_relatives(upstream=False)
         assert [op2] == tgop4.get_direct_relatives(upstream=False)
 
+    def test_baseoperator_raises_exception_when_task_id_plus_taskgroup_id_exceeds_250_chars(self):
+        """Test exception is raised when operator task id + taskgroup id > 250 chars."""
+        dag = DAG(dag_id="foo", schedule=None, start_date=datetime.now())
+
+        tg1 = TaskGroup("A" * 20, dag=dag)
+        with pytest.raises(AirflowException, match="The key has to be less than 250 characters"):
+            BaseOperator(task_id="1" * 250, task_group=tg1, dag=dag)
+
+    def test_baseoperator_with_task_id_and_taskgroup_id_less_than_250_chars(self):
+        """Test exception is not raised when operator task id + taskgroup id < 250 chars."""
+        dag = DAG(dag_id="foo", schedule=None, start_date=datetime.now())
+
+        tg1 = TaskGroup("A" * 10, dag=dag)
+        try:
+            BaseOperator(task_id="1" * 239, task_group=tg1, dag=dag)
+        except Exception as e:
+            pytest.fail(f"Exception raised: {e}")
+
+    def test_baseoperator_with_task_id_less_than_250_chars(self):
+        """Test exception is not raised when operator task id  < 250 chars."""
+        dag = DAG(dag_id="foo", schedule=None, start_date=datetime.now())
+
+        try:
+            BaseOperator(task_id="1" * 249, dag=dag)
+        except Exception as e:
+            pytest.fail(f"Exception raised: {e}")
+
     def test_chain_linear(self):
         dag = DAG(dag_id="test_chain_linear", schedule=None, start_date=datetime.now())
 
@@ -829,6 +856,23 @@ class TestBaseOperator:
         # leaking a lot of state)
         assert caplog.messages == ["test"]
 
+    @mock.patch("airflow.models.baseoperator.redact")
+    def test_illegal_args_with_secrets(self, mock_redact):
+        """
+        Tests that operators on illegal arguments with secrets are correctly masked.
+        """
+        secret = "secretP4ssw0rd!"
+        mock_redact.side_effect = ["***"]
+
+        msg = r"Invalid arguments were passed to BaseOperator"
+        with pytest.raises(AirflowException, match=msg) as exc_info:
+            BaseOperator(
+                task_id="test_illegal_args",
+                secret_argument=secret,
+            )
+        assert "***" in str(exc_info.value)
+        assert secret not in str(exc_info.value)
+
     def test_invalid_type_for_default_arg(self):
         error_msg = "'max_active_tis_per_dag' has an invalid type <class 'str'> with value not_an_int, expected type is <class 'int'>"
         with pytest.raises(TypeError, match=error_msg):
@@ -844,6 +888,19 @@ class TestBaseOperator:
         operator = BaseOperator(task_id="test")
 
         mock_validate_instance_args.assert_called_once_with(operator, BASEOPERATOR_ARGS_EXPECTED_TYPES)
+
+    def test_valid_pool_arg(self):
+        my_pool = "my-pool"
+        op = BaseOperator(task_id="test_pool_arg", pool=my_pool)
+        assert op.pool == my_pool
+
+    def test_invalid_pool_arg(self):
+        pool_name = """'><script src=\"https://example.com/exploit.js\"></script>"""
+        error_msg = (
+            "The key (.*) has to be made of alphanumeric characters, dashes, dots and underscores exclusively"
+        )
+        with pytest.raises(AirflowException, match=error_msg):
+            BaseOperator(task_id="test_pool_validation_xss", pool=pool_name)
 
 
 def test_init_subclass_args():

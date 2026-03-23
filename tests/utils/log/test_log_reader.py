@@ -120,6 +120,7 @@ class TestLogView:
         session.delete(log_template)
         session.commit()
 
+    @conf_vars({("core", "use_historical_filename_templates"): "True"})
     def test_test_read_log_chunks_should_read_one_try(self):
         task_log_reader = TaskLogReader()
         ti = copy.copy(self.ti)
@@ -128,74 +129,60 @@ class TestLogView:
         assert logs[0] == [
             (
                 "localhost",
+                " INFO - ::group::Log message source details\n"
                 "*** Found local files:\n"
                 f"***   * {self.log_dir}/dag_log_reader/task_log_reader/2017-09-01T00.00.00+00.00/1.log\n"
+                " INFO - ::endgroup::\n"
                 "try_number=1.",
             )
         ]
         assert metadatas == {"end_of_log": True, "log_pos": 13}
 
+    @conf_vars({("core", "use_historical_filename_templates"): "True"})
     def test_test_read_log_chunks_should_read_all_files(self):
         task_log_reader = TaskLogReader()
         ti = copy.copy(self.ti)
         ti.state = TaskInstanceState.SUCCESS
         logs, metadatas = task_log_reader.read_log_chunks(ti=ti, try_number=None, metadata={})
 
-        assert logs == [
-            [
-                (
-                    "localhost",
-                    "*** Found local files:\n"
-                    f"***   * {self.log_dir}/dag_log_reader/task_log_reader/2017-09-01T00.00.00+00.00/1.log\n"
-                    "try_number=1.",
-                )
-            ],
-            [
-                (
-                    "localhost",
-                    "*** Found local files:\n"
-                    f"***   * {self.log_dir}/dag_log_reader/task_log_reader/2017-09-01T00.00.00+00.00/2.log\n"
-                    f"try_number=2.",
-                )
-            ],
-            [
-                (
-                    "localhost",
-                    "*** Found local files:\n"
-                    f"***   * {self.log_dir}/dag_log_reader/task_log_reader/2017-09-01T00.00.00+00.00/3.log\n"
-                    f"try_number=3.",
-                )
-            ],
-        ]
+        for i in range(0, 3):
+            assert logs[i][0][0] == "localhost"
+            assert (
+                "*** Found local files:\n"
+                f"***   * {self.log_dir}/dag_log_reader/task_log_reader/2017-09-01T00.00.00+00.00/{i + 1}.log\n"
+            ) in logs[i][0][1]
+            assert f"try_number={i + 1}." in logs[i][0][1]
         assert metadatas == {"end_of_log": True, "log_pos": 13}
 
+    @conf_vars({("core", "use_historical_filename_templates"): "True"})
     def test_test_test_read_log_stream_should_read_one_try(self):
         task_log_reader = TaskLogReader()
         ti = copy.copy(self.ti)
         ti.state = TaskInstanceState.SUCCESS
         stream = task_log_reader.read_log_stream(ti=ti, try_number=1, metadata={})
         assert list(stream) == [
-            "localhost\n*** Found local files:\n"
+            "localhost\n INFO - ::group::Log message source details\n*** Found local files:\n"
             f"***   * {self.log_dir}/dag_log_reader/task_log_reader/2017-09-01T00.00.00+00.00/1.log\n"
-            "try_number=1.\n"
+            " INFO - ::endgroup::\ntry_number=1.\n"
         ]
 
+    @conf_vars({("core", "use_historical_filename_templates"): "True"})
     def test_test_test_read_log_stream_should_read_all_logs(self):
         task_log_reader = TaskLogReader()
         self.ti.state = TaskInstanceState.SUCCESS  # Ensure mocked instance is completed to return stream
         stream = task_log_reader.read_log_stream(ti=self.ti, try_number=None, metadata={})
         assert list(stream) == [
-            "localhost\n*** Found local files:\n"
+            "localhost\n INFO - ::group::Log message source details\n*** Found local files:\n"
             f"***   * {self.log_dir}/dag_log_reader/task_log_reader/2017-09-01T00.00.00+00.00/1.log\n"
-            "try_number=1."
+            " INFO - ::endgroup::\ntry_number=1."
             "\n",
-            "localhost\n*** Found local files:\n"
+            "localhost\n INFO - ::group::Log message source details\n*** Found local files:\n"
             f"***   * {self.log_dir}/dag_log_reader/task_log_reader/2017-09-01T00.00.00+00.00/2.log\n"
-            "try_number=2."
+            " INFO - ::endgroup::\ntry_number=2."
             "\n",
-            "localhost\n*** Found local files:\n"
+            "localhost\n INFO - ::group::Log message source details\n*** Found local files:\n"
             f"***   * {self.log_dir}/dag_log_reader/task_log_reader/2017-09-01T00.00.00+00.00/3.log\n"
-            "try_number=3."
+            " INFO - ::endgroup::\ntry_number=3."
             "\n",
         ]
 
@@ -242,6 +229,23 @@ class TestLogView:
             any_order=False,
         )
 
+    @mock.patch("airflow.utils.log.file_task_handler.FileTaskHandler.read")
+    def test_read_log_stream_no_end_of_log_marker(self, mock_read):
+        mock_read.side_effect = [
+            ([[("", "hello")]], [{"end_of_log": False}]),
+            *[([[]], [{"end_of_log": False}]) for _ in range(10)],
+        ]
+
+        self.ti.state = TaskInstanceState.SUCCESS
+        task_log_reader = TaskLogReader()
+        task_log_reader.STREAM_LOOP_SLEEP_SECONDS = 0.001  # to speed up the test
+        log_stream = task_log_reader.read_log_stream(ti=self.ti, try_number=1, metadata={})
+        assert list(log_stream) == [
+            "\nhello\n",
+            "\n(Log stream stopped - End of log marker not found; logs may be incomplete.)\n",
+        ]
+        assert mock_read.call_count == 11
+
     def test_supports_external_link(self):
         task_log_reader = TaskLogReader()
 
@@ -262,6 +266,7 @@ class TestLogView:
         mock_prop.return_value = True
         assert task_log_reader.supports_external_link
 
+    @conf_vars({("core", "use_historical_filename_templates"): "True"})
     def test_task_log_filename_unique(self, dag_maker):
         """Ensure the default log_filename_template produces a unique filename.
 

@@ -21,7 +21,7 @@ from collections import defaultdict
 from datetime import timedelta
 from typing import TYPE_CHECKING
 from unittest import mock
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pendulum
 import pytest
@@ -37,7 +37,7 @@ from airflow.models.taskinstance import TaskInstance
 from airflow.models.taskmap import TaskMap
 from airflow.models.xcom_arg import XComArg
 from airflow.operators.python import PythonOperator
-from airflow.utils.state import TaskInstanceState
+from airflow.utils.state import State, TaskInstanceState
 from airflow.utils.task_group import TaskGroup
 from airflow.utils.task_instance_session import set_current_task_instance_session
 from airflow.utils.trigger_rule import TriggerRule
@@ -219,6 +219,15 @@ def test_partial_on_class_invalid_ctor_args() -> None:
     """
     with pytest.raises(TypeError, match=r"arguments 'foo', 'bar'"):
         MockOperator.partial(task_id="a", foo="bar", bar=2)
+
+
+def test_partial_on_invalid_pool_slots_raises() -> None:
+    """Test that when we pass an invalid value to pool_slots in partial(),
+
+    i.e. if the value is not an integer, an error is raised at import time."""
+
+    with pytest.raises(TypeError, match="'<' not supported between instances of 'str' and 'int'"):
+        MockOperator.partial(task_id="pool_slots_test", pool="test", pool_slots="a").expand(arg1=[1, 2, 3])
 
 
 @pytest.mark.skip_if_database_isolation_mode  # Does not work in db isolation mode
@@ -1775,3 +1784,144 @@ class TestMappedSetupTeardown:
             "group.last": {0: "success", 1: "skipped", 2: "success"},
         }
         assert states == expected
+
+
+@pytest.mark.skip_if_database_isolation_mode  # Does not work in db isolation mode
+def test_mapped_tasks_in_mapped_task_group_waits_for_upstreams_to_complete(dag_maker, session):
+    """Test that one failed trigger rule works well in mapped task group"""
+    with dag_maker() as dag:
+
+        @dag.task
+        def t1():
+            return [1, 2, 3]
+
+        @task_group("tg1")
+        def tg1(a):
+            @dag.task()
+            def t2(a):
+                return a
+
+            @dag.task(trigger_rule=TriggerRule.ONE_FAILED)
+            def t3(a):
+                return a
+
+            t2(a) >> t3(a)
+
+        t = t1()
+        tg1.expand(a=t)
+
+    dr = dag_maker.create_dagrun()
+    ti = dr.get_task_instance(task_id="t1")
+    ti.run()
+    dr.task_instance_scheduling_decisions()
+    ti3 = dr.get_task_instance(task_id="tg1.t3")
+    assert not ti3.state
+
+
+@pytest.mark.skip_if_database_isolation_mode  # Does not work in db isolation mode
+def test_mapped_tasks_in_mapped_task_group_waits_for_upstreams_to_complete__mapped_skip_with_all_success(
+    dag_maker, session
+):
+    with dag_maker():
+
+        @task
+        def make_list():
+            return [4, 42, 2]
+
+        @task
+        def double(n):
+            if n == 42:
+                raise AirflowSkipException("42")
+            return n * 2
+
+        @task
+        def last(n):
+            print(n)
+
+        @task_group
+        def group(n: int) -> None:
+            last(double(n))
+
+        list = make_list()
+        group.expand(n=list)
+
+    dr = dag_maker.create_dagrun()
+
+    def _one_scheduling_decision_iteration() -> dict[tuple[str, int], TaskInstance]:
+        decision = dr.task_instance_scheduling_decisions(session=session)
+        return {(ti.task_id, ti.map_index): ti for ti in decision.schedulable_tis}
+
+    tis = _one_scheduling_decision_iteration()
+    tis["make_list", -1].run()
+    assert tis["make_list", -1].state == State.SUCCESS
+
+    tis = _one_scheduling_decision_iteration()
+    tis["group.double", 0].run()
+    tis["group.double", 1].run()
+    tis["group.double", 2].run()
+
+    assert tis["group.double", 0].state == State.SUCCESS
+    assert tis["group.double", 1].state == State.SKIPPED
+    assert tis["group.double", 2].state == State.SUCCESS
+
+    tis = _one_scheduling_decision_iteration()
+    tis["group.last", 0].run()
+    tis["group.last", 2].run()
+    assert tis["group.last", 0].state == State.SUCCESS
+    assert dr.get_task_instance("group.last", map_index=1, session=session).state == State.SKIPPED
+    assert tis["group.last", 2].state == State.SUCCESS
+
+
+class TestMappedOperator:
+    @pytest.fixture
+    def mock_operator_class(self):
+        return MagicMock(spec=type(BaseOperator))
+
+    @pytest.fixture
+    @patch("airflow.serialization.serialized_objects.SerializedBaseOperator")
+    def mapped_operator(self, _, mock_operator_class):
+        return MappedOperator(
+            operator_class=mock_operator_class,
+            expand_input=MagicMock(),
+            partial_kwargs={"task_id": "test_task"},
+            task_id="test_task",
+            params={},
+            deps=frozenset(),
+            operator_extra_links=[],
+            template_ext=[],
+            template_fields=[],
+            template_fields_renderers={},
+            ui_color="",
+            ui_fgcolor="",
+            start_trigger_args=None,
+            start_from_trigger=False,
+            dag=None,
+            task_group=None,
+            start_date=None,
+            end_date=None,
+            is_empty=False,
+            task_module=MagicMock(),
+            task_type="taske_type",
+            operator_name="operator_name",
+            disallow_kwargs_override=False,
+            expand_input_attr="expand_input",
+        )
+
+    def test_unmap_with_resolved_kwargs(self, mapped_operator, mock_operator_class):
+        mapped_operator.upstream_task_ids = ["a"]
+        mapped_operator.downstream_task_ids = ["b"]
+        resolve = {"param1": "value1"}
+        result = mapped_operator.unmap(resolve)
+        assert result == mock_operator_class.return_value
+        assert result.task_id == "test_task"
+        assert result.is_setup is False
+        assert result.is_teardown is False
+        assert result.on_failure_fail_dagrun is False
+        assert result.upstream_task_ids == ["a"]
+        assert result.downstream_task_ids == ["b"]
+
+    def test_unmap_runtime_error(self, mapped_operator):
+        mapped_operator.upstream_task_ids = ["a"]
+        mapped_operator.downstream_task_ids = ["b"]
+        with pytest.raises(RuntimeError):
+            mapped_operator.unmap(None)

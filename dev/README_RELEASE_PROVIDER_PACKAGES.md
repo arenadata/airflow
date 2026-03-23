@@ -335,7 +335,6 @@ export AIRFLOW_REPO_ROOT=$(pwd -P)
 rm -rf ${AIRFLOW_REPO_ROOT}/dist/*
 ```
 
-
 * Release candidate packages:
 
 ```shell script
@@ -1017,7 +1016,7 @@ pip install apache-airflow-providers-<provider>==<VERSION>rc<X>
 ### Installing with Breeze
 
 ```shell
-breeze start-airflow --use-airflow-version 2.2.4 --python 3.8 --backend postgres \
+breeze start-airflow --use-airflow-version 2.2.4 --python 3.10 --backend postgres \
     --load-example-dags --load-default-connections
 ```
 

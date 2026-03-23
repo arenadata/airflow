@@ -17,11 +17,18 @@
 from __future__ import annotations
 
 import contextlib
+import os
+import re
+import shutil
 from io import StringIO
 from unittest import mock
 
+import pytest
+
 from airflow.cli import cli_parser
 from airflow.cli.commands import config_command
+from airflow.cli.commands.config_command import ConfigChange, ConfigParameter
+from airflow.configuration import conf
 from tests.test_utils.config import conf_vars
 
 STATSD_CONFIG_BEGIN_WITH = "# `StatsD <https://github.com/statsd/statsd>`"
@@ -225,3 +232,351 @@ class TestCliConfigGetValue:
             self.parser.parse_args(["config", "get-value", "missing-section", "dags_folder"])
         )
         assert "section/key [missing-section/dags_folder] not found in config" in caplog.text
+
+
+class TestConfigLint:
+    @pytest.mark.parametrize(
+        "removed_config",
+        [config for config in config_command.CONFIGS_CHANGES if config.was_removed and config.message],
+    )
+    def test_lint_detects_removed_configs(self, removed_config):
+        with mock.patch("airflow.configuration.conf.has_option", return_value=True):
+            with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                config_command.lint_config(cli_parser.get_parser().parse_args(["config", "lint"]))
+
+            output = temp_stdout.getvalue()
+
+        normalized_output = re.sub(r"\s+", " ", output.strip())
+        normalized_message = re.sub(r"\s+", " ", removed_config.message.strip())
+
+        assert normalized_message in normalized_output
+
+    @pytest.mark.parametrize(
+        "default_changed_config",
+        [config for config in config_command.CONFIGS_CHANGES if config.default_change],
+    )
+    def test_lint_detects_default_changed_configs(self, default_changed_config):
+        with mock.patch("airflow.configuration.conf.has_option", return_value=True):
+            with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                config_command.lint_config(cli_parser.get_parser().parse_args(["config", "lint"]))
+
+            output = temp_stdout.getvalue()
+
+        if default_changed_config.message is not None:
+            normalized_output = re.sub(r"\s+", " ", output.strip())
+            normalized_message = re.sub(r"\s+", " ", default_changed_config.message.strip())
+
+            assert normalized_message in normalized_output
+
+    @pytest.mark.parametrize(
+        "section, option, suggestion",
+        [
+            (
+                "core",
+                "check_slas",
+                "The SLA feature is removed in Airflow 3.0, to be replaced with Airflow Alerts in future",
+            ),
+            (
+                "core",
+                "strict_dataset_uri_validation",
+                "Dataset URI with a defined scheme will now always be validated strictly, raising a hard error on validation failure.",
+            ),
+            (
+                "logging",
+                "enable_task_context_logger",
+                "Remove TaskContextLogger: Replaced by the Log table for better handling of task log messages outside the execution context.",
+            ),
+        ],
+    )
+    def test_lint_with_specific_removed_configs(self, section, option, suggestion):
+        with mock.patch("airflow.configuration.conf.has_option", return_value=True):
+            with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                config_command.lint_config(cli_parser.get_parser().parse_args(["config", "lint"]))
+
+            output = temp_stdout.getvalue()
+
+        normalized_output = re.sub(r"\s+", " ", output.strip())
+
+        expected_message = f"Removed deprecated `{option}` configuration parameter from `{section}` section."
+        assert expected_message in normalized_output
+
+        assert suggestion in normalized_output
+
+    def test_lint_specific_section_option(self):
+        with mock.patch("airflow.configuration.conf.has_option", return_value=True):
+            with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                config_command.lint_config(
+                    cli_parser.get_parser().parse_args(
+                        ["config", "lint", "--section", "core", "--option", "check_slas"]
+                    )
+                )
+
+            output = temp_stdout.getvalue()
+
+        normalized_output = re.sub(r"\s+", " ", output.strip())
+
+        assert (
+            "Removed deprecated `check_slas` configuration parameter from `core` section."
+            in normalized_output
+        )
+
+    def test_lint_with_invalid_section_option(self):
+        with mock.patch("airflow.configuration.conf.has_option", return_value=False):
+            with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                config_command.lint_config(
+                    cli_parser.get_parser().parse_args(
+                        ["config", "lint", "--section", "invalid_section", "--option", "invalid_option"]
+                    )
+                )
+
+            output = temp_stdout.getvalue()
+
+        normalized_output = re.sub(r"\s+", " ", output.strip())
+
+        assert "No issues found in your airflow.cfg." in normalized_output
+
+    def test_lint_detects_multiple_issues(self):
+        with mock.patch(
+            "airflow.configuration.conf.has_option",
+            side_effect=lambda section, option, lookup_from_deprecated: option
+            in ["check_slas", "strict_dataset_uri_validation"],
+        ):
+            with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                config_command.lint_config(cli_parser.get_parser().parse_args(["config", "lint"]))
+
+            output = temp_stdout.getvalue()
+
+        normalized_output = re.sub(r"\s+", " ", output.strip())
+
+        assert (
+            "Removed deprecated `check_slas` configuration parameter from `core` section."
+            in normalized_output
+        )
+        assert (
+            "Removed deprecated `strict_dataset_uri_validation` configuration parameter from `core` section."
+            in normalized_output
+        )
+
+    @pytest.mark.parametrize(
+        "removed_configs",
+        [
+            [
+                (
+                    "core",
+                    "check_slas",
+                    "The SLA feature is removed in Airflow 3.0, to be replaced with Airflow Alerts in future",
+                ),
+                (
+                    "core",
+                    "strict_dataset_uri_validation",
+                    "Dataset URI with a defined scheme will now always be validated strictly, raising a hard error on validation failure.",
+                ),
+                (
+                    "logging",
+                    "enable_task_context_logger",
+                    "Remove TaskContextLogger: Replaced by the Log table for better handling of task log messages outside the execution context.",
+                ),
+            ],
+        ],
+    )
+    def test_lint_detects_multiple_removed_configs(self, removed_configs):
+        with mock.patch("airflow.configuration.conf.has_option", return_value=True):
+            with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                config_command.lint_config(cli_parser.get_parser().parse_args(["config", "lint"]))
+
+            output = temp_stdout.getvalue()
+
+        normalized_output = re.sub(r"\s+", " ", output.strip())
+
+        for section, option, suggestion in removed_configs:
+            expected_message = (
+                f"Removed deprecated `{option}` configuration parameter from `{section}` section."
+            )
+            assert expected_message in normalized_output
+
+            if suggestion:
+                assert suggestion in normalized_output
+
+    @pytest.mark.parametrize(
+        "renamed_configs",
+        [
+            # Case 1: Renamed configurations within the same section
+            [
+                ("core", "non_pooled_task_slot_count", "core", "default_pool_task_slot_count"),
+                ("scheduler", "processor_poll_interval", "scheduler", "scheduler_idle_sleep_time"),
+            ],
+            # Case 2: Renamed configurations across sections
+            [
+                ("admin", "hide_sensitive_variable_fields", "core", "hide_sensitive_var_conn_fields"),
+                ("core", "worker_precheck", "celery", "worker_precheck"),
+            ],
+        ],
+    )
+    def test_lint_detects_renamed_configs(self, renamed_configs):
+        with mock.patch("airflow.configuration.conf.has_option", return_value=True):
+            with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                config_command.lint_config(cli_parser.get_parser().parse_args(["config", "lint"]))
+
+            output = temp_stdout.getvalue()
+
+        normalized_output = re.sub(r"\s+", " ", output.strip())
+
+        for old_section, old_option, new_section, new_option in renamed_configs:
+            if old_section == new_section:
+                expected_message = f"`{old_option}` configuration parameter renamed to `{new_option}` in the `{old_section}` section."
+            else:
+                expected_message = f"`{old_option}` configuration parameter moved from `{old_section}` section to `{new_section}` section as `{new_option}`."
+            assert expected_message in normalized_output
+
+    @pytest.mark.parametrize(
+        "env_var, config_change, expected_message",
+        [
+            (
+                "AIRFLOW__CORE__CHECK_SLAS",
+                ConfigChange(
+                    config=ConfigParameter("core", "check_slas"),
+                    suggestion="The SLA feature is removed in Airflow 3.0, to be replaced with Airflow Alerts in future",
+                ),
+                "Removed deprecated `check_slas` configuration parameter from `core` section.",
+            ),
+            (
+                "AIRFLOW__CORE__strict_dataset_uri_validation",
+                ConfigChange(
+                    config=ConfigParameter("core", "strict_dataset_uri_validation"),
+                    suggestion="Dataset URI with a defined scheme will now always be validated strictly, raising a hard error on validation failure.",
+                ),
+                "Removed deprecated `strict_dataset_uri_validation` configuration parameter from `core` section.",
+            ),
+        ],
+    )
+    def test_lint_detects_configs_with_env_vars(self, env_var, config_change, expected_message):
+        with mock.patch.dict(os.environ, {env_var: "some_value"}):
+            with mock.patch("airflow.configuration.conf.has_option", return_value=True):
+                with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                    config_command.lint_config(cli_parser.get_parser().parse_args(["config", "lint"]))
+
+                output = temp_stdout.getvalue()
+
+        normalized_output = re.sub(r"\s+", " ", output.strip())
+
+        assert expected_message in normalized_output
+        assert config_change.suggestion in normalized_output
+
+    def test_lint_detects_invalid_config(self):
+        with mock.patch.dict(os.environ, {"AIRFLOW__CORE__PARALLELISM": "0"}):
+            with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                config_command.lint_config(cli_parser.get_parser().parse_args(["config", "lint"]))
+
+            output = temp_stdout.getvalue()
+
+        normalized_output = re.sub(r"\s+", " ", output.strip())
+
+        assert (
+            "Invalid value `0` set for `parallelism` configuration parameter in `core` section."
+            in normalized_output
+        )
+
+    def test_lint_detects_invalid_config_negative(self):
+        with mock.patch.dict(os.environ, {"AIRFLOW__CORE__PARALLELISM": "42"}):
+            with contextlib.redirect_stdout(StringIO()) as temp_stdout:
+                config_command.lint_config(cli_parser.get_parser().parse_args(["config", "lint"]))
+
+            output = temp_stdout.getvalue()
+
+        normalized_output = re.sub(r"\s+", " ", output.strip())
+
+        assert "Invalid value" not in normalized_output
+
+
+class TestCliConfigUpdate:
+    @classmethod
+    def setup_class(cls):
+        cls.parser = cli_parser.get_parser()
+
+    @pytest.fixture(autouse=True)
+    def setup_fake_airflow_cfg(self, tmp_path, monkeypatch):
+        fake_config = tmp_path / "airflow.cfg"
+        fake_config.write_text(
+            """
+            [test_admin]
+            rename_key = legacy_value
+            remove_key = to_be_removed
+            [test_core]
+            dags_folder = /some/path/to/dags
+            default_key = OldDefault"""
+        )
+        monkeypatch.setenv("AIRFLOW_CONFIG", str(fake_config))
+        monkeypatch.setattr(config_command, "AIRFLOW_CONFIG", str(fake_config))
+        conf.read(str(fake_config))
+        return fake_config
+
+    def test_update_renamed_option(self, monkeypatch, setup_fake_airflow_cfg):
+        fake_config = setup_fake_airflow_cfg
+        renamed_change = ConfigChange(
+            config=ConfigParameter("test_admin", "rename_key"),
+            renamed_to=ConfigParameter("test_core", "renamed_key"),
+        )
+        monkeypatch.setattr(config_command, "CONFIGS_CHANGES", [renamed_change])
+        assert conf.has_option("test_admin", "rename_key")
+        args = self.parser.parse_args(["config", "update", "--fix", "--all-recommendations"])
+        config_command.update_config(args)
+        content = fake_config.read_text()
+        admin_section = content.split("[test_admin]")[-1]
+        assert "rename_key" not in admin_section
+        core_section = content.split("[test_core]")[-1]
+        assert "renamed_key" in core_section
+        assert "# Renamed from test_admin.rename_key" in content
+
+    def test_update_removed_option(self, monkeypatch, setup_fake_airflow_cfg):
+        fake_config = setup_fake_airflow_cfg
+        removed_change = ConfigChange(
+            config=ConfigParameter("test_admin", "remove_key"),
+            suggestion="Option removed in Airflow 3.0.",
+        )
+        monkeypatch.setattr(config_command, "CONFIGS_CHANGES", [removed_change])
+        assert conf.has_option("test_admin", "remove_key")
+        args = self.parser.parse_args(["config", "update", "--fix", "--all-recommendations"])
+        config_command.update_config(args)
+        content = fake_config.read_text()
+        assert "remove_key" not in content
+
+    def test_update_no_changes(self, monkeypatch, capsys):
+        monkeypatch.setattr(config_command, "CONFIGS_CHANGES", [])
+        args = self.parser.parse_args(["config", "update"])
+        config_command.update_config(args)
+        captured = capsys.readouterr().out
+        assert "No updates needed" in captured
+
+    def test_update_backup_creation(self, monkeypatch):
+        removed_change = ConfigChange(
+            config=ConfigParameter("test_admin", "remove_key"),
+            suggestion="Option removed.",
+        )
+        monkeypatch.setattr(config_command, "CONFIGS_CHANGES", [removed_change])
+        assert conf.has_option("test_admin", "remove_key")
+        args = self.parser.parse_args(["config", "update"])
+        mock_copy = mock.MagicMock()
+        monkeypatch.setattr(shutil, "copy2", mock_copy)
+        config_command.update_config(args)
+        backup_path = os.environ.get("AIRFLOW_CONFIG") + ".bak"
+        mock_copy.assert_called_once_with(os.environ.get("AIRFLOW_CONFIG"), backup_path)
+
+    def test_update_only_breaking_changes_with_fix(self, monkeypatch, setup_fake_airflow_cfg):
+        fake_config = setup_fake_airflow_cfg
+        breaking_change = ConfigChange(
+            config=ConfigParameter("test_admin", "rename_key"),
+            renamed_to=ConfigParameter("test_admin", "new_breaking_key"),
+            breaking=True,
+        )
+        non_breaking_change = ConfigChange(
+            config=ConfigParameter("test_admin", "remove_key"),
+            suggestion="Option removed.",
+            breaking=False,
+        )
+        monkeypatch.setattr(config_command, "CONFIGS_CHANGES", [breaking_change, non_breaking_change])
+        args = self.parser.parse_args(["config", "update", "--fix"])
+        config_command.update_config(args)
+        content = fake_config.read_text()
+        assert "rename_key = legacy_value" not in content
+        assert "new_breaking_key" in content
+        assert "remove_key" in content

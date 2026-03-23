@@ -26,6 +26,7 @@ import math
 import operator
 import os
 import signal
+import traceback
 import warnings
 from collections import defaultdict
 from contextlib import nullcontext
@@ -172,6 +173,14 @@ if TYPE_CHECKING:
 
 PAST_DEPENDS_MET = "past_depends_met"
 
+timer_unit_consistency = conf.getboolean("metrics", "timer_unit_consistency")
+if not timer_unit_consistency:
+    warnings.warn(
+        "Timer and timing metrics publish in seconds were deprecated. It is enabled by default from Airflow 3 onwards. Enable timer_unit_consistency to publish all the timer and timing metrics in milliseconds.",
+        RemovedInAirflow3Warning,
+        stacklevel=2,
+    )
+
 
 class TaskReturnCode(Enum):
     """
@@ -246,7 +255,7 @@ def _run_raw_task(
     ti.hostname = get_hostname()
     ti.pid = os.getpid()
     if not test_mode:
-        TaskInstance.save_to_db(ti=ti, session=session)
+        TaskInstance.save_to_db(ti=ti, session=session, refresh_dag=False)
     actual_start_date = timezone.utcnow()
     Stats.incr(f"ti.start.{ti.task.dag_id}.{ti.task.task_id}", tags=ti.stats_tags)
     # Same metric with tagging
@@ -800,6 +809,8 @@ def _execute_task(task_instance: TaskInstance | TaskInstancePydantic, context: C
 
 
 def _set_ti_attrs(target, source, include_dag_run=False):
+    from airflow.serialization.pydantic.taskinstance import TaskInstancePydantic
+
     # Fields ordered per model definition
     target.start_date = source.start_date
     target.end_date = source.end_date
@@ -825,6 +836,12 @@ def _set_ti_attrs(target, source, include_dag_run=False):
     target.trigger_id = source.trigger_id
     target.next_method = source.next_method
     target.next_kwargs = source.next_kwargs
+    # These checks are required to make sure that note and rendered_map_index are not
+    # reset during refresh_from_db as DB still contains None values and would reset the fields
+    if source.note and isinstance(source, TaskInstancePydantic):
+        target.note = source.note
+    if source.rendered_map_index and isinstance(source, TaskInstancePydantic):
+        target.rendered_map_index = source.rendered_map_index
 
     if include_dag_run:
         target.execution_date = source.execution_date
@@ -1240,7 +1257,7 @@ def _handle_failure(
         )
 
     if not test_mode:
-        TaskInstance.save_to_db(failure_context["ti"], session)
+        TaskInstance.save_to_db(task_instance, session)
 
     with Trace.start_span_from_taskinstance(ti=task_instance) as span:
         # ---- error info ----
@@ -1901,6 +1918,7 @@ class TaskInstance(Base, LoggingMixin):
     dag_run = relationship("DagRun", back_populates="task_instances", lazy="joined", innerjoin=True)
     rendered_task_instance_fields = relationship("RenderedTaskInstanceFields", lazy="noload", uselist=False)
     execution_date = association_proxy("dag_run", "execution_date")
+    logical_date = association_proxy("dag_run", "execution_date")
     task_instance_note = relationship(
         "TaskInstanceNote",
         back_populates="task_instance",
@@ -2256,7 +2274,7 @@ class TaskInstance(Base, LoggingMixin):
     def log_url(self) -> str:
         """Log URL for TaskInstance."""
         run_id = quote(self.run_id)
-        base_date = quote(self.execution_date.strftime("%Y-%m-%dT%H:%M:%S%z"))
+        base_date = quote(self.execution_date.strftime("%Y-%m-%dT%H:%M:%S.%f%z"))
         base_url = conf.get_mandatory_value("webserver", "BASE_URL")
         map_index = f"&map_index={self.map_index}" if self.map_index >= 0 else ""
         return (
@@ -2950,7 +2968,10 @@ class TaskInstance(Base, LoggingMixin):
                     self.task_id,
                 )
                 return
-            timing = timezone.utcnow() - self.queued_dttm
+            if timer_unit_consistency:
+                timing = timezone.utcnow() - self.queued_dttm
+            else:
+                timing = (timezone.utcnow() - self.queued_dttm).total_seconds()
         elif new_state == TaskInstanceState.QUEUED:
             metric_name = "scheduled_duration"
             if self.start_date is None:
@@ -2963,7 +2984,10 @@ class TaskInstance(Base, LoggingMixin):
                     self.task_id,
                 )
                 return
-            timing = timezone.utcnow() - self.start_date
+            if timer_unit_consistency:
+                timing = timezone.utcnow() - self.start_date
+            else:
+                timing = (timezone.utcnow() - self.start_date).total_seconds()
         else:
             raise NotImplementedError("no metric emission setup for state %s", new_state)
 
@@ -3091,6 +3115,7 @@ class TaskInstance(Base, LoggingMixin):
                 os._exit(1)
                 return
             self.log.error("Received SIGTERM. Terminating subprocesses.")
+            self.log.error("Stacktrace: \n%s", "".join(traceback.format_stack()))
             self.task.on_kill()
             raise AirflowTaskTerminated("Task received SIGTERM signal")
 
@@ -3393,7 +3418,11 @@ class TaskInstance(Base, LoggingMixin):
     @staticmethod
     @internal_api_call
     @provide_session
-    def save_to_db(ti: TaskInstance | TaskInstancePydantic, session: Session = NEW_SESSION):
+    def save_to_db(
+        ti: TaskInstance | TaskInstancePydantic, session: Session = NEW_SESSION, refresh_dag: bool = True
+    ):
+        if refresh_dag and isinstance(ti, TaskInstance):
+            ti.get_dagrun().refresh_from_db()
         ti = _coalesce_to_orm_ti(ti=ti, session=session)
         ti.updated_at = timezone.utcnow()
         session.merge(ti)

@@ -72,13 +72,56 @@ describe your problem.
     stated in `This comment <https://github.com/moby/moby/issues/43361#issuecomment-1227617516>`_ and allows to
     run Breeze with no problems.
 
-Bad Interpreter Error
----------------------
+Cannot import name 'cache' or Python >=3.9 required
+---------------------------------------------------
+
+When you see this error:
+
+.. code-block::
+
+    ImportError: cannot import name 'cache' from 'functools' (/Users/jarek/Library/Application Support/hatch/pythons/3.8/python/lib/python3.8/functools.py)
+
+or
+
+.. code-block::
+
+    ERROR: Package 'blacken-docs' requires a different Python: 3.8.18 not in '>=3.9'
+
+
+It means that your prek hook is installed with (already End-Of-Life) Python 3.8 and you should reinstall
+it and clean prek cache.
+
+This can be done with ``uv tool`` to install ``prek``)
+
+.. code-block:: bash
+
+    uv tool uninstall prek
+    uv tool install prek --python 3.10 --force
+    prek clean
+    prek install
+
+You can also use ``pipx``
+
+.. code-block:: bash
+
+    pipx uninstall prek
+    pipx install prek --python $(which python3.9) --force
+    # This one allows prek to use uv for venvs installed by prek
+    pipx inject prek
+    prek clean
+    prek install
+
+If you installed ``prek`` differently, you should remove and reinstall
+it (and clean cache) following the way you installed it.
+
+
+Bad Interpreter Error with ``pipx``
+-----------------------------------
 
 If you are experiencing bad interpreter errors
 ``zsh: /Users/eladkal/.local/bin/breeze: bad interpreter: /Users/eladkal/.local/pipx/venvs/apache-airflow-breeze/bin/python: no such file or directory``
 
-try to run ``pipx list`` to view which packages has bad interpreter (it can be more than just breeze, for example  pre-commit)
+try to run ``pipx list`` to view which packages has bad interpreter (it can be more than just breeze, for example  prek)
 you can fix these errors by running ``pipx reinstall-all``
 
 ETIMEDOUT Error
@@ -116,7 +159,7 @@ When running ``breeze start-airflow``, either normally or in ``dev-mode``, the f
 
     The asset compilation failed. Exiting.
 
-    [INFO] Locking pre-commit directory
+    [INFO] Locking prek directory
 
     Error 1 returned
 

@@ -256,7 +256,7 @@ Setting up Breeze
 
 .. code-block:: bash
 
-  breeze --python 3.8 --backend postgres
+  breeze --python 3.9 --backend postgres
 
 .. note::
    If you encounter an error like "docker.credentials.errors.InitializationError:
@@ -313,7 +313,7 @@ Using Breeze
 ------------
 
 1. Starting breeze environment using ``breeze start-airflow`` starts Breeze environment with last configuration run(
-   In this case python and backend will be picked up from last execution ``breeze --python 3.8 --backend postgres``)
+   In this case python and backend will be picked up from last execution ``breeze --python 3.9 --backend postgres``)
    It also automatically starts webserver, backend and scheduler. It drops you in tmux with scheduler in bottom left
    and webserver in bottom right. Use ``[Ctrl + B] and Arrow keys`` to navigate.
 
@@ -363,7 +363,7 @@ Using Breeze
 
   .. code-block:: bash
 
-    breeze --python 3.8 --backend postgres
+    breeze --python 3.9 --backend postgres
 
   2. Open tmux
 
@@ -434,8 +434,8 @@ Following are some of important topics of `Breeze documentation <../dev/breeze/d
 * `Troubleshooting Breeze environment <../dev/breeze/doc/04_troubleshooting.rst>`__
 
 
-Configuring Pre-commit
-----------------------
+Configuring Prek
+----------------
 
 Before committing changes to github or raising a pull request, code needs to be checked for certain quality standards
 such as spell check, code syntax, code formatting, compatibility with Apache License requirements etc. This set of
@@ -449,7 +449,26 @@ tests are applied when you commit your code.
   </div>
 
 
-To avoid burden on CI infrastructure and to save time, Pre-commit hooks can be run locally before committing changes.
+To avoid burden on CI infrastructure and to save time, Prek hooks can be run locally before committing changes.
+
+.. note::
+
+    We have recently started to recommend ``uv`` for our local development. Currently (October 2024) ``uv``
+    speeds up installation more than 10x comparing to ``pip``. While we still describe ``pip`` and ``pipx``
+    below, we also show the ``uv`` alternatives.
+
+.. note::
+
+    Remember to have global python set to Python >= 3.9 - Python 3.8 is end-of-life already and we've
+    started to use Python 3.9+ features in Airflow and accompanying scripts.
+
+
+Use ``uv`` to install prek:
+
+.. code-block:: bash
+
+    uv tool install prek --force-reinstall
+
 
 1.  Installing required packages
 
@@ -469,7 +488,7 @@ on macOS, install via
 
 .. code-block:: bash
 
-  pipx install pre-commit
+  pipx install prek
 
 3. Go to your project directory
 
@@ -478,11 +497,11 @@ on macOS, install via
   cd ~/Projects/airflow
 
 
-1. Running pre-commit hooks
+1. Running prek hooks
 
 .. code-block:: bash
 
-  pre-commit run --all-files
+  prek run --all-files
     No-tabs checker......................................................Passed
     Add license for all SQL files........................................Passed
     Add license for all other files......................................Passed
@@ -506,11 +525,11 @@ on macOS, install via
     Fix End of Files.....................................................Passed
     ...........................................................................
 
-5. Running pre-commit for selected files
+5. Running prek for selected files
 
 .. code-block:: bash
 
-  pre-commit run  --files airflow/utils/decorators.py tests/utils/test_task_group.py
+  prek run  --files airflow/utils/decorators.py tests/utils/test_task_group.py
 
 
 
@@ -518,27 +537,27 @@ on macOS, install via
 
 .. code-block:: bash
 
-  pre-commit run black --files airflow/decorators.py tests/utils/test_task_group.py
+  prek run black --files airflow/decorators.py tests/utils/test_task_group.py
     black...............................................................Passed
-  pre-commit run ruff --files airflow/decorators.py tests/utils/test_task_group.py
+  prek run ruff --files airflow/decorators.py tests/utils/test_task_group.py
     Run ruff............................................................Passed
 
 
 
-7. Enabling Pre-commit check before push. It will run pre-commit automatically before committing and stops the commit
+7. Enabling prek check before push. It will run prek automatically before committing and stops the commit
 
 .. code-block:: bash
 
   cd ~/Projects/airflow
-  pre-commit install
+  prek install
   git commit -m "Added xyz"
 
-8. To disable Pre-commit
+8. To disable prek
 
 .. code-block:: bash
 
   cd ~/Projects/airflow
-  pre-commit uninstall
+  prek uninstall
 
 
 - For more information on visit |08_static_code_checks.rst|
@@ -550,12 +569,12 @@ on macOS, install via
 
 - Following are some of the important links of 08_static_code_checks.rst
 
-  - |Pre-commit Hooks|
+  - |prek Hooks|
 
-  .. |Pre-commit Hooks| raw:: html
+  .. |prek Hooks| raw:: html
 
-   <a href="https://github.com/apache/airflow/blob/main/contributing-docs/08_static_code_checks.rst#pre-commit-hooks" target="_blank">
-   Pre-commit Hooks</a>
+   <a href="https://github.com/apache/airflow/blob/main/contributing-docs/08_static_code_checks.rst#prek-hooks" target="_blank">
+   prek Hooks</a>
 
   - |Running Static Code Checks via Breeze|
 
@@ -626,7 +645,7 @@ All Tests are inside ./tests directory.
 
 .. code-block:: bash
 
-   breeze --backend postgres --postgres-version 15 --python 3.8 --db-reset testing tests --test-type All
+   breeze --backend postgres --postgres-version 15 --python 3.9 --db-reset testing tests --test-type All
 
 - Running specific type of test
 
@@ -636,7 +655,7 @@ All Tests are inside ./tests directory.
 
   .. code-block:: bash
 
-    breeze --backend postgres --postgres-version 15 --python 3.8 --db-reset testing tests --test-type Core
+    breeze --backend postgres --postgres-version 15 --python 3.9 --db-reset testing tests --test-type Core
 
 
 - Running Integration test for specific test type
@@ -645,7 +664,7 @@ All Tests are inside ./tests directory.
 
   .. code-block:: bash
 
-   breeze --backend postgres --postgres-version 15 --python 3.8 --db-reset testing tests --test-type All --integration mongo
+   breeze --backend postgres --postgres-version 15 --python 3.9 --db-reset testing tests --test-type All --integration mongo
 
 - For more information on Testing visit : |09_testing.rst|
 

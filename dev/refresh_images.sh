@@ -25,7 +25,7 @@ export GITHUB_TOKEN=""
 
 breeze setup self-upgrade --use-current-airflow-sources
 
-for PYTHON in 3.8 3.9 3.10 3.11 3.12
+for PYTHON in 3.9 3.10 3.11 3.12
 do
     breeze ci-image build \
          --builder airflow_cache \
@@ -40,14 +40,13 @@ rm -fv ./dist/* ./docker-context-files/*
 
 breeze release-management prepare-provider-packages \
     --package-list-file ./prod_image_installed_providers.txt \
-    --package-format wheel \
-    --version-suffix-for-pypi dev0
+    --package-format wheel
 
 breeze release-management prepare-airflow-package --package-format wheel --version-suffix-for-pypi dev0
 
 mv -v ./dist/*.whl ./docker-context-files && chmod a+r ./docker-context-files/*
 
-for PYTHON in 3.8 3.9 3.10 3.11 3.12
+for PYTHON in 3.9 3.10 3.11 3.12
 do
     breeze prod-image build \
          --builder airflow_cache \

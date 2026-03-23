@@ -35,6 +35,7 @@ from airflow.logging_config import configure_logging
 from airflow.models import import_all_models
 from airflow.settings import _ENABLE_AIP_44
 from airflow.utils.json import AirflowJsonProvider
+from airflow.utils.jwt_signer import get_signing_key
 from airflow.www.extensions.init_appbuilder import init_appbuilder
 from airflow.www.extensions.init_appbuilder_links import init_appbuilder_links
 from airflow.www.extensions.init_auth_manager import get_auth_manager
@@ -73,11 +74,13 @@ csrf = CSRFProtect()
 def create_app(config=None, testing=False):
     """Create a new instance of Airflow WWW app."""
     flask_app = Flask(__name__)
-    flask_app.secret_key = conf.get("webserver", "SECRET_KEY")
+    flask_app.secret_key = get_signing_key("webserver", "SECRET_KEY")
 
     flask_app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=settings.get_session_lifetime_config())
 
     flask_app.config["MAX_CONTENT_LENGTH"] = conf.getfloat("webserver", "allowed_payload_size") * 1024 * 1024
+    flask_app.config["MAX_FORM_PARTS"] = conf.getint("webserver", "max_form_parts")
+    flask_app.config["MAX_FORM_MEMORY_SIZE"] = conf.getint("webserver", "max_form_memory_size")
 
     webserver_config = conf.get_mandatory_value("webserver", "config_file")
     # Enable customizations in webserver_config.py to be applied via Flask.current_app.
@@ -184,7 +187,7 @@ def create_app(config=None, testing=False):
         init_jinja_globals(flask_app)
         init_xframe_protection(flask_app)
         init_cache_control(flask_app)
-        init_airflow_session_interface(flask_app)
+        init_airflow_session_interface(flask_app, db)
         init_check_user_active(flask_app)
     return flask_app
 

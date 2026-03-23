@@ -28,6 +28,7 @@ from unittest import mock
 
 import pytest
 
+from airflow.exceptions import RemovedInAirflow3Warning
 from airflow.hooks.base import BaseHook
 from airflow.listeners.listener import get_listener_manager
 from airflow.plugins_manager import AirflowPlugin
@@ -36,7 +37,10 @@ from airflow.www import app as application
 from tests.test_utils.config import conf_vars
 from tests.test_utils.mock_plugins import mock_plugin_manager
 
-pytestmark = pytest.mark.db_test
+pytestmark = [
+    pytest.mark.db_test,
+    pytest.mark.filterwarnings("default::airflow.exceptions.RemovedInAirflow3Warning"),
+]
 
 AIRFLOW_SOURCES_ROOT = Path(__file__).parents[2].resolve()
 
@@ -171,6 +175,11 @@ class TestPluginsManager:
 
         plugins_manager.loaded_plugins = set()
         plugins_manager.plugins = []
+        yield
+        plugins_manager.loaded_plugins = set()
+
+        plugins_manager.registered_ti_dep_classes = None
+        plugins_manager.plugins = None
 
     def test_no_log_when_no_plugins(self, caplog):
         with mock_plugin_manager(plugins=[]):
@@ -266,6 +275,17 @@ class TestPluginsManager:
                 "Please contact the author of the plugin.",
             ),
         ]
+
+    def test_deprecate_ti_deps(self):
+        class DeprecatedTIDeps(AirflowPlugin):
+            name = "ti_deps"
+
+            ti_deps = [mock.MagicMock()]
+
+        with mock_plugin_manager(plugins=[DeprecatedTIDeps()]), pytest.warns(RemovedInAirflow3Warning):
+            from airflow import plugins_manager
+
+            plugins_manager.initialize_ti_deps_plugins()
 
     def test_should_not_warning_about_fab_plugins(self, caplog):
         class AirflowAdminViewsPlugin(AirflowPlugin):

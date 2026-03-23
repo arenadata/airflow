@@ -209,7 +209,7 @@ rerun in Breeze as you will (``-n auto`` will parallelize tests using ``pytest-x
 
 .. code-block:: bash
 
-    breeze shell --backend none --python 3.8
+    breeze shell --backend none --python 3.9
     > pytest tests --skip-db-tests -n auto
 
 
@@ -286,7 +286,7 @@ either by package/module/test or by test type - whatever ``pytest`` supports.
 
 .. code-block:: bash
 
-    breeze shell --backend postgres --python 3.8
+    breeze shell --backend postgres --python 3.9
     > pytest tests --run-db-tests-only
 
 As explained before, you cannot run DB tests in parallel using ``pytest-xdist`` plugin, but ``breeze`` has
@@ -296,7 +296,7 @@ you use ``breeze testing db-tests`` command):
 
 .. code-block:: bash
 
-    breeze testing tests --run-db-tests-only --backend postgres --python 3.8 --run-in-parallel
+    breeze testing tests --run-db-tests-only --backend postgres --python 3.9 --run-in-parallel
 
 Examples of marking test as DB test
 ...................................
@@ -320,8 +320,7 @@ Method level:
 
 
    @pytest.mark.db_test
-   def test_add_tagging(self, sentry, task_instance):
-       ...
+   def test_add_tagging(self, sentry, task_instance): ...
 
 Class level:
 
@@ -332,8 +331,7 @@ Class level:
 
 
    @pytest.mark.db_test
-   class TestDatabricksHookAsyncAadTokenSpOutside:
-       ...
+   class TestDatabricksHookAsyncAadTokenSpOutside: ...
 
 Module level (at the top of the module):
 
@@ -378,10 +376,10 @@ If your test accesses the database but is not marked properly the Non-DB test in
 How to verify if DB test is correctly classified
 ................................................
 
-When you add if you want to see if your DB test is correctly classified, you can run the test or group
+If you want to see if your DB test is correctly classified, you can run the test or group
 of tests with ``--skip-db-tests`` flag.
 
-You can run the all (or subset of) test types if you want to make sure all ot the problems are fixed
+You can run the all (or subset of) test types if you want to make sure all of the problems are fixed
 
   .. code-block:: bash
 
@@ -437,8 +435,7 @@ The fix for that is to sort the parameters in ``parametrize``. For example inste
 .. code-block:: python
 
    @pytest.mark.parametrize("status", ALL_STATES)
-   def test_method():
-       ...
+   def test_method(): ...
 
 
 do that:
@@ -447,8 +444,7 @@ do that:
 .. code-block:: python
 
    @pytest.mark.parametrize("status", sorted(ALL_STATES))
-   def test_method():
-       ...
+   def test_method(): ...
 
 Similarly if your parameters are defined as result of utcnow() or other dynamic method - you should
 avoid that, or assign unique IDs for those parametrized tests. Instead of this:
@@ -470,8 +466,7 @@ avoid that, or assign unique IDs for those parametrized tests. Instead of this:
            ),
        ],
    )
-   def test_end_date_gte_lte(url, expected_dag_run_ids):
-       ...
+   def test_end_date_gte_lte(url, expected_dag_run_ids): ...
 
 Do this:
 
@@ -494,16 +489,15 @@ Do this:
            ),
        ],
    )
-   def test_end_date_gte_lte(url, expected_dag_run_ids):
-       ...
+   def test_end_date_gte_lte(url, expected_dag_run_ids): ...
 
 
 
 Problems with Non-DB test collection
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Sometimes, even if whole module is marked as ``@pytest.mark.db_test`` even parsing the file and collecting
-tests will fail when ``--skip-db-tests`` is used because some of the imports od objects created in the
+Sometimes, even if the whole module is marked as ``@pytest.mark.db_test``, parsing the file and collecting
+tests will fail when ``--skip-db-tests`` is used because some of the imports or objects created in the
 module will read the database.
 
 Usually what helps is to move such initialization code to inside the tests or pytest fixtures (and pass
@@ -558,8 +552,7 @@ the test is marked as DB test:
                ),
            ],
        )
-       def test_from_json(self, input, request_class):
-           ...
+       def test_from_json(self, input, request_class): ...
 
 
 Instead - this will not break collection. The TaskInstance is not initialized when the module is parsed,
@@ -658,8 +651,7 @@ parametrize specification is being parsed - even if test is marked as DB test.
             ),
         ],
     )
-    def test_rendered_task_detail_env_secret(patch_app, admin_client, request, env, expected):
-        ...
+    def test_rendered_task_detail_env_secret(patch_app, admin_client, request, env, expected): ...
 
 
 You can make the code conditional and mock out the Variable to avoid hitting the database.
@@ -704,8 +696,7 @@ You can make the code conditional and mock out the Variable to avoid hitting the
             ),
         ],
     )
-    def test_rendered_task_detail_env_secret(patch_app, admin_client, request, env, expected):
-        ...
+    def test_rendered_task_detail_env_secret(patch_app, admin_client, request, env, expected): ...
 
 You can also use fixture to create object that needs database just like this.
 
@@ -1056,8 +1047,7 @@ Example of the ``postgres`` only test:
 .. code-block:: python
 
     @pytest.mark.backend("postgres")
-    def test_copy_expert(self):
-        ...
+    def test_copy_expert(self): ...
 
 
 Example of the ``postgres,mysql`` test (they are skipped with the ``sqlite`` backend):
@@ -1065,8 +1055,7 @@ Example of the ``postgres,mysql`` test (they are skipped with the ``sqlite`` bac
 .. code-block:: python
 
     @pytest.mark.backend("postgres", "mysql")
-    def test_celery_executor(self):
-        ...
+    def test_celery_executor(self): ...
 
 
 You can use the custom ``--backend`` switch in pytest to only run tests specific for that backend.
@@ -1133,7 +1122,7 @@ directly to the container.
 
 .. code-block:: bash
 
-   breeze ci-image build --python 3.8
+   breeze ci-image build --python 3.9
 
 2. Enter breeze environment by selecting the appropriate airflow version and choosing
    ``providers-and-tests`` option for ``--mount-sources`` flag.
@@ -1162,9 +1151,9 @@ directly to the container.
 Implementing compatibility for provider tests for older Airflow versions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When you implement tests for providers, you should make sure that they are compatible with older
+When you implement tests for providers, you should make sure that they are compatible with older Airflow versions.
 
-Note that some of the tests if written without taking care about the compatibility, might not work with older
+Note that some of the tests, if written without taking care about the compatibility, might not work with older
 versions of Airflow - this is because of refactorings, renames, and tests relying on internals of Airflow that
 are not part of the public API. We deal with it in one of the following ways:
 
@@ -1235,7 +1224,7 @@ Herr id how to reproduce it.
 
 .. code-block:: bash
 
-   breeze ci-image build --python 3.8
+   breeze ci-image build --python 3.9
 
 2. Build providers from latest sources:
 

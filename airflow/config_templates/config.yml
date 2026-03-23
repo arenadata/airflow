@@ -494,7 +494,7 @@ core:
       description: |
         Dataset URI validation should raise an exception if it is not compliant with AIP-60.
         By default this configuration is false, meaning that Airflow 2.x only warns the user.
-        In Airflow 3, this configuration will be enabled by default.
+        In Airflow 3, this configuration will be removed, unconditionally enabling strict validation.
       default: "False"
       example: ~
       version_added: 2.9.2
@@ -927,6 +927,20 @@ logging:
       default: "dag_id={{ ti.dag_id }}/run_id={{ ti.run_id }}/task_id={{ ti.task_id }}/\
                {%% if ti.map_index >= 0 %%}map_index={{ ti.map_index }}/{%% endif %%}\
                attempt={{ try_number }}.log"
+    use_historical_filename_templates:
+      description: |
+        When this parameter is set to ``True``, Airflow will use the old filename templates for historical
+        tasks. Similarly in this case elasticsearch_id is not properly set for historical tasks if you
+        change it. Both require access to the database to render the template filenames
+        by webserver, and it might lead to Dag Authors being able to execute code on the webserver, that's why
+        it's disabled by default - but it might lead to old logs not being displayed in the webserver UI.
+        You can enable it you change the value of ``log_filename_template`` in the past and want to be able
+        to see the logs for historical tasks, however you should only do that if you trust your Dag authors
+        to not abuse the capability of executing arbitrary code on the webserver through template rendering.
+      version_added: 2.11.1
+      type: boolean
+      example: ~
+      default: "False"
     log_processor_filename_template:
       description: |
         Formatting for how airflow generates file names for log
@@ -1098,6 +1112,24 @@ metrics:
       example: "\"scheduler,executor,dagrun,pool,triggerer,celery\"
       or \"^scheduler,^executor,heartbeat|timeout\""
       default: ""
+    # TODO: Remove 'timer_unit_consistency' in Airflow 3.0
+    timer_unit_consistency:
+      description: |
+        Controls the consistency of timer units across all metrics loggers
+        (e.g., Statsd, Datadog, OpenTelemetry)
+        for timing and duration-based metrics. When enabled, all timers will publish
+        metrics in milliseconds for consistency and alignment with Airflow's default
+        metrics behavior in version 3.0+.
+
+        .. warning::
+
+          It will be the default behavior from Airflow 3.0. If disabled, timers may publish
+          in seconds for backwards compatibility, though it is recommended to enable this
+          setting to ensure metric uniformity and forward-compat with Airflow 3.
+      version_added: 2.11.0
+      type: string
+      example: ~
+      default: "False"
     statsd_on:
       description: |
         Enables sending metrics to StatsD.
@@ -2120,6 +2152,22 @@ webserver:
       type: boolean
       example: ~
       default: "False"
+    max_form_memory_size:
+      description: |
+        The maximum size in bytes any non-file form field may be in a multipart/form-data body.
+        If this limit is exceeded, a 413 RequestEntityTooLarge error is raised by webserver.
+      version_added: 2.10.5
+      type: integer
+      example: ~
+      default: "500000"
+    max_form_parts:
+      description: |
+        The maximum number of fields that may be present in a multipart/form-data body.
+        If this limit is exceeded, a 413 RequestEntityTooLarge error is raised by webserver.
+      version_added: 2.10.5
+      type: integer
+      example: ~
+      default: "1000"
 email:
   description: |
     Configuration email backend and whether to
@@ -2645,7 +2693,26 @@ scheduler:
       type: boolean
       example: ~
       default: "True"
-      see_also: ":ref:`Differences between the two cron timetables`"
+      see_also: ':ref:`Differences between "trigger" and "data interval" timetables`'
+    create_delta_data_intervals:
+      description: |
+        Whether to create DAG runs that span an interval or one single point in time when a timedelta or
+        relativedelta is provided to ``schedule`` argument of a DAG.
+
+        * ``True``: **DeltaDataIntervalTimetable** is used, which is suitable for DAGs with well-defined data
+          interval. You get contiguous intervals from the end of the previous interval up to the scheduled
+          datetime.
+        * ``False``: **DeltaTriggerTimetable** is used, which is suitable for DAGs that simply want to say
+          e.g. "run this every day" and do not care about the data interval.
+
+        Notably, for **DeltaTriggerTimetable**, the logical date is the same as the time the DAG Run will
+        try to schedule, while for **DeltaDataIntervalTimetable**, the logical date is the beginning of
+        the data interval, but the DAG Run will try to schedule at the end of the data interval.
+      version_added: 2.11.0
+      type: boolean
+      example: ~
+      default: "True"
+      see_also: ':ref:`Differences between "trigger" and "data interval" timetables`'
 triggerer:
   description: ~
   options:
@@ -2735,25 +2802,3 @@ sensors:
       type: float
       example: ~
       default: "604800"
-usage_data_collection:
-  description: |
-    Airflow integrates `Scarf <https://about.scarf.sh/>`__ to collect basic platform and usage data
-    during operation. This data assists Airflow maintainers in better understanding how Airflow is used.
-    Insights gained from this telemetry are critical for prioritizing patches, minor releases, and
-    security fixes. Additionally, this information supports key decisions related to the development road map.
-    Check the FAQ doc for more information on what data is collected.
-
-    Deployments can opt-out of analytics by setting the ``enabled`` option
-    to ``False``, or the ``SCARF_ANALYTICS=false`` environment variable.
-    Individual users can easily opt-out of analytics in various ways documented in the
-    `Scarf Do Not Track docs <https://docs.scarf.sh/gateway/#do-not-track>`__.
-
-  options:
-    enabled:
-      description: |
-        Enable or disable usage data collection and sending.
-      version_added: 2.10.0
-      type: boolean
-      example: ~
-      default: "True"
-      see_also: ":ref:`Usage data collection FAQ <usage-data-collection>`"

@@ -59,8 +59,9 @@ def find_airflow_package(extension: str) -> str | None:
 def find_provider_packages(extension: str, selected_providers: list[str]) -> list[str]:
     candidates = list(DIST_FOLDER.glob(f"apache_airflow_providers_*.{extension}"))
     console.print("\n[bright_blue]Found the following provider packages: ")
+    console.print(f"Filtering by {selected_providers}")
     for candidate in sorted(candidates):
-        console.print(f"  {candidate.as_posix()}")
+        console.print(f"  {candidate.as_posix()} -> {get_provider_name(candidate.name)}")
     console.print()
     if selected_providers:
         candidates = [
@@ -272,7 +273,7 @@ def find_installation_spec(
         )
     provider_package_list = []
     if use_packages_from_dist:
-        selected_providers_list = install_selected_providers.split(",") if install_selected_providers else []
+        selected_providers_list = install_selected_providers.split(" ") if install_selected_providers else []
         if selected_providers_list:
             console.print(f"\n[bright_blue]Selected providers: {selected_providers_list}\n")
         else:
@@ -296,7 +297,7 @@ def find_installation_spec(
 
 ALLOWED_PACKAGE_FORMAT = ["wheel", "sdist", "both"]
 ALLOWED_CONSTRAINTS_MODE = ["constraints-source-providers", "constraints", "constraints-no-providers"]
-ALLOWED_MOUNT_SOURCES = ["remove", "tests", "providers-and-tests"]
+ALLOWED_MOUNT_SOURCES = ["remove", "tests", "providers-and-tests", "selected"]
 
 
 @click.command()
@@ -404,7 +405,7 @@ ALLOWED_MOUNT_SOURCES = ["remove", "tests", "providers-and-tests"]
 )
 @click.option(
     "--python-version",
-    default="3.8",
+    default="3.9",
     envvar="PYTHON_MAJOR_MINOR_VERSION",
     show_default=True,
     help="Python version to use",

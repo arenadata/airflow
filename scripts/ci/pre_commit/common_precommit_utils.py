@@ -30,7 +30,7 @@ from rich.console import Console
 
 AIRFLOW_SOURCES_ROOT_PATH = Path(__file__).parents[3].resolve()
 AIRFLOW_BREEZE_SOURCES_PATH = AIRFLOW_SOURCES_ROOT_PATH / "dev" / "breeze"
-DEFAULT_PYTHON_MAJOR_MINOR_VERSION = "3.8"
+DEFAULT_PYTHON_MAJOR_MINOR_VERSION = "3.10"
 
 console = Console(width=400, color_system="standard")
 
@@ -113,13 +113,16 @@ def initialize_breeze_precommit(name: str, file: str):
         )
 
     if os.environ.get("SKIP_BREEZE_PRE_COMMITS"):
-        console.print("[yellow]Skipping breeze pre-commit as SKIP_BREEZE_PRE_COMMIT is set")
+        console.print("[yellow]Skipping breeze prek as SKIP_BREEZE_PRE_COMMIT is set")
         sys.exit(0)
     if shutil.which("breeze") is None:
         console.print(
             "[red]The `breeze` command is not on path.[/]\n\n"
-            "[yellow]Please install breeze with `pipx install -e ./dev/breeze` from Airflow sources "
-            "and make sure you run `pipx ensurepath`[/]\n\n"
+            "[yellow]Please install breeze.\n"
+            "You can use uv with `uv tool install -e ./dev/breeze or "
+            "`pipx install -e ./dev/breeze`.\n"
+            "It will install breeze from Airflow sources "
+            "(make sure you run `pipx ensurepath` if you use pipx)[/]\n\n"
             "[bright_blue]You can also set SKIP_BREEZE_PRE_COMMITS env variable to non-empty "
             "value to skip all breeze tests."
         )
@@ -132,7 +135,7 @@ def run_command_via_breeze_shell(
     backend: str = "none",
     executor: str = "SequentialExecutor",
     extra_env: dict[str, str] | None = None,
-    project_name: str = "pre-commit",
+    project_name: str = "prek",
     skip_environment_initialization: bool = True,
     warn_image_upgrade_needed: bool = False,
     **other_popen_kwargs,
@@ -211,3 +214,48 @@ def check_list_sorted(the_list: list[str], message: str, errors: list[str]) -> b
     console.print()
     errors.append(f"ERROR in {message}. The elements are not sorted/unique.")
     return False
+
+
+def validate_cmd_result(cmd_result, include_ci_env_check=False):
+    if include_ci_env_check:
+        if cmd_result.returncode != 0 and os.environ.get("CI") != "true":
+            console.print(
+                "\n[yellow]If you see strange stacktraces above, especially about missing imports "
+                "run this command:[/]\n"
+            )
+            console.print("[magenta]breeze ci-image build --python 3.10 --upgrade-to-newer-dependencies[/]\n")
+
+    elif cmd_result.returncode != 0:
+        console.print(
+            "[warning]\nIf you see strange stacktraces above, "
+            "run `breeze ci-image build --python 3.10` and try again."
+        )
+    sys.exit(cmd_result.returncode)
+
+
+def get_provider_id_from_path(file_path: Path) -> str | None:
+    """
+    Get the provider id from the path of the file it belongs to.
+    """
+    for parent in file_path.parents:
+        # This works fine for both new and old providers structure - because we moved provider.yaml to
+        # the top-level of the provider and this code finding "providers"  will find the "providers" package
+        # in old structure and "providers" directory in new structure - in both cases we can determine
+        # the provider id from the relative folders
+        if (parent / "provider.yaml").exists():
+            for providers_root_candidate in parent.parents:
+                if providers_root_candidate.name == "providers":
+                    return parent.relative_to(providers_root_candidate).as_posix().replace("/", ".")
+            else:
+                return None
+    return None
+
+
+def get_provider_base_dir_from_path(file_path: Path) -> Path | None:
+    """
+    Get the provider base dir (where provider.yaml is) from the path of the file it belongs to.
+    """
+    for parent in file_path.parents:
+        if (parent / "provider.yaml").exists():
+            return parent
+    return None

@@ -23,13 +23,14 @@ import sys
 import textwrap
 import time
 from abc import ABCMeta, abstractmethod
+from collections.abc import Generator
 from contextlib import contextmanager
 from enum import Enum
 from multiprocessing.pool import ApplyResult, Pool
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Thread
-from typing import Any, Generator, NamedTuple
+from typing import Any, NamedTuple
 
 from rich.table import Table
 
@@ -217,7 +218,7 @@ def bytes2human(n):
 def get_printable_value(key: str, value: Any) -> str:
     if key == "percent":
         return f"{value} %"
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return bytes2human(value)
     return str(value)
 

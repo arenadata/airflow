@@ -33,7 +33,7 @@ from in_container_utils import click, console, run_command
 AIRFLOW_SOURCE_DIR = Path(__file__).resolve().parents[2]
 
 DEFAULT_BRANCH = os.environ.get("DEFAULT_BRANCH", "main")
-PYTHON_VERSION = os.environ.get("PYTHON_MAJOR_MINOR_VERSION", "3.8")
+PYTHON_VERSION = os.environ.get("PYTHON_MAJOR_MINOR_VERSION", "3.9")
 GENERATED_PROVIDER_DEPENDENCIES_FILE = AIRFLOW_SOURCE_DIR / "generated" / "provider_dependencies.json"
 
 ALL_PROVIDER_DEPENDENCIES = json.loads(GENERATED_PROVIDER_DEPENDENCIES_FILE.read_text())
@@ -83,7 +83,7 @@ PYPI_PROVIDERS_CONSTRAINTS_PREFIX = f"""
 # commands that might change the installed version of apache-airflow should include "apache-airflow==X.Y.Z"
 # in the list of install targets to prevent Airflow accidental upgrade or downgrade.
 #
-# Typical installation process of airflow for Python 3.8 is (with random selection of extras and custom
+# Typical installation process of airflow for Python 3.9 is (with random selection of extras and custom
 # dependencies added), usually consists of two steps:
 #
 # 1. Reproducible installation of airflow with selected providers (note constraints are used):
@@ -378,6 +378,11 @@ def generate_constraints_pypi_providers(config_params: ConfigParams) -> None:
         r = requests.head(f"https://pypi.org/pypi/{provider_package}/json", timeout=60)
         if r.status_code == 200:
             console.print("[green]OK")
+            if provider_package == "apache-airflow-providers-celery":
+                console.print(
+                    "[yellow]Excluding celery provider 3.16.0 as it does not work with Airflow 2.11."
+                )
+                provider_package = f"{provider_package}!=3.16.0"
             packages_to_install.append(provider_package)
         else:
             console.print("[yellow]NOK. Skipping.")

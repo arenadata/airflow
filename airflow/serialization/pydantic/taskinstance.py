@@ -18,9 +18,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Iterable, Optional
+from urllib.parse import quote
 
 from typing_extensions import Annotated
 
+from airflow.configuration import conf
 from airflow.exceptions import AirflowRescheduleException, TaskDeferred
 from airflow.models import Operator
 from airflow.models.baseoperator import BaseOperator
@@ -123,6 +125,7 @@ class TaskInstancePydantic(BaseModelPydantic, LoggingMixin):
     dag_model: Optional[DagModelPydantic]
     raw: Optional[bool]
     is_trigger_log_context: Optional[bool]
+    note: Optional[str] = None
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
     @property
@@ -549,6 +552,27 @@ class TaskInstancePydantic(BaseModelPydantic, LoggingMixin):
             upstream=upstream,
             ti_count=ti_count,
             session=session,
+        )
+
+    @property
+    def log_url(self) -> str:
+        """Log URL for TaskInstance."""
+        if not self.execution_date:
+            return ""
+        run_id = quote(self.run_id)
+        base_date = quote(self.execution_date.strftime("%Y-%m-%dT%H:%M:%S%z"))
+        base_url = conf.get_mandatory_value("webserver", "BASE_URL")
+        map_index = f"&map_index={self.map_index}" if self.map_index >= 0 else ""
+        return (
+            f"{base_url}"
+            f"/dags"
+            f"/{self.dag_id}"
+            f"/grid"
+            f"?dag_run_id={run_id}"
+            f"&task_id={self.task_id}"
+            f"{map_index}"
+            f"&base_date={base_date}"
+            "&tab=logs"
         )
 
 

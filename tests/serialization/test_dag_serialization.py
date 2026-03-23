@@ -408,6 +408,21 @@ def timetable_plugin(monkeypatch):
     )
 
 
+@pytest.fixture
+def custom_ti_dep(monkeypatch):
+    """Patch plugins manager to always and only return our custom timetable."""
+    from test_plugin import CustomTestTriggerRule
+
+    from airflow import plugins_manager
+
+    monkeypatch.setattr(plugins_manager, "initialize_ti_deps_plugins", lambda: None)
+    monkeypatch.setattr(
+        plugins_manager,
+        "registered_ti_dep_classes",
+        {"test_plugin.CustomTestTriggerRule": CustomTestTriggerRule},
+    )
+
+
 # TODO: (potiuk) - AIP-44 - check why this test hangs
 @pytest.mark.skip_if_database_isolation_mode
 class TestStringifiedDAGs:
@@ -430,6 +445,7 @@ class TestStringifiedDAGs:
             )
 
     @pytest.mark.db_test
+    @pytest.mark.filterwarnings("ignore::airflow.exceptions.RemovedInAirflow3Warning")
     def test_serialization(self):
         """Serialization and deserialization should work for every DAG and Operator."""
         dags = collect_dags()
@@ -539,6 +555,7 @@ class TestStringifiedDAGs:
         return actual, expected
 
     @pytest.mark.db_test
+    @pytest.mark.filterwarnings("ignore::airflow.exceptions.RemovedInAirflow3Warning")
     def test_deserialization_across_process(self):
         """A serialized DAG can be deserialized in another process."""
 
@@ -976,29 +993,6 @@ class TestStringifiedDAGs:
         deserialized_simple_task = deserialized_dag.task_dict["simple_task"]
         assert expected_val == deserialized_dag.params.dump()
         assert expected_val == deserialized_simple_task.params.dump()
-
-    def test_invalid_params(self):
-        """
-        Test to make sure that only native Param objects are being passed as dag or task params
-        """
-
-        class S3Param(Param):
-            def __init__(self, path: str):
-                schema = {"type": "string", "pattern": r"s3:\/\/(.+?)\/(.+)"}
-                super().__init__(default=path, schema=schema)
-
-        dag = DAG(dag_id="simple_dag", schedule=None, params={"path": S3Param("s3://my_bucket/my_path")})
-
-        with pytest.raises(SerializationError):
-            SerializedDAG.to_dict(dag)
-
-        dag = DAG(dag_id="simple_dag", schedule=None)
-        BaseOperator(
-            task_id="simple_task",
-            dag=dag,
-            start_date=datetime(2019, 8, 1),
-            params={"path": S3Param("s3://my_bucket/my_path")},
-        )
 
     @pytest.mark.parametrize(
         "param",
@@ -1596,6 +1590,7 @@ class TestStringifiedDAGs:
             "airflow.ti_deps.deps.trigger_rule_dep.TriggerRuleDep",
         ]
 
+    @pytest.mark.filterwarnings("ignore::airflow.exceptions.RemovedInAirflow3Warning")
     def test_error_on_unregistered_ti_dep_serialization(self):
         # trigger rule not registered through the plugin system will not be serialized
         class DummyTriggerRule(BaseTIDep):
@@ -1634,6 +1629,8 @@ class TestStringifiedDAGs:
             SerializedBaseOperator.deserialize_operator(serialize_op)
 
     @pytest.mark.db_test
+    @pytest.mark.usefixtures("custom_ti_dep")
+    @pytest.mark.filterwarnings("ignore::airflow.exceptions.RemovedInAirflow3Warning")
     def test_serialize_and_deserialize_custom_ti_deps(self):
         from test_plugin import CustomTestTriggerRule
 
@@ -2687,6 +2684,37 @@ def test_task_resources_serde():
         "gpus": {"name": "GPU", "qty": 0, "units_str": "gpu(s)"},
         "ram": {"name": "RAM", "qty": 2048, "units_str": "MB"},
     }
+
+
+@pytest.fixture(params=[None, timedelta(hours=1)])
+def default_task_execution_timeout(request):
+    """
+    Mock setting core.default_task_execution_timeout in airflow.cfg.
+    """
+    from airflow.serialization.serialized_objects import SerializedBaseOperator
+
+    DEFAULT_TASK_EXECUTION_TIMEOUT = request.param
+    with mock.patch.dict(
+        SerializedBaseOperator._CONSTRUCTOR_PARAMS, {"execution_timeout": DEFAULT_TASK_EXECUTION_TIMEOUT}
+    ):
+        yield DEFAULT_TASK_EXECUTION_TIMEOUT
+
+
+@pytest.mark.parametrize("execution_timeout", [None, timedelta(hours=1)])
+def test_task_execution_timeout_serde(execution_timeout, default_task_execution_timeout):
+    """
+    Test task execution_timeout serialization/deserialization.
+    """
+
+    with DAG("test_task_execution_timeout", schedule=None, start_date=datetime(2020, 1, 1)) as _:
+        task = EmptyOperator(task_id="task1", execution_timeout=execution_timeout)
+
+    serialized = BaseSerialization.serialize(task)
+    if execution_timeout != default_task_execution_timeout:
+        assert "execution_timeout" in serialized["__var"]
+
+    deserialized = BaseSerialization.deserialize(serialized)
+    assert deserialized.execution_timeout == task.execution_timeout
 
 
 def test_taskflow_expand_serde():

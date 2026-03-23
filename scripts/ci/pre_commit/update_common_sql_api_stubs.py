@@ -39,10 +39,12 @@ sys.path.insert(0, str(Path(__file__).parent.resolve()))  # make sure common_pre
 from common_precommit_black_utils import black_format
 from common_precommit_utils import AIRFLOW_SOURCES_ROOT_PATH
 
-PROVIDERS_ROOT = (AIRFLOW_SOURCES_ROOT_PATH / "airflow" / "providers").resolve(strict=True)
+PROVIDERS_ROOT = (AIRFLOW_SOURCES_ROOT_PATH / "providers" / "src" / "airflow" / "providers").resolve(
+    strict=True
+)
 COMMON_SQL_ROOT = (PROVIDERS_ROOT / "common" / "sql").resolve(strict=True)
 OUT_DIR = AIRFLOW_SOURCES_ROOT_PATH / "out"
-OUT_DIR_PROVIDERS = OUT_DIR / "airflow" / "providers"
+OUT_DIR_PROVIDERS = OUT_DIR / PROVIDERS_ROOT.relative_to(AIRFLOW_SOURCES_ROOT_PATH)
 
 COMMON_SQL_PACKAGE_PREFIX = "airflow.providers.common.sql."
 
@@ -296,7 +298,7 @@ PREAMBLE = """# Licensed to the Apache Software Foundation (ASF) under one
 #
 # This is automatically generated stub for the `common.sql` provider
 #
-# This file is generated automatically by the `update-common-sql-api stubs` pre-commit
+# This file is generated automatically by the `update-common-sql-api stubs` prek
 # and the .pyi file represents part of the "public" API that the
 # `common.sql` provider exposes to other providers.
 #
@@ -317,7 +319,7 @@ if __name__ == "__main__":
     shutil.rmtree(OUT_DIR, ignore_errors=True)
 
     subprocess.run(
-        ["stubgen", *[os.fspath(path) for path in COMMON_SQL_ROOT.rglob("*.py")]],
+        ["stubgen", f"--out={ OUT_DIR }", COMMON_SQL_ROOT],
         cwd=AIRFLOW_SOURCES_ROOT_PATH,
     )
     total_removals, total_additions = 0, 0
@@ -359,8 +361,7 @@ if __name__ == "__main__":
                 "[bright_blue]If you are sure all the changes are justified, run:[/]"
             )
             console.print(
-                "\n[magenta]UPDATE_COMMON_SQL_API=1 "
-                "pre-commit run update-common-sql-api-stubs --all-files[/]\n"
+                "\n[magenta]UPDATE_COMMON_SQL_API=1 prek run update-common-sql-api-stubs --all-files[/]\n"
             )
             console.print(WHAT_TO_CHECK)
             console.print("\n[yellow]Make sure to commit the changes after you update the API.[/]")

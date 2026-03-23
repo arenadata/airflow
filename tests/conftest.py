@@ -371,10 +371,17 @@ def initial_db_init():
     from airflow.www.extensions.init_auth_manager import get_auth_manager
     from tests.test_utils.compat import AIRFLOW_V_2_8_PLUS, AIRFLOW_V_2_10_PLUS
 
-    if AIRFLOW_V_2_10_PLUS:
-        db.resetdb(use_migration_files=True)
+    sql_alchemy_conn = conf.get("database", "sql_alchemy_conn")
+    if sql_alchemy_conn.startswith("sqlite"):
+        reset_cmd = [sys.executable, "-m", "airflow", "db", "reset", "--yes"]
+        if AIRFLOW_V_2_10_PLUS:
+            reset_cmd.append("--use-migration-files")
+        subprocess.check_call(reset_cmd)
     else:
-        db.resetdb()
+        if AIRFLOW_V_2_10_PLUS:
+            db.resetdb(use_migration_files=True)
+        else:
+            db.resetdb()
     db.bootstrap_dagbag()
     # minimal app to add roles
     flask_app = Flask(__name__)
@@ -1487,3 +1494,15 @@ def clean_dags_and_dagruns():
     yield  # Test runs here
     clear_db_dags()
     clear_db_runs()
+
+
+@pytest.fixture
+def clean_executor_loader():
+    """Clean the executor_loader state, as it stores global variables in the module, causing side effects for some tests."""
+    from airflow.executors.executor_loader import ExecutorLoader
+    from tests.test_utils.executor_loader import clean_executor_loader_module
+
+    clean_executor_loader_module()
+    yield  # Test runs here
+    clean_executor_loader_module()
+    ExecutorLoader.init_executors()
