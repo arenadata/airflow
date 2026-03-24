@@ -202,7 +202,10 @@ class HBaseCLIHook(BaseHook):
             raise RuntimeError(f"Failed to execute HBase command: {e}") from e
 
         output_lines: list[str] = []
-        for line in iter(self._process.stdout.readline, ""):
+        process = self._process
+        assert process is not None
+        assert process.stdout is not None
+        for line in iter(process.stdout.readline, ""):
             line = line.strip()
             if line:
                 logger.info(line)

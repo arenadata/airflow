@@ -302,7 +302,9 @@ class HBaseThrift2Client:
                 self._transport.open()
 
                 # Test connection
-                self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
+                client = self._client
+                assert client is not None
+                client.getTableNamesByPattern(regex=None, includeSysTables=False)
 
                 logger.info(
                     "Successfully connected to HBase Thrift2 at %s:%s (SSL: %s, Transport: %s)",
