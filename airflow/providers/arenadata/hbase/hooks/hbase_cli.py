@@ -168,9 +168,7 @@ class HBaseCLIHook(BaseHook):
         full_command, env = self._prepare_command(args)
 
         try:
-            result = subprocess.run(
-                full_command, capture_output=True, text=True, check=True, env=env
-            )
+            result = subprocess.run(full_command, capture_output=True, text=True, check=True, env=env)
             logger.info("Command completed successfully")
             return result.stdout.strip()
         except subprocess.CalledProcessError as e:
@@ -226,8 +224,6 @@ class HBaseCLIHook(BaseHook):
         if self._process and self._process.poll() is None:
             logger.info("Killing HBase process")
             self._process.kill()
-
-
 
     def create_backup_set(self, backup_set_name: str, tables: list[str]) -> str:
         """

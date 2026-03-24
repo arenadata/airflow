@@ -214,14 +214,12 @@ class Thrift2Strategy(HBaseStrategy):
                 "Thrift2 doesn't support parallel processing (no connection pool). Ignoring max_workers."
             )
 
-
         def process_chunk(chunk):
             """Process chunk using batch API."""
             chunk_bytes = sum(len(str(row)) for row in chunk)
             if chunk_bytes > MAX_CHUNK_BYTES:
                 self.log.warning(
-                    "Chunk payload ~%d bytes exceeds limit %d bytes. "
-                    "Consider reducing batch_size.",
+                    "Chunk payload ~%d bytes exceeds limit %d bytes. " "Consider reducing batch_size.",
                     chunk_bytes,
                     MAX_CHUNK_BYTES,
                 )
@@ -405,8 +403,7 @@ class PooledThrift2Strategy(HBaseStrategy):
             chunk_bytes = sum(len(str(row)) for row in chunk)
             if chunk_bytes > MAX_CHUNK_BYTES:
                 self.log.warning(
-                    "Chunk payload ~%d bytes exceeds limit %d bytes. "
-                    "Consider reducing batch_size.",
+                    "Chunk payload ~%d bytes exceeds limit %d bytes. " "Consider reducing batch_size.",
                     chunk_bytes,
                     MAX_CHUNK_BYTES,
                 )
