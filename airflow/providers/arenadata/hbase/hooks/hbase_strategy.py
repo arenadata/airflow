@@ -219,7 +219,7 @@ class Thrift2Strategy(HBaseStrategy):
             chunk_bytes = sum(len(str(row)) for row in chunk)
             if chunk_bytes > MAX_CHUNK_BYTES:
                 self.log.warning(
-                    "Chunk payload ~%d bytes exceeds limit %d bytes. " "Consider reducing batch_size.",
+                    "Chunk payload ~%d bytes exceeds limit %d bytes. Consider reducing batch_size.",
                     chunk_bytes,
                     MAX_CHUNK_BYTES,
                 )
@@ -403,7 +403,7 @@ class PooledThrift2Strategy(HBaseStrategy):
             chunk_bytes = sum(len(str(row)) for row in chunk)
             if chunk_bytes > MAX_CHUNK_BYTES:
                 self.log.warning(
-                    "Chunk payload ~%d bytes exceeds limit %d bytes. " "Consider reducing batch_size.",
+                    "Chunk payload ~%d bytes exceeds limit %d bytes. Consider reducing batch_size.",
                     chunk_bytes,
                     MAX_CHUNK_BYTES,
                 )

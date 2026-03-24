@@ -81,7 +81,8 @@ class HBaseThrift2Client:
             retry_max_attempts: Maximum number of connection attempts
             retry_delay: Initial delay between retry attempts in seconds
             retry_backoff_factor: Multiplier for delay after each failed attempt
-            use_http: Use HTTP transport instead of binary socket (required for SSL with hbase.regionserver.thrift.http=true)
+            use_http: Use HTTP transport instead of binary socket (required for SSL with
+            hbase.regionserver.thrift.http=true)
         """
         self.use_http = use_http
         self.config = create_connection_config(

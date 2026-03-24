@@ -383,8 +383,8 @@ class HBaseCreateBackupOperator(BaseOperator):  # pylint: disable=too-few-public
 
         try:
             backup_type = BackupType(self.backup_type)
-        except ValueError:
-            raise ValueError("backup_type must be 'full' or 'incremental'")
+        except ValueError as exc:
+            raise ValueError("backup_type must be 'full' or 'incremental'") from exc
 
         if not self.backup_set_name and not self.tables:
             raise ValueError("Either backup_set_name or tables must be specified")

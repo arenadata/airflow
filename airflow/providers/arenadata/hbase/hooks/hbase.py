@@ -245,7 +245,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
     def get_openlineage_database_info(self, connection):
         """Return HBase specific information for OpenLineage."""
         try:
-            from airflow.providers.openlineage.sqlparser import DatabaseInfo
+            from airflow.providers.openlineage.sqlparser import DatabaseInfo  # pylint: disable=import-outside-toplevel
 
             return DatabaseInfo(
                 scheme="hbase",

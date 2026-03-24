@@ -39,7 +39,7 @@ POOL_CONNECTION_TIMEOUT = float(os.getenv("HBASE_POOL_CONNECTION_TIMEOUT", "30.0
 class Thrift2ConnectionPool:
     """Connection pool for HBase Thrift2 clients."""
 
-    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
         size: int,
         host: str,
@@ -216,7 +216,7 @@ def _cleanup_pools() -> None:
         _thrift2_pools.clear()
 
 
-def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     conn_id: str,
     pool_size: int,
     host: str,
