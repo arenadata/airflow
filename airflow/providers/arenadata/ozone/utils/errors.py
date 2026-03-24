@@ -21,6 +21,8 @@ from dataclasses import dataclass
 
 from airflow.exceptions import AirflowException
 
+SNAPSHOT_ALREADY_EXISTS_MARKERS = ("FILE_ALREADY_EXISTS", "SNAPSHOT ALREADY EXISTS")
+
 
 class OzoneCliError(AirflowException):
     """Ozone CLI error with retryable marker."""

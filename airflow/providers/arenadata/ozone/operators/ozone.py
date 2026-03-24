@@ -26,14 +26,12 @@ from airflow.providers.arenadata.ozone.hooks.ozone import (
     OzoneAdminHook,
     OzoneFsHook,
 )
-from airflow.providers.arenadata.ozone.utils.helpers import (
-    TypeNormalizationHelper,
-)
-from airflow.providers.arenadata.ozone.utils.params import (
+from airflow.providers.arenadata.ozone.utils.connection_schema import (
     FAST_TIMEOUT_SECONDS,
     RETRY_ATTEMPTS,
     SLOW_TIMEOUT_SECONDS,
 )
+from airflow.providers.arenadata.ozone.utils.helpers import FileHelper, TypeNormalizationHelper
 from airflow.utils.context import Context  # noqa: TCH001
 
 
@@ -48,7 +46,7 @@ class OzoneCreateVolumeOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.volume_name = volume_name
         self.quota = TypeNormalizationHelper.require_optional_non_empty(
@@ -58,7 +56,7 @@ class OzoneCreateVolumeOperator(BaseOperator):
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Create the target volume if it does not exist."""
         hook = OzoneAdminHook(
             ozone_conn_id=self.ozone_conn_id,
@@ -79,7 +77,7 @@ class OzoneCreateBucketOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.volume_name = volume_name
         self.bucket_name = bucket_name
@@ -90,7 +88,7 @@ class OzoneCreateBucketOperator(BaseOperator):
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Create the target bucket if it does not exist."""
         hook = OzoneAdminHook(
             ozone_conn_id=self.ozone_conn_id,
@@ -116,7 +114,7 @@ class OzoneSetQuotaOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = FAST_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.volume = volume
         self.quota = quota
@@ -127,7 +125,7 @@ class OzoneSetQuotaOperator(BaseOperator):
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Apply a quota to a volume or bucket."""
         hook = OzoneAdminHook(
             ozone_conn_id=self.ozone_conn_id,
@@ -153,7 +151,7 @@ class OzoneDeleteVolumeOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.volume_name = volume_name
         self.ozone_conn_id = ozone_conn_id
@@ -164,7 +162,7 @@ class OzoneDeleteVolumeOperator(BaseOperator):
         self.recursive = recursive
         self.force = force
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Delete a volume with optional recursive mode."""
         hook = OzoneAdminHook(
             ozone_conn_id=self.ozone_conn_id,
@@ -191,7 +189,7 @@ class OzoneDeleteBucketOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.volume_name = volume_name
         self.bucket_name = bucket_name
@@ -203,7 +201,7 @@ class OzoneDeleteBucketOperator(BaseOperator):
         self.recursive = recursive
         self.force = force
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Delete a bucket with optional recursive mode."""
         hook = OzoneAdminHook(
             ozone_conn_id=self.ozone_conn_id,
@@ -230,14 +228,14 @@ class OzoneCreatePathOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = FAST_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.path = path
         self.ozone_conn_id = ozone_conn_id
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Create a directory path in Ozone FS."""
         hook = OzoneFsHook(
             ozone_conn_id=self.ozone_conn_id,
@@ -254,23 +252,36 @@ class OzoneUploadContentOperator(BaseOperator):
         content: str,
         remote_path: str,
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
+        max_content_size_bytes: int | None = None,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.remote_path = remote_path
         self.ozone_conn_id = ozone_conn_id
         self.content = content
+        self.max_content_size_bytes = TypeNormalizationHelper.require_optional_positive_int(
+            max_content_size_bytes,
+            field_name="max_content_size_bytes",
+        )
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Write string content to a temporary file and upload it."""
         hook = OzoneFsHook(
             ozone_conn_id=self.ozone_conn_id,
             retry_attempts=self.retry_attempts,
         )
+        size_limit_bytes = self.max_content_size_bytes or hook.connection_snapshot.max_content_size_bytes
+        content_size_bytes = len(self.content.encode("utf-8"))
+        if content_size_bytes > size_limit_bytes:
+            raise AirflowException(
+                f"Content size ({content_size_bytes} bytes) exceeds configured limit "
+                f"({size_limit_bytes} bytes) for Ozone upload."
+            )
+
         with tempfile.TemporaryDirectory(prefix="ozone_fs_put_") as tmp_dir:
             tmp_path = Path(tmp_dir) / "payload.txt"
             tmp_path.write_text(self.content, encoding="utf-8")
@@ -293,14 +304,14 @@ class OzoneDeleteKeyOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.path = path
         self.ozone_conn_id = ozone_conn_id
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Delete a single key or a wildcard-matched group of keys."""
         hook = OzoneFsHook(
             ozone_conn_id=self.ozone_conn_id,
@@ -322,7 +333,7 @@ class OzoneDeletePathOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.path = path
         self.ozone_conn_id = ozone_conn_id
@@ -330,7 +341,7 @@ class OzoneDeletePathOperator(BaseOperator):
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Delete file/directory path with optional recursive mode."""
         hook = OzoneFsHook(
             ozone_conn_id=self.ozone_conn_id,
@@ -351,7 +362,7 @@ class OzonePathExistsOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = FAST_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.path = path
         self.ozone_conn_id = ozone_conn_id
@@ -380,7 +391,7 @@ class OzoneListOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = FAST_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.path = path
         self.ozone_conn_id = ozone_conn_id
@@ -407,27 +418,40 @@ class OzoneUploadFileOperator(BaseOperator):
         remote_path: str,
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
         overwrite: bool = False,
+        max_content_size_bytes: int | None = None,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.local_path = local_path
         self.remote_path = remote_path
         self.ozone_conn_id = ozone_conn_id
         self.overwrite = overwrite
+        self.max_content_size_bytes = TypeNormalizationHelper.require_optional_positive_int(
+            max_content_size_bytes,
+            field_name="max_content_size_bytes",
+        )
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Upload a local file to Ozone, with optional overwrite."""
         hook = OzoneFsHook(
             ozone_conn_id=self.ozone_conn_id,
             retry_attempts=self.retry_attempts,
         )
         local_path_obj = Path(self.local_path)
-        if not local_path_obj.exists():
-            raise AirflowException(f"Local file not found: {self.local_path}")
+        if not FileHelper.is_readable_file(local_path_obj):
+            raise AirflowException(f"Local file not found or is not readable: {self.local_path}")
+
+        size_limit_bytes = self.max_content_size_bytes or hook.connection_snapshot.max_content_size_bytes
+        file_size_bytes = FileHelper.get_file_size_bytes(local_path_obj)
+        if file_size_bytes > size_limit_bytes:
+            raise AirflowException(
+                f"Local file size ({file_size_bytes} bytes) exceeds configured limit "
+                f"({size_limit_bytes} bytes) for Ozone upload: {self.local_path}"
+            )
 
         if hook.exists(self.remote_path, timeout=self.timeout) and not self.overwrite:
             raise AirflowException(f"Remote path {self.remote_path} already exists and overwrite is False")
@@ -453,7 +477,7 @@ class OzoneMoveOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.source_path = source_path
         self.dest_path = dest_path
@@ -461,7 +485,7 @@ class OzoneMoveOperator(BaseOperator):
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Move one key or a wildcard-selected batch within Ozone."""
         hook = OzoneFsHook(
             ozone_conn_id=self.ozone_conn_id,
@@ -484,7 +508,7 @@ class OzoneCopyOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.source_path = source_path
         self.dest_path = dest_path
@@ -492,7 +516,7 @@ class OzoneCopyOperator(BaseOperator):
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Copy one key or a wildcard-selected batch within Ozone."""
         hook = OzoneFsHook(
             ozone_conn_id=self.ozone_conn_id,
@@ -513,24 +537,43 @@ class OzoneDownloadFileOperator(BaseOperator):
         local_path: str,
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
         overwrite: bool = False,
+        max_content_size_bytes: int | None = None,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.remote_path = remote_path
         self.local_path = local_path
         self.ozone_conn_id = ozone_conn_id
         self.overwrite = overwrite
+        self.max_content_size_bytes = TypeNormalizationHelper.require_optional_positive_int(
+            max_content_size_bytes,
+            field_name="max_content_size_bytes",
+        )
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Download remote file to local path."""
         hook = OzoneFsHook(
             ozone_conn_id=self.ozone_conn_id,
             retry_attempts=self.retry_attempts,
         )
+        size_limit_bytes = self.max_content_size_bytes or hook.connection_snapshot.max_content_size_bytes
+        key_properties = hook.get_key_property(self.remote_path, timeout=self.timeout)
+        remote_size_bytes = TypeNormalizationHelper.parse_non_negative_int(key_properties.get("data_size"))
+        if remote_size_bytes is None:
+            raise AirflowException(
+                f"Unable to determine remote key size for {self.remote_path}; "
+                "missing or invalid 'data_size' in key properties."
+            )
+        if remote_size_bytes > size_limit_bytes:
+            raise AirflowException(
+                f"Remote file size ({remote_size_bytes} bytes) exceeds configured limit "
+                f"({size_limit_bytes} bytes) for Ozone download: {self.remote_path}"
+            )
+
         hook.download_key(
             self.remote_path,
             self.local_path,

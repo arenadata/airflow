@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -42,7 +43,7 @@ def admin_hook():
     conn.host = "ozone-om"
     conn.port = 9862
     conn.extra_dejson = {}
-    hook.__dict__["connection"] = conn
+    hook.get_connection = lambda _: conn
     return hook
 
 
@@ -53,7 +54,7 @@ def admin_extra_hook():
     conn.host = "ozone-om"
     conn.port = 9862
     conn.extra_dejson = {}
-    hook.__dict__["connection"] = conn
+    hook.get_connection = lambda _: conn
     return hook
 
 
@@ -64,7 +65,7 @@ def ozone_fs_hook():
     conn.host = "ozone-om"
     conn.port = 9862
     conn.extra_dejson = {}
-    hook.__dict__["connection"] = conn
+    hook.get_connection = lambda _: conn
     return hook
 
 
@@ -100,6 +101,62 @@ class TestOzoneCliHookConnectionSnapshot:
         env = hook._prepared_cli_env()
         assert env["OZONE_CONF_DIR"] == "/opt/airflow/ozone-conf"
         assert env["HADOOP_CONF_DIR"] == "/opt/airflow/ozone-conf"
+
+    @pytest.mark.parametrize(
+        ("extra", "expected_mode"),
+        [
+            ({}, "plain"),
+            ({"ozone_security_enabled": "true"}, "ssl"),
+            (
+                {
+                    "hadoop_security_authentication": "kerberos",
+                    "kerberos_principal": "airflow@EXAMPLE.COM",
+                    "kerberos_keytab": "/tmp/airflow.keytab",
+                    "krb5_conf": "/etc/krb5.conf",
+                },
+                "kerberos",
+            ),
+            (
+                {
+                    "ozone_security_enabled": "true",
+                    "hadoop_security_authentication": "kerberos",
+                    "kerberos_principal": "airflow@EXAMPLE.COM",
+                    "kerberos_keytab": "/tmp/airflow.keytab",
+                    "krb5_conf": "/etc/krb5.conf",
+                },
+                "ssl+kerberos",
+            ),
+        ],
+    )
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliRunner.run_ozone")
+    @patch("airflow.providers.arenadata.ozone.hooks.ozone.KerberosConfig.ensure_ticket")
+    def test_run_cli_logs_runtime_mode(
+        self,
+        mock_ensure_ticket: MagicMock,
+        mock_run_ozone: MagicMock,
+        extra: dict[str, str],
+        expected_mode: str,
+        caplog,
+    ) -> None:
+        conn = MagicMock()
+        conn.host = "om-host"
+        conn.port = 9862
+        conn.extra_dejson = extra
+        hook = OzoneCliHook(ozone_conn_id="ozone_default")
+        hook.get_connection = lambda _: conn
+
+        mock_ensure_ticket.return_value = False
+        mock_run_ozone.return_value = subprocess.CompletedProcess(
+            args=["ozone", "sh", "volume", "list", "/"],
+            returncode=0,
+            stdout="[]",
+            stderr="",
+        )
+
+        with caplog.at_level("INFO"):
+            hook.run_cli(["ozone", "sh", "volume", "list", "/"], log_output=False)
+
+        assert f"mode: {expected_mode}" in caplog.text
 
 
 class TestOzoneAdminHook:
@@ -184,14 +241,14 @@ class TestOzoneFsHook:
             ozone_fs_hook.upload_key(str(missing_path), "ofs://vol1/bucket1/file.txt")
         mock_run_cli.assert_not_called()
 
-    @patch(MOCK_RUN_PATH)
+    @patch(MOCK_RUN_RETRY_PATH)
     def test_test_connection_failure(self, mock_run_cli_check: MagicMock, ozone_fs_hook: OzoneFsHook):
         mock_run_cli_check.return_value = MagicMock(returncode=1, stdout="", stderr="auth failed")
         ok, message = ozone_fs_hook.test_connection()
         assert ok is False
         assert "auth failed" in message
 
-    @patch(MOCK_RUN_PATH)
+    @patch(MOCK_RUN_RETRY_PATH)
     def test_test_connection_timeout(self, mock_run_cli_check: MagicMock, ozone_fs_hook: OzoneFsHook):
         mock_run_cli_check.side_effect = OzoneCliError("Ozone command timed out", retryable=True)
         ok, message = ozone_fs_hook.test_connection()

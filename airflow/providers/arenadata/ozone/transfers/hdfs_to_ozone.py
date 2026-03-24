@@ -25,15 +25,19 @@ from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner
-from airflow.providers.arenadata.ozone.utils.helpers import TypeNormalizationHelper
-from airflow.providers.arenadata.ozone.utils.params import (
-    HDFS_SSL_ENABLED_KEY,
+from airflow.providers.arenadata.ozone.utils.connection_schema import (
     RETRY_ATTEMPTS,
     SLOW_TIMEOUT_SECONDS,
+    OzoneConnSnapshot,
+)
+from airflow.providers.arenadata.ozone.utils.helpers import (
+    TypeNormalizationHelper,
 )
 from airflow.providers.arenadata.ozone.utils.security import (
+    KerberosConfig,
     SSLConfig,
 )
+from airflow.utils.context import Context  # noqa: TCH001
 
 log = logging.getLogger(__name__)
 DISTCP_BASE_COMMAND = ["hadoop", "distcp", "-update", "-skipcrccheck"]
@@ -60,7 +64,7 @@ class HdfsToOzoneOperator(BaseOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.source_path = source_path
         self.dest_path = dest_path
@@ -76,21 +80,89 @@ class HdfsToOzoneOperator(BaseOperator):
 
     @cached_property
     def _hdfs_ssl_env(self) -> dict[str, str] | None:
-        """Load SSL/TLS configuration from HDFS connection Extra lazily."""
-        if not self.hdfs_conn_id:
+        """Load SSL/TLS configuration from HDFS snapshot lazily."""
+        if not self._hdfs_connection_snapshot:
             return None
         try:
-            conn = BaseHook.get_connection(self.hdfs_conn_id)
-            return SSLConfig.load_from_connection(
-                conn,
+            ssl_env_vars = SSLConfig.from_snapshot(
+                self._hdfs_connection_snapshot,
                 conn_id=self.hdfs_conn_id,
                 scope="hdfs",
-                enabled_flag_key=HDFS_SSL_ENABLED_KEY,
-            )
+            ).as_env()
+            if not ssl_env_vars:
+                self.log.debug("No HDFS SSL/TLS configuration found in connection snapshot")
+                return None
+            ssl_env = SSLConfig.apply_ssl_env_vars(ssl_env_vars)
+            self.log.debug("HDFS SSL/TLS configuration loaded from connection: %s", list(ssl_env_vars.keys()))
+            if self._hdfs_connection_snapshot.hdfs_ssl_enabled:
+                self.log.info("HDFS SSL/TLS enabled for connection")
+            return ssl_env
         except AirflowException as err:
             # Connection might not exist yet, that's OK
             self.log.debug("Could not load HDFS SSL configuration (connection may not exist): %s", str(err))
         return None
+
+    @cached_property
+    def _hdfs_connection_snapshot(self) -> OzoneConnSnapshot | None:
+        """Read HDFS connection snapshot once for Kerberos/SSL helpers."""
+        if not self.hdfs_conn_id:
+            return None
+        try:
+            conn = BaseHook.get_connection(self.hdfs_conn_id)
+            return OzoneConnSnapshot.from_connection(
+                conn,
+                conn_id=self.hdfs_conn_id,
+                require_host_port=False,
+            )
+        except AirflowException as err:
+            self.log.debug("Could not load HDFS connection extra (connection may not exist): %s", str(err))
+        return None
+
+    @cached_property
+    def _hdfs_kerberos_env(self) -> dict[str, str] | None:
+        """Load HDFS Kerberos configuration from connection Extra lazily."""
+        if not self.hdfs_conn_id:
+            return None
+        if not self._hdfs_connection_snapshot:
+            return None
+        return KerberosConfig.load_hdfs_env(
+            snapshot=self._hdfs_connection_snapshot,
+            conn_id=self.hdfs_conn_id,
+        )
+
+    def _build_distcp_env(self) -> dict[str, str] | None:
+        """Build DistCp environment from HDFS SSL/Kerberos scopes."""
+        env: dict[str, str] = {}
+        if self._hdfs_ssl_env:
+            self.log.debug("Applying SSL environment variables for HDFS DistCp")
+            env.update(self._hdfs_ssl_env)
+
+        if self._hdfs_kerberos_env:
+            snapshot = self._hdfs_connection_snapshot
+            if snapshot is None:
+                raise AirflowException(
+                    "HDFS Kerberos environment exists but HDFS connection snapshot is missing."
+                )
+            principal = self._hdfs_kerberos_env.get("HDFS_KERBEROS_PRINCIPAL")
+            keytab = self._hdfs_kerberos_env.get("HDFS_KERBEROS_KEYTAB")
+            if principal and keytab:
+                if not KerberosConfig.kinit_with_keytab(
+                    principal,
+                    keytab,
+                    snapshot.krb5_conf,
+                    snapshot=snapshot,
+                ):
+                    raise AirflowException(
+                        f"HDFS Kerberos authentication failed for connection '{self.hdfs_conn_id}' "
+                        f"using principal '{principal}'."
+                    )
+                env["HADOOP_SECURITY_AUTHENTICATION"] = "kerberos"
+                env["HDFS_KERBEROS_PRINCIPAL"] = principal
+                env["HDFS_KERBEROS_KEYTAB"] = keytab
+                if snapshot.krb5_conf:
+                    env["KRB5_CONFIG"] = snapshot.krb5_conf
+
+        return env or None
 
     def _build_distcp_command(self) -> list[str]:
         """Build the DistCp command for the current transfer."""
@@ -124,18 +196,16 @@ class HdfsToOzoneOperator(BaseOperator):
         self._validate_runtime_inputs()
         self._validate_hadoop_runtime()
 
-    def execute(self, context):
+    def execute(self, context: Context) -> None:
         self.log.info("Starting DistCp migration: %s -> %s", self.source_path, self.dest_path)
 
         self._validate_runtime_dependencies()
         cmd = self._build_distcp_command()
-
-        if self._hdfs_ssl_env:
-            self.log.debug("Applying SSL environment variables for HDFS DistCp")
+        distcp_env = self._build_distcp_env()
 
         CliRunner.run_process(
             cmd,
-            env_overrides=self._hdfs_ssl_env,
+            env_overrides=distcp_env,
             timeout=self.timeout,
             retry_attempts=self.retry_attempts,
             check=True,

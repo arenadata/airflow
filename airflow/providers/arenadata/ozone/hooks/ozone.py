@@ -26,22 +26,20 @@ from pathlib import Path
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner, OzoneCliRunner
-from airflow.providers.arenadata.ozone.utils.errors import ADMIN_RESOURCE_SPECS, OzoneCliError
-from airflow.providers.arenadata.ozone.utils.helpers import (
-    ConnectionExtraHelper,
-    TypeNormalizationHelper,
-    URIHelper,
-)
-from airflow.providers.arenadata.ozone.utils.params import (
-    DEFAULT_OZONE_ADMIN_CONN_ID,
-    DEFAULT_OZONE_CONN_ID,
+from airflow.providers.arenadata.ozone.utils.connection_schema import (
     FAST_TIMEOUT_SECONDS,
-    OZONE_CONN_NAME_ATTR,
     OZONE_CONNECTION_UI_FIELD_BEHAVIOUR,
-    OZONE_SSL_ENABLED_KEY,
     RETRY_ATTEMPTS,
     SLOW_TIMEOUT_SECONDS,
     OzoneConnSnapshot,
+)
+from airflow.providers.arenadata.ozone.utils.errors import ADMIN_RESOURCE_SPECS, OzoneCliError
+from airflow.providers.arenadata.ozone.utils.helpers import (
+    FileHelper,
+    JsonDict,
+    JsonValue,
+    TypeNormalizationHelper,
+    URIHelper,
 )
 from airflow.providers.arenadata.ozone.utils.security import KerberosConfig, SSLConfig
 from airflow.utils.log.secrets_masker import redact
@@ -50,8 +48,8 @@ from airflow.utils.log.secrets_masker import redact
 class OzoneCliHook(BaseHook):
     """Base hook for Ozone CLI commands with retry and auth handling."""
 
-    conn_name_attr = OZONE_CONN_NAME_ATTR
-    default_conn_name = DEFAULT_OZONE_CONN_ID
+    conn_name_attr = "ozone_conn_id"
+    default_conn_name = "ozone_default"
     conn_type = "ozone"
     hook_name = "Ozone"
 
@@ -60,50 +58,38 @@ class OzoneCliHook(BaseHook):
         ozone_conn_id: str = default_conn_name,
         *,
         retry_attempts: int = RETRY_ATTEMPTS,
-    ):
+    ) -> None:
         super().__init__()
         self.ozone_conn_id = ozone_conn_id
         self.retry_attempts = retry_attempts
         self._kerberos_ticket_ready = False
 
     @cached_property
-    def connection(self) -> object:
-        """Resolve Airflow connection lazily."""
-        return self.get_connection(self.ozone_conn_id)
-
-    @cached_property
     def connection_snapshot(self) -> OzoneConnSnapshot:
         """Validate and cache required host, port and extra connection fields."""
-        conn = self.connection
-        extra = ConnectionExtraHelper.get_connection_extra(conn)
-        raw_host = getattr(conn, "host", None)
-        raw_port = getattr(conn, "port", None)
-
-        if not raw_host or not str(raw_host).strip():
-            raise AirflowException(
-                f"Connection '{self.ozone_conn_id}' must define host for Ozone CLI operations."
-            )
-        if raw_port in (None, ""):
-            raise AirflowException(
-                f"Connection '{self.ozone_conn_id}' must define port for Ozone CLI operations."
-            )
-
-        return OzoneConnSnapshot(
-            host=str(raw_host).strip(),
-            port=int(raw_port),
-            extra=extra,
+        return OzoneConnSnapshot.from_connection(
+            self.get_connection(self.ozone_conn_id),
+            conn_id=self.ozone_conn_id,
+            require_host_port=True,
         )
 
     @cached_property
     def _cached_ssl_env(self) -> dict[str, str] | None:
-        """SSL/TLS configuration from connection Extra."""
+        """SSL/TLS configuration from snapshot."""
         try:
-            return SSLConfig.load_from_connection(
-                self.connection,
+            ssl_env_vars = SSLConfig.from_snapshot(
+                self.connection_snapshot,
                 conn_id=self.ozone_conn_id,
                 scope="ozone",
-                enabled_flag_key=OZONE_SSL_ENABLED_KEY,
-            )
+            ).as_env()
+            if not ssl_env_vars:
+                self.log.debug("No SSL/TLS configuration found in connection snapshot")
+                return None
+            ssl_env = SSLConfig.apply_ssl_env_vars(ssl_env_vars)
+            self.log.debug("SSL/TLS configuration loaded from connection: %s", list(ssl_env_vars.keys()))
+            if self.connection_snapshot.ozone_security_enabled:
+                self.log.info("SSL/TLS enabled for connection")
+            return ssl_env
         except AirflowException as err:
             self.log.debug("Could not load SSL configuration: %s", str(err))
             return None
@@ -112,7 +98,7 @@ class OzoneCliHook(BaseHook):
     def _cached_kerberos_env(self) -> dict[str, str] | None:
         """Kerberos configuration from connection Extra."""
         return KerberosConfig.load_ozone_env(
-            extra=self.connection_snapshot.extra,
+            snapshot=self.connection_snapshot,
             conn_id=self.ozone_conn_id,
         )
 
@@ -120,9 +106,7 @@ class OzoneCliHook(BaseHook):
     def _cached_effective_config_dir(self) -> str | None:
         """Config dir used for CLI --config and subprocess environment."""
         # Prefer explicit connection-level config dir for all modes (plain/SSL/Kerberos).
-        extra_config_dir = ConnectionExtraHelper.get_extra(
-            self.connection_snapshot.extra, "ozone_conf_dir", default=None
-        )
+        extra_config_dir = self.connection_snapshot.ozone_conf_dir
         if extra_config_dir:
             return extra_config_dir
         return KerberosConfig.resolve_config_dir(self._cached_kerberos_env)
@@ -146,7 +130,7 @@ class OzoneCliHook(BaseHook):
         return env
 
     @classmethod
-    def get_ui_field_behaviour(cls) -> dict[str, object]:
+    def get_ui_field_behaviour(cls) -> JsonDict:
         """Describe Ozone connection extras in Airflow UI."""
         return OZONE_CONNECTION_UI_FIELD_BEHAVIOUR
 
@@ -186,7 +170,10 @@ class OzoneCliHook(BaseHook):
             )
             return cmd
 
-        config_files_exist = KerberosConfig.check_config_files_exist(config_dir)
+        config_files_exist = KerberosConfig.check_config_files_exist(
+            config_dir,
+            snapshot=self.connection_snapshot,
+        )
         if not config_files_exist:
             self.log.warning(
                 "Kerberos enabled but configuration files (core-site.xml, ozone-site.xml) "
@@ -203,6 +190,19 @@ class OzoneCliHook(BaseHook):
 
         return cmd
 
+    def runtime_mode_label(self) -> str:
+        """Return connection runtime mode label for operator/hook logs."""
+        ssl_enabled = self.connection_snapshot.ssl_enabled
+        kerberos_enabled = self.connection_snapshot.kerberos_enabled
+
+        if ssl_enabled and kerberos_enabled:
+            return "ssl+kerberos"
+        if ssl_enabled:
+            return "ssl"
+        if kerberos_enabled:
+            return "kerberos"
+        return "plain"
+
     def run_cli(
         self,
         cmd: list[str],
@@ -214,13 +214,17 @@ class OzoneCliHook(BaseHook):
         log_output: bool = True,
         return_result: bool = False,
         return_json_result: bool = False,
-    ) -> str | subprocess.CompletedProcess[str] | object:
+    ) -> str | subprocess.CompletedProcess[str] | JsonValue:
         """Execute Ozone CLI command with common auth, retry and logging handling."""
         if return_result and return_json_result:
             raise ValueError("return_result and return_json_result cannot be enabled together")
-        self.log.info("Executing Ozone CLI command (connection: %s)", self.ozone_conn_id)
+        self.log.info(
+            "Executing Ozone CLI command (connection: %s, mode: %s)",
+            self.ozone_conn_id,
+            self.runtime_mode_label(),
+        )
         self._kerberos_ticket_ready = KerberosConfig.ensure_ticket(
-            extra=self.connection_snapshot.extra,
+            snapshot=self.connection_snapshot,
             conn_id=self.ozone_conn_id,
             kerberos_ticket_ready=self._kerberos_ticket_ready,
         )
@@ -272,7 +276,7 @@ class OzoneFsHook(OzoneCliHook):
         """Return wildcard matches for a key or path pattern."""
         return self.list_keys(path, timeout=timeout)
 
-    def get_key_info(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> dict[str, object]:
+    def get_key_info(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> JsonDict:
         """Return full metadata for a key using ozone sh key info."""
         parsed = self.run_cli(
             ["ozone", "sh", "key", "info", path],
@@ -285,7 +289,7 @@ class OzoneFsHook(OzoneCliHook):
             )
         return parsed
 
-    def get_key_property(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> dict[str, object]:
+    def get_key_property(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> JsonDict:
         """Return the most useful key properties as a compact dictionary."""
         info = self.get_key_info(path, timeout=timeout)
         replication_config = info.get("replicationConfig")
@@ -435,8 +439,8 @@ class OzoneFsHook(OzoneCliHook):
     ) -> None:
         """Upload a local file to an Ozone URI."""
         local_file = Path(local_path)
-        if not local_file.exists():
-            raise AirflowException(f"Local file does not exist: {local_path}")
+        if not FileHelper.is_readable_file(local_file):
+            raise AirflowException(f"Local file does not exist or is not readable: {local_path}")
 
         self.run_cli(
             self._fs_cmd("-put", "-f", str(local_file), remote_path),
@@ -458,6 +462,8 @@ class OzoneFsHook(OzoneCliHook):
                 f"Local file already exists: {local_path}. Set overwrite=True to replace it."
             )
         local_file.parent.mkdir(parents=True, exist_ok=True)
+        if not FileHelper.is_writable_target(local_file):
+            raise AirflowException(f"Local target path is not writable: {local_path}")
 
         cmd = self._fs_cmd("-get")
         if overwrite:
@@ -582,13 +588,11 @@ class OzoneFsHook(OzoneCliHook):
             self.create_path(dest_path, timeout=timeout)
             dest_dir = dest_path.rstrip("/")
             for matched_path in matched:
-                # CHANGED: use URIHelper.split_ozone_path() instead of local basename logic.
                 _, filename = URIHelper.split_ozone_path(matched_path)
                 dest_file_path = URIHelper.join_ozone_path(dest_dir, filename)
                 self.run_cli(self._fs_cmd(action, matched_path, dest_file_path), timeout=timeout)
             return
 
-        # CHANGED: use URIHelper.split_ozone_path() instead of key_pathname().
         parent_path, _ = URIHelper.split_ozone_path(dest_path)
         if parent_path:
             self.create_path(parent_path, timeout=timeout)
@@ -606,7 +610,7 @@ class OzoneResource(str, Enum):
 class OzoneAdminHook(OzoneCliHook):
     """Interact with core namespace admin operations through ozone sh."""
 
-    default_conn_name = DEFAULT_OZONE_ADMIN_CONN_ID
+    default_conn_name = "ozone_admin_default"
     hook_name = "Ozone Admin"
 
     # ==============================
@@ -633,7 +637,7 @@ class OzoneAdminHook(OzoneCliHook):
             timeout=timeout,
         )
 
-    def list_volumes(self, *, timeout: int = FAST_TIMEOUT_SECONDS) -> list[dict[str, object]]:
+    def list_volumes(self, *, timeout: int = FAST_TIMEOUT_SECONDS) -> list[JsonDict]:
         """List all volumes visible to the current user."""
         return self._list_resources(
             resource=OzoneResource.VOLUME,
@@ -641,7 +645,7 @@ class OzoneAdminHook(OzoneCliHook):
             timeout=timeout,
         )
 
-    def get_volume_info(self, volume_name: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> dict[str, object]:
+    def get_volume_info(self, volume_name: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> JsonDict:
         """Return detailed metadata for a volume."""
         return self._get_resource_info(volume=volume_name, timeout=timeout)
 
@@ -672,7 +676,7 @@ class OzoneAdminHook(OzoneCliHook):
         owner: str,
         *,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Change the owner of an existing volume."""
         parsed = self.run_cli(
             ["ozone", "sh", "volume", "update", self._resource_path(volume_name), "--user", owner],
@@ -726,9 +730,7 @@ class OzoneAdminHook(OzoneCliHook):
             timeout=timeout,
         )
 
-    def list_buckets(
-        self, volume_name: str, *, timeout: int = FAST_TIMEOUT_SECONDS
-    ) -> list[dict[str, object]]:
+    def list_buckets(self, volume_name: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> list[JsonDict]:
         """List buckets under the given volume."""
         return self._list_resources(
             resource=OzoneResource.BUCKET,
@@ -742,7 +744,7 @@ class OzoneAdminHook(OzoneCliHook):
         bucket_name: str,
         *,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Return detailed metadata for a bucket."""
         return self._get_resource_info(volume=volume_name, bucket=bucket_name, timeout=timeout)
 
@@ -781,7 +783,7 @@ class OzoneAdminHook(OzoneCliHook):
         owner: str,
         *,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Change the owner of an existing bucket."""
         parsed = self.run_cli(
             [
@@ -860,7 +862,7 @@ class OzoneAdminHook(OzoneCliHook):
         volume: str,
         bucket: str | None = None,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Return quota and usage fields from volume or bucket info."""
         info = self._get_resource_info(volume=volume, bucket=bucket, timeout=timeout)
         return {
@@ -938,7 +940,7 @@ class OzoneAdminHook(OzoneCliHook):
             timeout=timeout,
         )
 
-    def get_volume_quota(self, volume_name: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> dict[str, object]:
+    def get_volume_quota(self, volume_name: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> JsonDict:
         """Return quota and usage fields for a volume."""
         return self.get_quota(volume=volume_name, timeout=timeout)
 
@@ -948,7 +950,7 @@ class OzoneAdminHook(OzoneCliHook):
         bucket_name: str,
         *,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Return quota and usage fields for a bucket."""
         return self.get_quota(volume=volume_name, bucket=bucket_name, timeout=timeout)
 
@@ -1092,7 +1094,7 @@ class OzoneAdminHook(OzoneCliHook):
         volume: str,
         bucket: str | None = None,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Return JSON info for a volume or bucket."""
         resource, target = self._resolve_admin_target(volume=volume, bucket=bucket)
         parsed = self.run_cli(
@@ -1146,7 +1148,7 @@ class OzoneAdminHook(OzoneCliHook):
         resource: OzoneResource,
         parent_path: str,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> list[dict[str, object]]:
+    ) -> list[JsonDict]:
         """Return parsed list output for volume or bucket commands."""
         parsed = self.run_cli(
             self._admin_cmd(resource, "list", parent_path),
@@ -1352,7 +1354,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
         tenant_name: str,
         *,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Create a new tenant and return verbose JSON metadata."""
         parsed = self.run_cli(
             self._tenant_cmd("--verbose", "create", tenant_name),
@@ -1365,7 +1367,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
             )
         return parsed
 
-    def list_tenants(self, *, timeout: int = FAST_TIMEOUT_SECONDS) -> list[dict[str, object]]:
+    def list_tenants(self, *, timeout: int = FAST_TIMEOUT_SECONDS) -> list[JsonDict]:
         """List all tenants in JSON form."""
         parsed = self.run_cli(
             self._tenant_cmd("list", "--json"),
@@ -1383,7 +1385,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
         tenant_name: str,
         *,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Delete an empty tenant and return verbose JSON metadata."""
         parsed = self.run_cli(
             self._tenant_cmd("--verbose", "delete", tenant_name),
@@ -1425,7 +1427,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
         *,
         delegated: bool = False,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Promote a tenant access ID to tenant admin and return verbose JSON metadata."""
         cmd = self._tenant_cmd("--verbose", "user", "assignadmin", access_id)
         if delegated:
@@ -1447,7 +1449,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
         access_id: str,
         *,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Revoke tenant admin privileges and return verbose JSON metadata."""
         parsed = self.run_cli(
             self._tenant_cmd("--verbose", "user", "revokeadmin", access_id),
@@ -1465,7 +1467,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
         tenant_name: str,
         *,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> list[dict[str, object]]:
+    ) -> list[JsonDict]:
         """List users assigned to a tenant in JSON form."""
         parsed = self.run_cli(
             self._tenant_cmd("user", "list", "--json", tenant_name),
@@ -1483,7 +1485,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
         user_name: str,
         *,
         timeout: int = FAST_TIMEOUT_SECONDS,
-    ) -> dict[str, object]:
+    ) -> JsonDict:
         """Return all tenant assignments for a user in JSON form."""
         parsed = self.run_cli(
             self._tenant_cmd("user", "info", "--json", user_name),
@@ -1521,9 +1523,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
     # ==============================
     # Cluster report operations
     # ==============================
-    def get_container_report(
-        self, *, timeout: int = SLOW_TIMEOUT_SECONDS
-    ) -> dict[str, object] | list[dict[str, object]]:
+    def get_container_report(self, *, timeout: int = SLOW_TIMEOUT_SECONDS) -> JsonDict | list[JsonDict]:
         """Fetch and parse the JSON container report from SCM."""
         parsed = self.run_cli(
             ["ozone", "admin", "container", "report", "--json"],

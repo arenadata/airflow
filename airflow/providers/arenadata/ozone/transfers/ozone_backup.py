@@ -22,10 +22,13 @@ from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.hooks.ozone import (
     OzoneAdminHook,
 )
-from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
-from airflow.providers.arenadata.ozone.utils.params import (
+from airflow.providers.arenadata.ozone.utils.connection_schema import (
     RETRY_ATTEMPTS,
     SLOW_TIMEOUT_SECONDS,
+)
+from airflow.providers.arenadata.ozone.utils.errors import (
+    SNAPSHOT_ALREADY_EXISTS_MARKERS,
+    OzoneCliError,
 )
 from airflow.utils.context import Context  # noqa: TCH001
 
@@ -40,12 +43,12 @@ class OzoneBackupOperator(BaseOperator):
         *,
         volume: str,
         bucket: str,
-        snapshot_name: str,
+        snapshot_name: str,  # Please, don't forget add date and time to the snapshot name.
         ozone_conn_id: str = OzoneAdminHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.volume = volume
         self.bucket = bucket
@@ -54,7 +57,7 @@ class OzoneBackupOperator(BaseOperator):
         self.retry_attempts = retry_attempts
         self.timeout = timeout
 
-    def execute(self, context: Context):
+    def execute(self, context: Context) -> None:
         """Create snapshot and treat existing snapshot as success."""
         path = f"/{self.volume}/{self.bucket}"
         cmd = ["ozone", "sh", "snapshot", "create", path, self.snapshot_name]
@@ -69,7 +72,7 @@ class OzoneBackupOperator(BaseOperator):
         except OzoneCliError as e:
             error_stderr = (e.stderr or "").strip()
             stderr_upper = error_stderr.upper()
-            if "FILE_ALREADY_EXISTS" in stderr_upper or "SNAPSHOT ALREADY EXISTS" in stderr_upper:
+            if any(marker in stderr_upper for marker in SNAPSHOT_ALREADY_EXISTS_MARKERS):
                 self.log.info(
                     "Snapshot %s already exists, treating as success (idempotent operation).",
                     self.snapshot_name,

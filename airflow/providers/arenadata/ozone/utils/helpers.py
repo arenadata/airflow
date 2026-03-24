@@ -19,12 +19,20 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 import posixpath
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
+
+from typing_extensions import TypeAlias
 
 from airflow.exceptions import AirflowException
 from airflow.utils.log.secrets_masker import redact
+
+JsonScalar: TypeAlias = "str | int | float | bool | None"
+JsonValue: TypeAlias = "JsonScalar | list[JsonValue] | dict[str, JsonValue]"
+JsonDict: TypeAlias = "dict[str, JsonValue]"
 
 
 class URIHelper:
@@ -123,77 +131,45 @@ class URIHelper:
         return source_dir, cls.filter_paths_by_basename_pattern(listed_paths, pattern)
 
 
-class ConnectionExtraHelper:
-    """Helpers for strict connection-first reads from Connection.extra."""
+class FileHelper:
+    """Filesystem access helpers for local runtime paths."""
 
     @staticmethod
-    def get_connection_extra(conn: object) -> dict[str, object]:
-        """Return connection extra as dict in a consistent way."""
-        return conn.extra_dejson if hasattr(conn, "extra_dejson") else {}
+    def is_readable_file(path: str | Path) -> bool:
+        """Return True when path points to an existing readable regular file."""
+        target = Path(path)
+        return target.is_file() and os.access(target, os.R_OK)
 
-    @classmethod
-    def get_extra(
-        cls,
-        extra: Mapping[str, object] | None,
-        key: str,
-        default: str | None = None,
-    ) -> str | None:
-        if not extra or key not in extra:
-            return default
-        value = TypeNormalizationHelper.normalize_optional_str(extra.get(key))
-        return value if value is not None else default
+    @staticmethod
+    def is_writable_target(path: str | Path) -> bool:
+        """
+        Return True when target file can be written.
 
-    @classmethod
-    def build_mapped_env(
-        cls,
-        extra: Mapping[str, object],
-        mapping: Sequence[tuple[str, str, bool]],
-        *,
-        resolve_secret: Callable[[object], object] | None = None,
-    ) -> dict[str, str]:
-        """Build environment variables from canonical extra keys."""
-        env: dict[str, str] = {}
-        for extra_key, env_key, is_secret in mapping:
-            value = cls.get_extra(extra, extra_key, default=None)
-            if value is None:
-                continue
-            if is_secret:
-                if resolve_secret is None:
-                    raise ValueError("resolve_secret must be provided for secret-mapped values")
-                value = resolve_secret(value)
-            env[env_key] = str(value)
-        return env
+        If target exists, it must be a writable file.
+        If target does not exist, nearest existing parent directory must be writable/executable.
+        """
+        target = Path(path)
+        if target.exists():
+            return target.is_file() and os.access(target, os.W_OK)
 
-    @classmethod
-    def is_true_flag(
-        cls,
-        extra: Mapping[str, object] | None,
-        key: str,
-        default: bool = False,
-    ) -> bool:
-        if not extra or key not in extra:
-            return default
-        return TypeNormalizationHelper.normalize_flag_bool(extra.get(key), default=default)
+        probe = target.parent if target.parent != Path("") else Path(".")
+        while not probe.exists():
+            if probe == probe.parent:
+                return False
+            probe = probe.parent
+        return probe.is_dir() and os.access(probe, os.W_OK | os.X_OK)
 
-    @classmethod
-    def is_equals(
-        cls,
-        extra: Mapping[str, object] | None,
-        key: str,
-        expected: str,
-    ) -> bool:
-        expected_value = TypeNormalizationHelper.normalize_optional_str(expected)
-        if expected_value is None:
-            return False
-        current_value = cls.get_extra(extra=extra, key=key, default=None)
-        return current_value is not None and current_value.lower() == expected_value.lower()
+    @staticmethod
+    def get_file_size_bytes(path: str | Path) -> int:
+        """Return file size in bytes for an existing local file path."""
+        return Path(path).stat().st_size
 
 
 class TypeNormalizationHelper:
     """Normalization and lightweight validation helpers for typed inputs."""
 
     @staticmethod
-    def normalize_optional_str(value: object | None) -> str | None:
+    def normalize_optional_str(value: JsonValue) -> str | None:
         """Return stripped string value or None for empty or None input."""
         if value is None:
             return None
@@ -201,7 +177,7 @@ class TypeNormalizationHelper:
         return normalized or None
 
     @classmethod
-    def require_optional_non_empty(cls, value: object | None, message: str) -> str | None:
+    def require_optional_non_empty(cls, value: JsonValue, message: str) -> str | None:
         """Validate and normalize optional string input."""
         if value is None:
             return None
@@ -213,7 +189,7 @@ class TypeNormalizationHelper:
         return normalized
 
     @staticmethod
-    def normalize_flag_bool(value: object, default: bool = False) -> bool:
+    def normalize_flag_bool(value: JsonValue, default: bool = False) -> bool:
         """Normalize feature-flag style values used in connection extras/env."""
         if value is None:
             return default
@@ -227,7 +203,45 @@ class TypeNormalizationHelper:
         return default
 
     @staticmethod
-    def parse_json_output(output: str) -> object:
+    def ensure_json_dict(value: object) -> dict[str, JsonValue]:
+        """Return dict value when input is a JSON object-like mapping, otherwise empty dict."""
+        return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    def parse_positive_int(value: JsonValue, default: int) -> int:
+        """Parse positive integer value, falling back to default when invalid."""
+        if value is None:
+            return default
+        try:
+            parsed = int(str(value).strip())
+        except (TypeError, ValueError):
+            return default
+        return parsed if parsed > 0 else default
+
+    @staticmethod
+    def parse_non_negative_int(value: JsonValue) -> int | None:
+        """Parse non-negative integer value, returning None when invalid."""
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value if value >= 0 else None
+        try:
+            parsed = int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed >= 0 else None
+
+    @staticmethod
+    def require_optional_positive_int(value: int | None, *, field_name: str) -> int | None:
+        """Validate optional positive int parameter used by operators."""
+        if value is None:
+            return None
+        if value <= 0:
+            raise ValueError(f"{field_name} must be a positive integer when provided.")
+        return value
+
+    @staticmethod
+    def parse_json_output(output: str) -> JsonValue:
         """Parse CLI output that may contain plain JSON or logs followed by JSON."""
         raw_output = (output or "").strip()
         if not raw_output:
@@ -243,7 +257,7 @@ class TypeNormalizationHelper:
             if char not in "[{":
                 continue
             try:
-                parsed, _ = decoder.raw_decode(raw_output[index:])
+                parsed, _ = decoder.raw_decode(raw_output, idx=index)
                 return parsed
             except json.JSONDecodeError:
                 continue

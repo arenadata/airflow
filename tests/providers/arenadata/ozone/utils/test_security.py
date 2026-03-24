@@ -17,10 +17,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from airflow.providers.arenadata.ozone.utils.connection_schema import OzoneConnSnapshot
 from airflow.providers.arenadata.ozone.utils.security import (
     KerberosConfig,
     SecretResolver,
@@ -66,43 +68,50 @@ class TestGetSecretValue:
 class TestGetKerberosEnvVars:
     """Tests for KerberosConfig.get_env_vars."""
 
-    def test_empty_extra_returns_empty(self):
-        assert KerberosConfig.get_env_vars({}, scope="ozone") == {}
+    def test_empty_snapshot_returns_empty(self):
+        snapshot = OzoneConnSnapshot(host="om", port=9862)
+        assert KerberosConfig.get_env_vars(snapshot, scope="ozone") == {}
 
-    def test_ozone_kerberos_from_extra(self):
-        extra = {
-            "hadoop_security_authentication": "kerberos",
-            "kerberos_principal": "user@REALM",
-            "kerberos_keytab": "/etc/keytab/user.keytab",
-        }
-        result = KerberosConfig.get_env_vars(extra, scope="ozone")
+    def test_ozone_kerberos_from_snapshot(self):
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            hadoop_security_authentication="kerberos",
+            kerberos_principal="user@REALM",
+            kerberos_keytab="/etc/keytab/user.keytab",
+        )
+        result = KerberosConfig.get_env_vars(snapshot, scope="ozone")
         assert result["HADOOP_SECURITY_AUTHENTICATION"] == "kerberos"
         assert result["KERBEROS_PRINCIPAL"] == "user@REALM"
         assert result["KERBEROS_KEYTAB"] == "/etc/keytab/user.keytab"
 
     def test_ozone_scope_does_not_include_hdfs_kerberos_env(self):
-        extra = {
-            "hadoop_security_authentication": "kerberos",
-            "kerberos_principal": "user@REALM",
-            "kerberos_keytab": "/etc/keytab/user.keytab",
-            "hdfs_kerberos_enabled": "true",
-            "hdfs_kerberos_principal": "hdfs@REALM",
-            "hdfs_kerberos_keytab": "/etc/keytab/hdfs.keytab",
-        }
-        result = KerberosConfig.get_env_vars(extra, scope="ozone")
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            hadoop_security_authentication="kerberos",
+            kerberos_principal="user@REALM",
+            kerberos_keytab="/etc/keytab/user.keytab",
+            hdfs_kerberos_enabled=True,
+            hdfs_kerberos_principal="hdfs@REALM",
+            hdfs_kerberos_keytab="/etc/keytab/hdfs.keytab",
+        )
+        result = KerberosConfig.get_env_vars(snapshot, scope="ozone")
         assert "HDFS_KERBEROS_PRINCIPAL" not in result
         assert "HDFS_KERBEROS_KEYTAB" not in result
 
     def test_hdfs_scope_does_not_include_ozone_kerberos_env(self):
-        extra = {
-            "hadoop_security_authentication": "kerberos",
-            "kerberos_principal": "user@REALM",
-            "kerberos_keytab": "/etc/keytab/user.keytab",
-            "hdfs_kerberos_enabled": "true",
-            "hdfs_kerberos_principal": "hdfs@REALM",
-            "hdfs_kerberos_keytab": "/etc/keytab/hdfs.keytab",
-        }
-        result = KerberosConfig.get_env_vars(extra, scope="hdfs")
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            hadoop_security_authentication="kerberos",
+            kerberos_principal="user@REALM",
+            kerberos_keytab="/etc/keytab/user.keytab",
+            hdfs_kerberos_enabled=True,
+            hdfs_kerberos_principal="hdfs@REALM",
+            hdfs_kerberos_keytab="/etc/keytab/hdfs.keytab",
+        )
+        result = KerberosConfig.get_env_vars(snapshot, scope="hdfs")
         assert "HADOOP_SECURITY_AUTHENTICATION" not in result
         assert "KERBEROS_PRINCIPAL" not in result
         assert result["HDFS_KERBEROS_PRINCIPAL"] == "hdfs@REALM"
@@ -119,25 +128,29 @@ class TestApplySslEnvVars:
         assert result == {"A": "1", "B": "2"}
 
     def test_scope_ozone_does_not_include_hdfs_ssl_env(self):
-        extra = {
-            "ozone_security_enabled": "true",
-            "ozone_om_https_port": "9879",
-            "hdfs_ssl_enabled": "true",
-            "hdfs_ssl_keystore_location": "/etc/hdfs.ks",
-        }
-        config = SSLConfig.from_extra(extra, scope="ozone")
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            ozone_security_enabled=True,
+            ozone_om_https_port="9879",
+            hdfs_ssl_enabled=True,
+            hdfs_ssl_keystore_location="/etc/hdfs.ks",
+        )
+        config = SSLConfig.from_snapshot(snapshot, scope="ozone")
         env = config.as_env()
         assert env["OZONE_SECURITY_ENABLED"] == "true"
         assert "HDFS_SSL_ENABLED" not in env
 
     def test_scope_hdfs_does_not_include_ozone_ssl_env(self):
-        extra = {
-            "ozone_security_enabled": "true",
-            "ozone_om_https_port": "9879",
-            "hdfs_ssl_enabled": "true",
-            "hdfs_ssl_keystore_location": "/etc/hdfs.ks",
-        }
-        config = SSLConfig.from_extra(extra, scope="hdfs")
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            ozone_security_enabled=True,
+            ozone_om_https_port="9879",
+            hdfs_ssl_enabled=True,
+            hdfs_ssl_keystore_location="/etc/hdfs.ks",
+        )
+        config = SSLConfig.from_snapshot(snapshot, scope="hdfs")
         env = config.as_env()
         assert env["HDFS_SSL_ENABLED"] == "true"
         assert "OZONE_SECURITY_ENABLED" not in env
@@ -164,3 +177,33 @@ class TestApplyKerberosEnvVars:
         result = KerberosConfig.apply_env_vars(env_vars, existing_env={})
         assert "HADOOP_CONF_DIR" not in result
         assert "OZONE_CONF_DIR" not in result
+
+
+class TestSnapshotDrivenKerberosRuntime:
+    @patch("airflow.providers.arenadata.ozone.utils.security.FileHelper.is_readable_file", return_value=True)
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosCliRunner.run_kerberos")
+    def test_kinit_timeout_from_snapshot(self, mock_run_kerberos, _mock_readable):
+        mock_run_kerberos.return_value = True
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            kinit_timeout_seconds=42,
+        )
+        assert KerberosConfig.kinit_with_keytab(
+            "user@REALM",
+            "/tmp/user.keytab",
+            "/tmp/krb5.conf",
+            snapshot=snapshot,
+        )
+        assert mock_run_kerberos.call_args.kwargs["timeout"] == 42
+
+    def test_check_config_files_exist_uses_snapshot_names(self, tmp_path: Path):
+        (tmp_path / "custom-core.xml").write_text("", encoding="utf-8")
+        (tmp_path / "custom-ozone.xml").write_text("", encoding="utf-8")
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            core_site_xml="custom-core.xml",
+            ozone_site_xml="custom-ozone.xml",
+        )
+        assert KerberosConfig.check_config_files_exist(str(tmp_path), snapshot=snapshot)

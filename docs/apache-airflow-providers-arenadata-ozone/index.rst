@@ -51,26 +51,53 @@
    Detailed list of commits <commits>
 
 
-apache-airflow-providers-arenadata-ozone package
-------------------------------------------------
-
-`Apache Ozone <https://ozone.apache.org/>`__ (Arenadata provider)
-
-Release: 1.0.0
-
-Provider package
+Package overview
 ----------------
 
-All classes are in the ``airflow.providers.arenadata.ozone`` Python package.
-Supports Native CLI (``ofs://`` / ``o3fs://``), admin, and filesystem workflows.
+`Apache Ozone <https://ozone.apache.org/>`__ provider package for Airflow.
+
+Release: ``1.0.0``
+
+Python package path:
+``airflow.providers.arenadata.ozone``
+
+Current provider scope
+----------------------
+
+This provider is Native CLI-first and supports Ozone workflows through
+``ozone sh`` and ``ozone fs`` commands:
+
+* Ozone administration (volume/bucket lifecycle, quotas, admin extras)
+* Ozone filesystem operations (create/list/delete/move/copy/upload/download)
+* Ozone path sensors
+* HDFS -> Ozone DistCp transfer
+* Ozone bucket snapshot backup operator
+
+Not in scope
+------------
+
+* No built-in S3 layer in this provider
+* No compatibility aliases for connection keys
+
+Connection contract
+-------------------
+
+Runtime connection parsing is centralized in:
+``airflow/providers/arenadata/ozone/utils/connection_schema.py``
+(``OzoneConnSnapshot``).
+
+Built-in provider runtime uses typed snapshot fields.
+Raw ``Connection.extra`` is exposed as ``snapshot.raw_extra`` only for
+custom DAG-level extensions.
 
 Requirements
 ------------
 
-* ``apache-airflow`` >= 2.10.3
+* ``apache-airflow`` >= ``2.10.3``
 * ``apache-airflow-providers-apache-hdfs``
 
 Example DAGs
 ------------
 
-In the Airflow source tree: ``airflow/providers/arenadata/ozone/example_dags/``
+Example DAGs are located in:
+``airflow/providers/arenadata/ozone/example_dags/``.

@@ -25,6 +25,7 @@ import shlex
 import subprocess
 import time
 from collections.abc import Callable, Mapping, Sequence
+from typing import TypeVar
 
 from tenacity import (
     before_sleep_log,
@@ -34,11 +35,16 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+from typing_extensions import ParamSpec, TypeAlias
 
 from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError, OzoneCliErrors
 from airflow.utils.log.secrets_masker import redact
 
 log = logging.getLogger(__name__)
+P = ParamSpec("P")
+R = TypeVar("R")
+EnvOverrideValue: TypeAlias = "str | int | float | bool"
+EnvOverridesMapping: TypeAlias = "Mapping[str, EnvOverrideValue]"
 
 
 DEFAULT_PROCESS_TIMEOUT_SECONDS = 300
@@ -48,8 +54,7 @@ DEFAULT_RETRY_WAIT = wait_exponential(multiplier=2, min=2, max=60)
 class CliRunner:
     """Subprocess execution helpers grouped by provider use-cases."""
 
-    DEFAULT_PROCESS_TIMEOUT_SECONDS = DEFAULT_PROCESS_TIMEOUT_SECONDS
-    DEFAULT_RETRY_WAIT = DEFAULT_RETRY_WAIT
+    TERMINATE_GRACE_PERIOD_SECONDS = 5
     NOISE_LINE_PREFIXES = (
         "log4j:",
         "usage:",
@@ -106,7 +111,7 @@ class CliRunner:
         return accepted, skipped
 
     @staticmethod
-    def merge_env(env_overrides: Mapping[str, object] | None) -> dict[str, str]:
+    def merge_env(env_overrides: EnvOverridesMapping | None) -> dict[str, str]:
         """Merge process env with stringified overrides."""
         env = os.environ.copy()
         if env_overrides:
@@ -131,7 +136,7 @@ class CliRunner:
         cls,
         command: Sequence[str],
         *,
-        env_overrides: Mapping[str, object] | None = None,
+        env_overrides: EnvOverridesMapping | None = None,
         timeout: int = DEFAULT_PROCESS_TIMEOUT_SECONDS,
         input_text: str | None = None,
         cwd: str | None = None,
@@ -143,22 +148,37 @@ class CliRunner:
         masked_command = redact(shlex.join(cmd))
         log.debug("Executing command: %s", masked_command)
 
+        process: subprocess.Popen[str] | None = None
         try:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 cmd,
                 env=cls.merge_env(env_overrides),
-                check=check,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                input=input_text,
-                timeout=timeout,
                 cwd=cwd,
             )
+            stdout, stderr = process.communicate(input=input_text, timeout=timeout)
+            result = subprocess.CompletedProcess(
+                args=cmd,
+                returncode=process.returncode if process.returncode is not None else 1,
+                stdout=stdout,
+                stderr=stderr,
+            )
+            if check and result.returncode != 0:
+                raise subprocess.CalledProcessError(
+                    returncode=result.returncode,
+                    cmd=cmd,
+                    output=result.stdout,
+                    stderr=result.stderr,
+                )
         except subprocess.CalledProcessError as err:
             cls.log_streams(err.stdout, err.stderr, level=logging.ERROR)
             log.error("Command failed with return code %s: %s", err.returncode, masked_command)
             raise
         except subprocess.TimeoutExpired as err:
+            if process is not None:
+                cls.terminate_process(process, masked_command=masked_command)
             cls.log_streams(err.stdout, err.stderr, level=logging.ERROR)
             log.error("Command timed out after %s seconds: %s", timeout, masked_command)
             raise
@@ -168,17 +188,40 @@ class CliRunner:
         except OSError as err:
             log.error("OS error while running command %s: %s", masked_command, redact(str(err)))
             raise
+        except BaseException:
+            if process is not None:
+                cls.terminate_process(process, masked_command=masked_command)
+            raise
 
         if log_output:
             cls.log_streams(result.stdout, result.stderr)
         return result
 
     @classmethod
+    def terminate_process(cls, process: subprocess.Popen[str], *, masked_command: str) -> None:
+        """Gracefully stop process and force-kill if it does not exit."""
+        if process.poll() is not None:
+            return
+
+        process.terminate()
+        try:
+            process.wait(timeout=cls.TERMINATE_GRACE_PERIOD_SECONDS)
+            log.debug("Terminated process: %s", masked_command)
+            return
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=cls.TERMINATE_GRACE_PERIOD_SECONDS)
+            except subprocess.TimeoutExpired:
+                log.warning("Process did not exit after kill: %s", masked_command)
+            log.warning("Force-killed process after graceful timeout: %s", masked_command)
+
+    @classmethod
     def run_streaming(
         cls,
         command: Sequence[str],
         *,
-        env: Mapping[str, object] | None = None,
+        env: EnvOverridesMapping | None = None,
         cwd: str | None = None,
         check: bool = True,
         on_start: Callable[[subprocess.Popen[str]], None] | None = None,
@@ -237,7 +280,7 @@ class CliRunner:
         retry_condition: Callable[[BaseException], bool] | None = None,
         logger: logging.Logger,
         retry_attempts: int = 3,
-    ):
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
         """Build tenacity retry decorator with provider defaults."""
         if retry_exceptions is None and retry_condition is None:
             raise ValueError("retry_for requires retry_exceptions or retry_condition")
@@ -253,7 +296,7 @@ class CliRunner:
             retry_policy = retry_if_exception_type(retry_exceptions)
 
         return retry(
-            wait=cls.DEFAULT_RETRY_WAIT,
+            wait=DEFAULT_RETRY_WAIT,
             stop=stop_after_attempt(retry_attempts),
             retry=retry_policy,
             before_sleep=before_sleep_log(logger, logging.WARNING),
@@ -271,7 +314,7 @@ class CliRunner:
             OSError,
         ),
         retry_condition: Callable[[BaseException], bool] | None = None,
-        env_overrides: Mapping[str, object] | None = None,
+        env_overrides: EnvOverridesMapping | None = None,
         timeout: int = DEFAULT_PROCESS_TIMEOUT_SECONDS,
         input_text: str | None = None,
         cwd: str | None = None,
@@ -368,7 +411,7 @@ class OzoneCliRunner(CliRunner):
         cls,
         command: Sequence[str],
         *,
-        env_overrides: Mapping[str, object] | None = None,
+        env_overrides: EnvOverridesMapping | None = None,
         timeout: int = DEFAULT_PROCESS_TIMEOUT_SECONDS,
         input_text: str | None = None,
         cwd: str | None = None,
@@ -402,7 +445,7 @@ class OzoneCliRunner(CliRunner):
         cls,
         command: Sequence[str],
         *,
-        env_overrides: Mapping[str, object] | None = None,
+        env_overrides: EnvOverridesMapping | None = None,
         timeout: int = DEFAULT_PROCESS_TIMEOUT_SECONDS,
         input_text: str | None = None,
         cwd: str | None = None,
@@ -443,7 +486,7 @@ class KerberosCliRunner(CliRunner):
         cls,
         command: Sequence[str],
         *,
-        env_overrides: Mapping[str, object] | None = None,
+        env_overrides: EnvOverridesMapping | None = None,
         timeout: int = DEFAULT_PROCESS_TIMEOUT_SECONDS,
         input_text: str | None = None,
         cwd: str | None = None,

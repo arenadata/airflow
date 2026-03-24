@@ -19,11 +19,11 @@
 from __future__ import annotations
 
 from airflow.providers.arenadata.ozone.hooks.ozone import OzoneFsHook
-from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
-from airflow.providers.arenadata.ozone.utils.params import (
+from airflow.providers.arenadata.ozone.utils.connection_schema import (
     FAST_TIMEOUT_SECONDS,
     RETRY_ATTEMPTS,
 )
+from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 from airflow.sensors.base import BaseSensorOperator
 from airflow.utils.context import Context  # noqa: TCH001
 
@@ -44,7 +44,7 @@ class OzoneKeySensor(BaseSensorOperator):
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = FAST_TIMEOUT_SECONDS,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.path = path
         self.ozone_conn_id = ozone_conn_id

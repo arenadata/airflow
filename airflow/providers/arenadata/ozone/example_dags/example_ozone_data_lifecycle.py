@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
+from pathlib import PurePosixPath
 
 from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
@@ -83,8 +84,8 @@ with DAG(
     5. **Cleanup**: Deletes the original files from the landing directory.
     """,
 ) as dag:
-    LANDING_PATH = f"ofs://{OM_HOST}/{LANDING_VOLUME}/{LANDING_BUCKET}"
-    ARCHIVE_BASE_PATH = f"ofs://{OM_HOST}/{ARCHIVE_VOLUME}/{ARCHIVE_BUCKET}"
+    LANDING_PATH = f"ofs://{OM_HOST}/{PurePosixPath(LANDING_VOLUME, LANDING_BUCKET)}"
+    ARCHIVE_BASE_PATH = f"ofs://{OM_HOST}/{PurePosixPath(ARCHIVE_VOLUME, ARCHIVE_BUCKET)}"
 
     # 0. Ensure required volumes and buckets exist.
     create_landing_volume = OzoneCreateVolumeOperator(

@@ -18,28 +18,77 @@
 Example DAG configuration
 =========================
 
-Ozone provider example DAGs are configurable via environment variables.
-This follows the common Airflow provider pattern used by other providers
-for test and demo scenarios.
+This provider ships example DAGs that demonstrate native Ozone workflows.
+Examples are configured via environment variables to simplify local runs
+and CI checks without editing DAG source code.
+
+Where examples are located
+--------------------------
+
+``airflow/providers/arenadata/ozone/example_dags/``
+
+Main examples:
+
+* ``example_ozone_usage.py``
+* ``example_ozone_data_pipeline.py``
+* ``example_ozone_data_lifecycle.py``
+* ``example_ozone_multi_tenant_management.py``
+
+What each example DAG does
+--------------------------
+
+``example_ozone_usage.py`` (plain / SSL / Kerberos / SSL+Kerberos):
+
+* Creates a volume and bucket with admin operators.
+* Creates an ``ofs://`` directory path in Ozone FS.
+* Uploads inline text content to a file in that directory.
+* Waits for the file with ``OzoneKeySensor``.
+* Works in all Ozone security modes; pick mode via
+  ``OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID`` and corresponding ``Connection Extra``.
+* Best for first smoke-check of provider installation and CLI connectivity.
+
+``example_ozone_data_pipeline.py`` (trigger + migration):
+
+* Waits for a trigger marker file in Ozone landing zone.
+* Applies storage quota to target volume.
+* Migrates data from HDFS to Ozone with ``HdfsToOzoneOperator`` (DistCp).
+* Useful as a template for ingestion pipelines where Ozone is destination storage.
+
+``example_ozone_data_lifecycle.py`` (archive + backup + cleanup):
+
+* Ensures landing/archive volumes and buckets exist.
+* Lists files in landing zone with ``OzoneListOperator``.
+* Simulates processing stage (``TaskGroup`` with a processing task).
+* Moves processed files into date-partitioned archive path.
+* Creates a snapshot backup and then cleans original landing files.
+* Demonstrates full lifecycle automation: discover -> process -> archive -> backup -> cleanup.
+
+``example_ozone_multi_tenant_management.py`` (provisioning):
+
+* Creates a dedicated project volume.
+* Sets volume quota.
+* Creates standard landing/processed buckets with bucket quotas.
+* Creates standard ``data`` directories in each bucket.
+* Useful for platform teams that provision isolated tenant/project storage.
 
 How configuration is applied
 ----------------------------
 
-Each example DAG reads environment variables at DAG parse time.
-If a variable is not set, the DAG uses a safe default value.
+Each DAG reads environment variables at parse time through local helper
+functions inside example files. If a variable is not set, the DAG uses
+its built-in default value.
 
-For local or CI testing, provide these variables through your runtime
-environment (for example, container env vars, CI variables, or shell export)
-so examples can run without editing DAG sources.
+Common variable
+---------------
 
-Main variables
---------------
-
-Common:
+Used by all examples:
 
 * ``OZONE_EXAMPLE_OM_HOST``
 
-Basic example (``example_ozone_usage``):
+Per-example variables
+---------------------
+
+Basic usage (``example_ozone_usage.py``):
 
 * ``OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID``
 * ``OZONE_EXAMPLE_USAGE_VOLUME``
@@ -47,26 +96,19 @@ Basic example (``example_ozone_usage``):
 * ``OZONE_EXAMPLE_USAGE_DIR``
 * ``OZONE_EXAMPLE_USAGE_FILE``
 
-SSL example (``example_ozone_usage_ssl``):
+To switch mode for this single usage DAG, point
+``OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID`` to a connection configured for:
 
-* ``OZONE_EXAMPLE_SSL_ADMIN_CONN_ID``
-* ``OZONE_EXAMPLE_SSL_VOLUME``
-* ``OZONE_EXAMPLE_SSL_BUCKET``
-* ``OZONE_EXAMPLE_SSL_DIR``
-* ``OZONE_EXAMPLE_SSL_FILE``
+* plain Ozone;
+* Ozone + SSL;
+* Ozone + Kerberos;
+* Ozone + SSL + Kerberos.
 
-SSL + Kerberos example (``example_ozone_usage_ssl_kerberos``):
+For Kerberos mode, required connection-extra keys include
+``hadoop_security_authentication=kerberos``, ``kerberos_principal``,
+``kerberos_keytab``, ``krb5_conf``, and ``ozone_conf_dir``.
 
-* ``OZONE_EXAMPLE_KRB_ADMIN_CONN_ID``
-* ``OZONE_EXAMPLE_KRB_VOLUME``
-* ``OZONE_EXAMPLE_KRB_BUCKET``
-* ``OZONE_EXAMPLE_KRB_DIR``
-* ``OZONE_EXAMPLE_KRB_FILE``
-
-For this DAG, the ``ozone`` connection extra must include explicit Kerberos/config paths
-(``kerberos_principal``, ``kerberos_keytab``, ``krb5_conf``, ``ozone_conf_dir``).
-
-Data pipeline example (``example_ozone_data_pipeline``):
+Data pipeline (``example_ozone_data_pipeline.py``):
 
 * ``OZONE_EXAMPLE_PIPELINE_CONN_ID``
 * ``OZONE_EXAMPLE_PIPELINE_HDFS_CONN_ID`` (optional)
@@ -77,7 +119,7 @@ Data pipeline example (``example_ozone_data_pipeline``):
 * ``OZONE_EXAMPLE_PIPELINE_SOURCE_PATH``
 * ``OZONE_EXAMPLE_PIPELINE_DEST_SUBPATH``
 
-Data lifecycle example (``example_ozone_data_lifecycle``):
+Data lifecycle (``example_ozone_data_lifecycle.py``):
 
 * ``OZONE_EXAMPLE_LIFECYCLE_CONN_ID``
 * ``OZONE_EXAMPLE_LIFECYCLE_LANDING_VOLUME``
@@ -85,7 +127,7 @@ Data lifecycle example (``example_ozone_data_lifecycle``):
 * ``OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_VOLUME``
 * ``OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_BUCKET``
 
-Multi-tenant example (``example_ozone_multi_tenant_management``):
+Multi-tenant management (``example_ozone_multi_tenant_management.py``):
 
 * ``OZONE_EXAMPLE_MULTI_TENANT_CONN_ID``
 * ``OZONE_EXAMPLE_MULTI_TENANT_PROJECT_VOLUME``
@@ -94,13 +136,23 @@ Multi-tenant example (``example_ozone_multi_tenant_management``):
 * ``OZONE_EXAMPLE_MULTI_TENANT_PROCESSED_BUCKET``
 * ``OZONE_EXAMPLE_MULTI_TENANT_BUCKET_QUOTA``
 
-Provider runtime tuning (for example DAG runs)
-----------------------------------------------
+DAG developer notes
+-------------------
+
+* Example DAG variables are for demonstration only and are not part of provider runtime API.
+* Production DAGs should keep operational parameters in task args and Airflow Connections.
+* Connection parsing for runtime behavior is defined by
+  ``airflow/providers/arenadata/ozone/utils/connection_schema.py``.
+* Custom DAG extensions can read non-provider extra keys through
+  ``hook.connection_snapshot.raw_extra``.
+
+Provider runtime tuning (for example runs)
+------------------------------------------
 
 Example DAGs use the same provider runtime policy as regular tasks.
-Retry and timeout behavior is configured in provider code and task parameters:
+Retry/timeout behavior is configured in provider code and per-task arguments:
 
 * Hook defaults: ``RETRY_ATTEMPTS``, ``FAST_TIMEOUT_SECONDS``, ``SLOW_TIMEOUT_SECONDS``
-  (see ``airflow/providers/arenadata/ozone/utils/params.py``).
+  (see ``airflow/providers/arenadata/ozone/utils/connection_schema.py``).
 * Operators/transfers/sensors can override ``retry_attempts`` and ``timeout``
   per task where needed.

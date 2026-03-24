@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
+from pathlib import PurePosixPath
 
 from airflow import DAG
 from airflow.providers.arenadata.ozone.operators.ozone import OzoneSetQuotaOperator
@@ -58,8 +59,6 @@ PIPELINE_TRIGGER_FILE = _example_env("OZONE_EXAMPLE_PIPELINE_TRIGGER_FILE", "tri
 PIPELINE_QUOTA = _example_env("OZONE_EXAMPLE_PIPELINE_QUOTA", "500GB")
 PIPELINE_SOURCE_PATH = _example_env("OZONE_EXAMPLE_PIPELINE_SOURCE_PATH", "hdfs:///user/data/legacy/")
 PIPELINE_DEST_SUBPATH = _example_env("OZONE_EXAMPLE_PIPELINE_DEST_SUBPATH", "migrated/")
-PIPELINE_TRIGGER_PATH = f"ofs://{OM_HOST}/{PIPELINE_VOLUME}/{PIPELINE_BUCKET}/{PIPELINE_TRIGGER_FILE}"
-PIPELINE_DEST_PATH = f"ofs://{OM_HOST}/{PIPELINE_VOLUME}/{PIPELINE_BUCKET}/{PIPELINE_DEST_SUBPATH}"
 
 with DAG(
     "example_ozone_data_pipeline",
@@ -67,6 +66,13 @@ with DAG(
     schedule=None,
     tags=["ozone", "example"],
 ) as dag:
+    PIPELINE_TRIGGER_PATH = (
+        f"ofs://{OM_HOST}/{PurePosixPath(PIPELINE_VOLUME, PIPELINE_BUCKET, PIPELINE_TRIGGER_FILE)}"
+    )
+    PIPELINE_DEST_PATH = (
+        f"ofs://{OM_HOST}/{PurePosixPath(PIPELINE_VOLUME, PIPELINE_BUCKET, PIPELINE_DEST_SUBPATH)}"
+    )
+
     check_trigger = OzoneKeySensor(
         task_id="wait_for_landing_file",
         path=PIPELINE_TRIGGER_PATH,

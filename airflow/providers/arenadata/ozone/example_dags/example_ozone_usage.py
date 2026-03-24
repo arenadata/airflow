@@ -22,16 +22,18 @@ Basic Ozone Usage Example DAG
 This DAG demonstrates fundamental native Ozone operations:
 - Creates a volume and bucket via Native Admin CLI
 - Creates directories and uploads files via Ozone Filesystem (ofs://)
-- Uses a Sensor to wait for a file to appear
+- Uses a sensor to wait for a file to appear
 
-This is the simplest example to get started with the Ozone provider.
-It verifies that basic create, upload, and sensor operations work correctly.
+The same DAG works for plain, SSL, Kerberos, and SSL+Kerberos modes.
+The active mode is defined by the selected Airflow connection
+(``OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID``) and its ``Connection Extra``.
 """
 
 from __future__ import annotations
 
 import os
 from datetime import timedelta
+from pathlib import PurePosixPath
 
 from airflow import DAG
 from airflow.providers.arenadata.ozone.operators.ozone import (
@@ -58,7 +60,6 @@ NATIVE_BUCKET = _example_env("OZONE_EXAMPLE_USAGE_BUCKET", "bucket-native")
 NATIVE_DIR = _example_env("OZONE_EXAMPLE_USAGE_DIR", "data_dir")
 NATIVE_FILE = _example_env("OZONE_EXAMPLE_USAGE_FILE", "file.txt")
 ADMIN_CONN_ID = _example_env("OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID", "ozone_admin_default")
-FS_FILE_PATH = f"ofs://{OM_HOST}/{NATIVE_VOLUME}/{NATIVE_BUCKET}/{NATIVE_DIR}/{NATIVE_FILE}"
 
 default_args = {
     "owner": "airflow",
@@ -74,6 +75,9 @@ with DAG(
     catchup=False,
     tags=["ozone", "example"],
 ) as dag:
+    FS_DIR_PATH = f"ofs://{OM_HOST}/{PurePosixPath(NATIVE_VOLUME, NATIVE_BUCKET, NATIVE_DIR)}"
+    FS_FILE_PATH = f"ofs://{OM_HOST}/{PurePosixPath(NATIVE_VOLUME, NATIVE_BUCKET, NATIVE_DIR, NATIVE_FILE)}"
+
     create_vol = OzoneCreateVolumeOperator(
         task_id="create_volume",
         volume_name=NATIVE_VOLUME,
@@ -93,7 +97,7 @@ with DAG(
 
     fs_mkdir = OzoneCreatePathOperator(
         task_id="fs_mkdir",
-        path=f"ofs://{OM_HOST}/{NATIVE_VOLUME}/{NATIVE_BUCKET}/{NATIVE_DIR}",
+        path=FS_DIR_PATH,
         ozone_conn_id=ADMIN_CONN_ID,
         execution_timeout=timedelta(minutes=5),
     )

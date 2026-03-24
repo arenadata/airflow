@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
+from pathlib import PurePosixPath
 
 from airflow.models.dag import DAG
 from airflow.providers.arenadata.ozone.operators.ozone import (
@@ -67,6 +68,9 @@ with DAG(
     schedule=None,
     tags=["ozone", "example"],
 ) as dag:
+    LANDING_DATA_PATH = f"ofs://{OM_HOST}/{PurePosixPath(PROJECT_VOLUME, LANDING_BUCKET, 'data')}"
+    PROCESSED_DATA_PATH = f"ofs://{OM_HOST}/{PurePosixPath(PROJECT_VOLUME, PROCESSED_BUCKET, 'data')}"
+
     # 1. Create a dedicated volume for the new project
     create_volume = OzoneCreateVolumeOperator(
         task_id="create_project_volume",
@@ -106,14 +110,14 @@ with DAG(
     # 4. Create standard subdirectories inside the buckets
     create_landing_dir = OzoneCreatePathOperator(
         task_id="create_landing_dir",
-        path=f"ofs://{OM_HOST}/{PROJECT_VOLUME}/{LANDING_BUCKET}/data",
+        path=LANDING_DATA_PATH,
         ozone_conn_id=MULTI_TENANT_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )
 
     create_processed_dir = OzoneCreatePathOperator(
         task_id="create_processed_dir",
-        path=f"ofs://{OM_HOST}/{PROJECT_VOLUME}/{PROCESSED_BUCKET}/data",
+        path=PROCESSED_DATA_PATH,
         ozone_conn_id=MULTI_TENANT_CONN_ID,
         execution_timeout=timedelta(minutes=1),
     )

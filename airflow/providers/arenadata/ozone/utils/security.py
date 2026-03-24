@@ -25,26 +25,30 @@ from pathlib import Path
 from airflow.configuration import ensure_secrets_loaded
 from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.utils.cli_runner import KerberosCliRunner
-from airflow.providers.arenadata.ozone.utils.helpers import ConnectionExtraHelper
-from airflow.providers.arenadata.ozone.utils.params import (
-    HDFS_KERBEROS_ENABLED_KEY,
-    HDFS_SSL_ENABLED_KEY,
-    HDFS_SSL_VALUE_MAP,
-    OZONE_KERBEROS_ENABLED_KEY,
-    OZONE_KERBEROS_VALUE_MAP,
-    OZONE_SSL_ENABLED_KEY,
-    OZONE_SSL_VALUE_MAP,
+from airflow.providers.arenadata.ozone.utils.connection_schema import (
+    OzoneConnSnapshot,
 )
+from airflow.providers.arenadata.ozone.utils.helpers import FileHelper
 from airflow.utils.log.secrets_masker import mask_secret
 
 log = logging.getLogger(__name__)
+
+
+def _normalize_and_validate_scope(scope: str) -> str:
+    """Normalize security scope and validate supported values."""
+    normalized = str(scope).strip().lower()
+    if normalized not in {"ozone", "hdfs", "all"}:
+        raise ValueError("scope must be one of: 'ozone', 'hdfs', 'all'")
+    return normalized
 
 
 class SecretResolver:
     """Resolve `secret://` references via Airflow Secrets Backend."""
 
     @classmethod
-    def get_secret_value(cls, value: object, conn_id: str | None = None, *, mask: bool = False) -> object:
+    def get_secret_value(
+        cls, value: str | None, conn_id: str | None = None, *, mask: bool = False
+    ) -> str | None:
         """
         Resolve secret from Airflow Secrets Backend or return value as-is.
 
@@ -54,7 +58,7 @@ class SecretResolver:
         if not value:
             return value
 
-        if not (isinstance(value, str) and value.startswith("secret://")):
+        if not value.startswith("secret://"):
             if mask:
                 mask_secret(value)
             return value
@@ -67,6 +71,7 @@ class SecretResolver:
                 raise ValueError(f"Failed to retrieve secret '{value}': {err}") from err
 
             if secret_value is not None:
+                resolved_value = str(secret_value)
                 if conn_id:
                     log.debug(
                         "Resolved secret from Secrets Backend for connection %s: %s",
@@ -74,8 +79,8 @@ class SecretResolver:
                         value.split("/")[-1] if "/" in value else value,
                     )
                 if mask:
-                    mask_secret(secret_value)
-                return secret_value
+                    mask_secret(resolved_value)
+                return resolved_value
         raise ValueError(f"Secret not found: {value}")
 
 
@@ -94,61 +99,46 @@ class SSLConfig:
         merged.update(self.hdfs)
         return merged
 
-    @staticmethod
-    def _validate_scope(scope: str) -> str:
-        normalized = str(scope).strip().lower()
-        if normalized not in {"ozone", "hdfs", "all"}:
-            raise ValueError("scope must be one of: 'ozone', 'hdfs', 'all'")
-        return normalized
-
     @classmethod
-    def from_extra(
-        cls,
-        extra: dict[str, object],
-        *,
-        conn_id: str | None = None,
-        scope: str,
+    def from_snapshot(
+        cls, snapshot: OzoneConnSnapshot, *, conn_id: str | None = None, scope: str
     ) -> SSLConfig:
-        """Build SSL configuration from connection Extra fields by explicit scope."""
-        normalized_scope = cls._validate_scope(scope)
+        """Build SSL configuration from typed snapshot by explicit scope."""
+        normalized_scope = _normalize_and_validate_scope(scope)
         return cls(
-            ozone=cls._build_ozone_env(extra, conn_id) if normalized_scope in {"ozone", "all"} else {},
-            hdfs=cls._build_hdfs_env(extra, conn_id) if normalized_scope in {"hdfs", "all"} else {},
+            ozone=cls._build_ozone_env(snapshot, conn_id) if normalized_scope in {"ozone", "all"} else {},
+            hdfs=cls._build_hdfs_env(snapshot, conn_id) if normalized_scope in {"hdfs", "all"} else {},
             conn_id=conn_id,
         )
 
     @classmethod
-    def _build_ozone_env(cls, extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
+    def _build_ozone_env(cls, snapshot: OzoneConnSnapshot, conn_id: str | None) -> dict[str, str]:
         """Build SSL env vars for Ozone Native CLI (ozone-site.xml mapping)."""
         env: dict[str, str] = {}
-        if ConnectionExtraHelper.is_true_flag(extra, OZONE_SSL_ENABLED_KEY):
+        if snapshot.ozone_security_enabled:
             env["OZONE_SECURITY_ENABLED"] = "true"
-            env.update(
-                ConnectionExtraHelper.build_mapped_env(
-                    extra,
-                    OZONE_SSL_VALUE_MAP,
-                    resolve_secret=lambda value: SecretResolver.get_secret_value(
-                        value, conn_id=conn_id, mask=True
-                    ),
-                )
-            )
+            for field_name, env_key, is_secret in OzoneConnSnapshot.OZONE_SSL_ENV_MAPPING:
+                value = getattr(snapshot, field_name)
+                if value is None:
+                    continue
+                if is_secret:
+                    value = SecretResolver.get_secret_value(str(value), conn_id=conn_id, mask=True)
+                env[env_key] = str(value)
         return env
 
     @classmethod
-    def _build_hdfs_env(cls, extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
+    def _build_hdfs_env(cls, snapshot: OzoneConnSnapshot, conn_id: str | None) -> dict[str, str]:
         """Build SSL env vars for HDFS clients (core-site.xml / hdfs-site.xml mapping)."""
         env: dict[str, str] = {}
-        if ConnectionExtraHelper.is_true_flag(extra, HDFS_SSL_ENABLED_KEY):
+        if snapshot.hdfs_ssl_enabled:
             env["HDFS_SSL_ENABLED"] = "true"
-            env.update(
-                ConnectionExtraHelper.build_mapped_env(
-                    extra,
-                    HDFS_SSL_VALUE_MAP,
-                    resolve_secret=lambda value: SecretResolver.get_secret_value(
-                        value, conn_id=conn_id, mask=True
-                    ),
-                )
-            )
+            for field_name, env_key, is_secret in OzoneConnSnapshot.HDFS_SSL_ENV_MAPPING:
+                value = getattr(snapshot, field_name)
+                if value is None:
+                    continue
+                if is_secret:
+                    value = SecretResolver.get_secret_value(str(value), conn_id=conn_id, mask=True)
+                env[env_key] = str(value)
         return env
 
     @staticmethod
@@ -162,28 +152,6 @@ class SSLConfig:
         env.update(env_vars)
         return env
 
-    @classmethod
-    def load_from_connection(
-        cls,
-        conn: object,
-        *,
-        conn_id: str | None = None,
-        scope: str,
-        enabled_flag_key: str | None = None,
-    ) -> dict[str, str] | None:
-        """Build SSL env from connection extra with unified logging."""
-        extra = ConnectionExtraHelper.get_connection_extra(conn)
-        ssl_env_vars = cls.from_extra(extra, conn_id=conn_id, scope=scope).as_env()
-        if not ssl_env_vars:
-            log.debug("No SSL/TLS configuration found in connection Extra")
-            return None
-
-        ssl_env = cls.apply_ssl_env_vars(ssl_env_vars)
-        log.debug("SSL/TLS configuration loaded from connection: %s", list(ssl_env_vars.keys()))
-        if enabled_flag_key and ConnectionExtraHelper.is_true_flag(extra, enabled_flag_key):
-            log.info("SSL/TLS enabled for connection")
-        return ssl_env
-
 
 @dataclass(frozen=True)
 class KerberosConfig:
@@ -191,9 +159,6 @@ class KerberosConfig:
 
     core: dict[str, str] = field(default_factory=dict)
     hdfs: dict[str, str] = field(default_factory=dict)
-    KINIT_TIMEOUT_SECONDS = 5 * 60
-    CORE_SITE_XML = "core-site.xml"
-    OZONE_SITE_XML = "ozone-site.xml"
 
     def as_env(self) -> dict[str, str]:
         merged: dict[str, str] = {}
@@ -202,68 +167,44 @@ class KerberosConfig:
         return merged
 
     @staticmethod
-    def _validate_scope(scope: str) -> str:
-        normalized = str(scope).strip().lower()
-        if normalized not in {"ozone", "hdfs", "all"}:
-            raise ValueError("scope must be one of: 'ozone', 'hdfs', 'all'")
-        return normalized
-
-    @staticmethod
-    def _principal_keytab_from_extra(
-        extra: dict[str, object],
-        principal_key: str,
-        keytab_key: str,
+    def _hdfs_principal_keytab_from_snapshot(
+        snapshot: OzoneConnSnapshot,
         conn_id: str | None,
     ) -> None | tuple[str, str]:
-        """Get (principal, keytab_path) from extra when both keys are present."""
-        principal_value = ConnectionExtraHelper.get_extra(extra, principal_key, default=None)
-        keytab_value = ConnectionExtraHelper.get_extra(extra, keytab_key, default=None)
+        """Get HDFS (principal, keytab_path) from snapshot when both fields are present."""
+        principal_value = snapshot.hdfs_kerberos_principal
+        keytab_value = snapshot.hdfs_kerberos_keytab
         if principal_value is None or keytab_value is None:
             return None
-        mapped = ConnectionExtraHelper.build_mapped_env(
-            {
-                "principal": principal_value,
-                "keytab": keytab_value,
-            },
-            (
-                ("principal", "PRINCIPAL", False),
-                ("keytab", "KEYTAB", True),
-            ),
-            resolve_secret=lambda value: SecretResolver.get_secret_value(value, conn_id=conn_id, mask=True),
+        return (
+            str(principal_value),
+            str(SecretResolver.get_secret_value(str(keytab_value), conn_id=conn_id, mask=True)),
         )
-        return (mapped["PRINCIPAL"], mapped["KEYTAB"])
 
     @classmethod
-    def _get_core_env(cls, extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
+    def _get_core_env(cls, snapshot: OzoneConnSnapshot, conn_id: str | None) -> dict[str, str]:
         """Kerberos env for Ozone/Hadoop core tools."""
         env_vars: dict[str, str] = {}
 
-        if ConnectionExtraHelper.is_equals(extra, OZONE_KERBEROS_ENABLED_KEY, expected="kerberos"):
+        if str(snapshot.hadoop_security_authentication or "").lower() == "kerberos":
             env_vars["HADOOP_SECURITY_AUTHENTICATION"] = "kerberos"
-            env_vars.update(
-                ConnectionExtraHelper.build_mapped_env(
-                    extra,
-                    OZONE_KERBEROS_VALUE_MAP,
-                    resolve_secret=lambda value: SecretResolver.get_secret_value(
-                        value, conn_id=conn_id, mask=True
-                    ),
-                )
-            )
+            for field_name, env_key, is_secret in OzoneConnSnapshot.OZONE_KERBEROS_ENV_MAPPING:
+                value = getattr(snapshot, field_name)
+                if value is None:
+                    continue
+                if is_secret:
+                    value = SecretResolver.get_secret_value(str(value), conn_id=conn_id, mask=True)
+                env_vars[env_key] = str(value)
 
         return env_vars
 
     @classmethod
-    def _get_hdfs_env(cls, extra: dict[str, object], conn_id: str | None) -> dict[str, str]:
+    def _get_hdfs_env(cls, snapshot: OzoneConnSnapshot, conn_id: str | None) -> dict[str, str]:
         """Kerberos env for HDFS clients."""
         env_vars: dict[str, str] = {}
 
-        if ConnectionExtraHelper.is_true_flag(extra, HDFS_KERBEROS_ENABLED_KEY):
-            pair = cls._principal_keytab_from_extra(
-                extra,
-                "hdfs_kerberos_principal",
-                "hdfs_kerberos_keytab",
-                conn_id,
-            )
+        if snapshot.hdfs_kerberos_enabled:
+            pair = cls._hdfs_principal_keytab_from_snapshot(snapshot, conn_id)
             if pair:
                 env_vars["HDFS_KERBEROS_PRINCIPAL"], env_vars["HDFS_KERBEROS_KEYTAB"] = pair
 
@@ -272,21 +213,28 @@ class KerberosConfig:
     @classmethod
     def get_env_vars(
         cls,
-        extra: dict[str, object],
+        snapshot: OzoneConnSnapshot,
         *,
         scope: str,
         conn_id: str | None = None,
     ) -> dict[str, str]:
-        """Extract Kerberos environment variables from connection extra by explicit scope."""
-        normalized_scope = cls._validate_scope(scope)
+        """Extract Kerberos environment variables from snapshot by explicit scope."""
+        normalized_scope = _normalize_and_validate_scope(scope)
         config = cls(
-            core=cls._get_core_env(extra, conn_id) if normalized_scope in {"ozone", "all"} else {},
-            hdfs=cls._get_hdfs_env(extra, conn_id) if normalized_scope in {"hdfs", "all"} else {},
+            core=cls._get_core_env(snapshot, conn_id) if normalized_scope in {"ozone", "all"} else {},
+            hdfs=cls._get_hdfs_env(snapshot, conn_id) if normalized_scope in {"hdfs", "all"} else {},
         )
         return config.as_env()
 
     @classmethod
-    def kinit_with_keytab(cls, principal: str, keytab: str, krb5_conf: str | None = None) -> bool:
+    def kinit_with_keytab(
+        cls,
+        principal: str,
+        keytab: str,
+        krb5_conf: str | None = None,
+        *,
+        snapshot: OzoneConnSnapshot,
+    ) -> bool:
         """
         Perform Kerberos authentication using keytab file.
 
@@ -296,19 +244,22 @@ class KerberosConfig:
             log.warning("Kerberos principal or keytab not provided, skipping kinit")
             return False
 
-        if not Path(keytab).exists():
-            log.error("Keytab file not found: %s", keytab)
+        if not FileHelper.is_readable_file(keytab):
+            log.error("Keytab file is missing or not readable: %s", keytab)
             return False
 
         cmd = ["kinit", "-kt", keytab, principal]
         env_overrides: dict[str, str] = {}
-        if krb5_conf and Path(krb5_conf).exists():
+        if krb5_conf:
+            if not FileHelper.is_readable_file(krb5_conf):
+                log.error("KRB5 config file is missing or not readable: %s", krb5_conf)
+                return False
             env_overrides["KRB5_CONFIG"] = krb5_conf
 
         if KerberosCliRunner.run_kerberos(
             cmd,
             env_overrides=env_overrides or None,
-            timeout=cls.KINIT_TIMEOUT_SECONDS,
+            timeout=snapshot.kinit_timeout_seconds,
         ):
             log.info("Successfully authenticated with Kerberos: %s", principal)
             return True
@@ -316,7 +267,11 @@ class KerberosConfig:
 
     @classmethod
     def kinit_from_env_vars(
-        cls, env_vars: dict[str, str], existing_env: dict[str, str] | None = None
+        cls,
+        env_vars: dict[str, str],
+        existing_env: dict[str, str] | None = None,
+        *,
+        snapshot: OzoneConnSnapshot,
     ) -> bool:
         """Run kinit when principal and keytab are available."""
         if not env_vars:
@@ -329,7 +284,7 @@ class KerberosConfig:
 
         base_env = (existing_env if existing_env is not None else os.environ).copy()
         krb5_conf = env_vars.get("KRB5_CONFIG") or base_env.get("KRB5_CONFIG")
-        return cls.kinit_with_keytab(principal, keytab, krb5_conf)
+        return cls.kinit_with_keytab(principal, keytab, krb5_conf, snapshot=snapshot)
 
     @staticmethod
     def apply_env_vars(
@@ -379,16 +334,16 @@ class KerberosConfig:
     def load_ozone_env(
         cls,
         *,
-        extra: dict[str, object],
+        snapshot: OzoneConnSnapshot,
         conn_id: str,
     ) -> dict[str, str] | None:
         """Build Kerberos env for Ozone CLI with unified logging and errors."""
         try:
-            kerberos_env_vars = cls.get_env_vars(extra, scope="ozone", conn_id=conn_id)
+            kerberos_env_vars = cls.get_env_vars(snapshot, scope="ozone", conn_id=conn_id)
             if kerberos_env_vars:
                 kerberos_env = cls.apply_env_vars(kerberos_env_vars)
                 log.debug("Kerberos configuration loaded from connection: %s", list(kerberos_env_vars.keys()))
-                if ConnectionExtraHelper.is_equals(extra, OZONE_KERBEROS_ENABLED_KEY, expected="kerberos"):
+                if str(snapshot.hadoop_security_authentication or "").lower() == "kerberos":
                     log.debug("Kerberos authentication enabled for Ozone Native CLI")
                 return kerberos_env
             log.debug("No Kerberos configuration found in connection Extra")
@@ -405,12 +360,12 @@ class KerberosConfig:
     def load_hdfs_env(
         cls,
         *,
-        extra: dict[str, object],
+        snapshot: OzoneConnSnapshot,
         conn_id: str,
     ) -> dict[str, str] | None:
         """Build Kerberos env for HDFS clients with unified logging and errors."""
         try:
-            kerberos_env_vars = cls.get_env_vars(extra, scope="hdfs", conn_id=conn_id)
+            kerberos_env_vars = cls.get_env_vars(snapshot, scope="hdfs", conn_id=conn_id)
             if kerberos_env_vars:
                 log.debug(
                     "HDFS Kerberos configuration loaded from connection: %s",
@@ -431,7 +386,7 @@ class KerberosConfig:
     def ensure_ticket(
         cls,
         *,
-        extra: dict[str, object],
+        snapshot: OzoneConnSnapshot,
         conn_id: str,
         kerberos_ticket_ready: bool,
     ) -> bool:
@@ -439,13 +394,13 @@ class KerberosConfig:
         if kerberos_ticket_ready:
             return True
 
-        kerberos_env_vars = cls.get_env_vars(extra, scope="ozone", conn_id=conn_id)
+        kerberos_env_vars = cls.get_env_vars(snapshot, scope="ozone", conn_id=conn_id)
         principal = kerberos_env_vars.get("KERBEROS_PRINCIPAL")
         keytab = kerberos_env_vars.get("KERBEROS_KEYTAB")
         if not principal or not keytab:
             return False
 
-        if not cls.kinit_from_env_vars(kerberos_env_vars):
+        if not cls.kinit_from_env_vars(kerberos_env_vars, snapshot=snapshot):
             raise AirflowException(
                 f"Kerberos authentication failed for connection '{conn_id}' using principal '{principal}'."
             )
@@ -467,25 +422,25 @@ class KerberosConfig:
         return kerberos_env.get("OZONE_CONF_DIR")
 
     @staticmethod
-    def check_config_files_exist(config_dir: str) -> bool:
+    def check_config_files_exist(
+        config_dir: str,
+        *,
+        snapshot: OzoneConnSnapshot,
+    ) -> bool:
         """Return True when both core-site.xml and ozone-site.xml exist."""
         if not config_dir:
             log.debug("Config directory is None or empty")
             return False
 
         config_path = Path(config_dir)
-        if not config_path.is_dir():
-            log.debug("Config directory does not exist: %s", config_dir)
-            return False
-
-        core_site = config_path / KerberosConfig.CORE_SITE_XML
-        ozone_site = config_path / KerberosConfig.OZONE_SITE_XML
-        core_exists = core_site.is_file()
-        ozone_exists = ozone_site.is_file()
+        core_site = config_path / snapshot.core_site_xml
+        ozone_site = config_path / snapshot.ozone_site_xml
+        core_exists = FileHelper.is_readable_file(core_site)
+        ozone_exists = FileHelper.is_readable_file(ozone_site)
         if not core_exists:
-            log.debug("core-site.xml not found at: %s", core_site)
+            log.debug("core-site.xml not found or not readable: %s", core_site)
         if not ozone_exists:
-            log.debug("ozone-site.xml not found at: %s", ozone_site)
+            log.debug("ozone-site.xml not found or not readable: %s", ozone_site)
         if core_exists and ozone_exists:
             log.debug("Both configuration files found in %s", config_dir)
         return core_exists and ozone_exists
