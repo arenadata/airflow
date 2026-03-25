@@ -41,7 +41,6 @@ with DAG(
     tags=["example", "hbase", "batch"],
     doc_md=__doc__,
 ) as dag:
-
     delete_if_exists = HBaseDeleteTableOperator(
         task_id="delete_if_exists",
         table_name=TABLE_NAME,

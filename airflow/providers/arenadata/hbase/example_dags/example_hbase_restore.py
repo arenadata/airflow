@@ -40,12 +40,12 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.models.param import Param
 from airflow.operators.python import PythonOperator
+from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseDeleteTableOperator,
     HBaseRestoreOperator,
     IfNotExistsAction,
 )
-from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
 logger = logging.getLogger(__name__)
 

@@ -153,6 +153,6 @@ Example DAGs use the same provider runtime policy as regular tasks.
 Retry/timeout behavior is configured in provider code and per-task arguments:
 
 * Hook defaults: ``RETRY_ATTEMPTS``, ``FAST_TIMEOUT_SECONDS``, ``SLOW_TIMEOUT_SECONDS``
-  (see ``airflow/providers/arenadata/ozone/utils/connection_schema.py``).
+  (see ``airflow/providers/arenadata/ozone/hooks/ozone.py``).
 * Operators/transfers/sensors can override ``retry_attempts`` and ``timeout``
   per task where needed.

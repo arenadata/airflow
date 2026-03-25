@@ -18,10 +18,10 @@
 
 from __future__ import annotations
 
-from airflow.providers.arenadata.ozone.hooks.ozone import OzoneFsHook
-from airflow.providers.arenadata.ozone.utils.connection_schema import (
+from airflow.providers.arenadata.ozone.hooks.ozone import (
     FAST_TIMEOUT_SECONDS,
     RETRY_ATTEMPTS,
+    OzoneFsHook,
 )
 from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 from airflow.sensors.base import BaseSensorOperator

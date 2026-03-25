@@ -26,7 +26,6 @@ from airflow.providers.arenadata.ozone.utils.helpers import (
     TypeNormalizationHelper,
 )
 
-
 # ============================================================================
 # Ozone connection schema and runtime defaults
 # ============================================================================
@@ -37,10 +36,7 @@ from airflow.providers.arenadata.ozone.utils.helpers import (
 # - OzoneConnSnapshot typed contract
 # ============================================================================
 
-# --- Base runtime parameters --------------------------------------------------
-RETRY_ATTEMPTS = 3
-FAST_TIMEOUT_SECONDS = 5 * 60
-SLOW_TIMEOUT_SECONDS = 60 * 60
+# --- Runtime parameters (connection schema scope) -----------------------------
 KINIT_TIMEOUT_SECONDS = 5 * 60
 CORE_SITE_XML = "core-site.xml"
 OZONE_SITE_XML = "ozone-site.xml"

@@ -81,14 +81,14 @@ class SSHHook(BaseHook):
         paramiko.RSAKey,
         paramiko.ECDSAKey,
         paramiko.Ed25519Key,
-    ) + (getattr(paramiko, 'DSSKey', ()),)
+    ) + (getattr(paramiko, "DSSKey", ()),)
 
     _host_key_mappings = {
         "rsa": paramiko.RSAKey,
         "ecdsa": paramiko.ECDSAKey,
         "ed25519": paramiko.Ed25519Key,
     }
-    if hasattr(paramiko, 'DSSKey'):
+    if hasattr(paramiko, "DSSKey"):
         _host_key_mappings["dss"] = paramiko.DSSKey
 
     conn_name_attr = "ssh_conn_id"

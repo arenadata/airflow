@@ -15,6 +15,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
@@ -27,7 +28,7 @@ class TestHBaseThrift2Client:
     def test_client_initialization(self):
         """Test client initialization with default parameters."""
         client = HBaseThrift2Client(host="localhost", port=9090)
-        
+
         assert client.config.host == "localhost"
         assert client.config.port == 9090
         assert client.config.timeout == 30000
@@ -46,9 +47,9 @@ class TestHBaseThrift2Client:
             ssl_options=ssl_options,
             retry_max_attempts=5,
             retry_delay=2.0,
-            retry_backoff_factor=3.0
+            retry_backoff_factor=3.0,
         )
-        
+
         assert client.config.host == "hbase.example.com"
         assert client.config.port == 9091
         assert client.config.timeout == 60000
@@ -65,19 +66,19 @@ class TestHBaseThrift2Client:
         """Test opening connection."""
         mock_socket_inst = MagicMock()
         mock_socket.TSocket.return_value = mock_socket_inst
-        
+
         mock_transport_inst = MagicMock()
         mock_transport.TBufferedTransport.return_value = mock_transport_inst
-        
+
         mock_protocol_inst = MagicMock()
         mock_protocol.TBinaryProtocol.return_value = mock_protocol_inst
-        
+
         mock_client = MagicMock()
         mock_service.Client.return_value = mock_client
-        
+
         client = HBaseThrift2Client(host="localhost", port=9090)
         client.open()
-        
+
         assert client._client == mock_client
         mock_socket.TSocket.assert_called_once_with("localhost", 9090)
         mock_transport_inst.open.assert_called_once()
@@ -90,17 +91,17 @@ class TestHBaseThrift2Client:
         """Test closing connection."""
         mock_transport_inst = MagicMock()
         mock_transport.TBufferedTransport.return_value = mock_transport_inst
-        
+
         client = HBaseThrift2Client(host="localhost", port=9090)
         client.open()
         client.close()
-        
+
         mock_transport_inst.close.assert_called_once()
 
     def test_close_without_connection(self):
         """Test closing when no connection exists."""
         client = HBaseThrift2Client(host="localhost", port=9090)
-        
+
         # Should not raise exception
         client.close()
 
@@ -113,12 +114,12 @@ class TestHBaseThrift2Client:
         mock_client = MagicMock()
         mock_client.tableExists.return_value = True
         mock_service.Client.return_value = mock_client
-        
+
         client = HBaseThrift2Client(host="localhost", port=9090)
         client.open()
-        
+
         result = client.table_exists("test_table")
-        
+
         assert result is True
         mock_client.tableExists.assert_called_once()
 

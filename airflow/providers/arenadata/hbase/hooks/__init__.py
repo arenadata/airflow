@@ -17,6 +17,8 @@
 # under the License.
 """HBase hooks."""
 
+from __future__ import annotations
+
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 

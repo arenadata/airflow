@@ -32,12 +32,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from airflow import DAG
+from airflow.providers.arenadata.hbase.datasets.hbase import hbase_table_dataset
 from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseBatchPutOperator,
     HBaseCreateTableOperator,
     HBaseDeleteTableOperator,
 )
-from airflow.providers.arenadata.hbase.datasets.hbase import hbase_table_dataset
 
 default_args = {
     "owner": "airflow",
@@ -60,7 +60,6 @@ with DAG(
     catchup=False,
     tags=["example", "hbase", "backup", "producer"],
 ) as dag:
-
     # Delete table if exists for idempotency
     delete_table_cleanup = HBaseDeleteTableOperator(
         task_id="delete_table_cleanup",

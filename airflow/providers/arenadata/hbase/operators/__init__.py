@@ -17,6 +17,8 @@
 # under the License.
 """HBase operators."""
 
+from __future__ import annotations
+
 from airflow.providers.arenadata.hbase.operators.hbase import (
     BackupSetAction,
     BackupType,

@@ -15,9 +15,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from airflow.models import Connection
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
@@ -35,16 +35,16 @@ class TestKerberosHook:
             conn_type="hbase",
             host="localhost",
             port=9090,
-            extra='{"auth_method": "GSSAPI", "kerberos_service_name": "hbase"}'
+            extra='{"auth_method": "GSSAPI", "kerberos_service_name": "hbase"}',
         )
         mock_get_conn.return_value = mock_conn
-        
+
         mock_client_inst = MagicMock()
         mock_client.return_value = mock_client_inst
-        
+
         hook = HBaseThriftHook(hbase_conn_id="hbase_kerberos")
         hook._get_strategy()
-        
+
         # Verify client was created with Kerberos parameters
         mock_client.assert_called_once()
         call_kwargs = mock_client.call_args[1]
@@ -60,16 +60,16 @@ class TestKerberosHook:
             conn_type="hbase",
             host="localhost",
             port=9090,
-            extra='{"auth_method": "GSSAPI", "kerberos_service_name": "hbase", "connection_pool": {"enabled": true, "size": 10}}'
+            extra='{"auth_method": "GSSAPI", "kerberos_service_name": "hbase", "connection_pool": {"enabled": true, "size": 10}}',
         )
         mock_get_conn.return_value = mock_conn
-        
+
         mock_pool_inst = MagicMock()
         mock_pool.return_value = mock_pool_inst
-        
+
         hook = HBaseThriftHook(hbase_conn_id="hbase_kerberos_pool")
         hook._get_strategy()
-        
+
         # Verify pool was created with Kerberos parameters
         mock_pool.assert_called_once()
         call_args = mock_pool.call_args
@@ -89,22 +89,20 @@ class TestKerberosHook:
             conn_type="hbase",
             host="localhost",
             port=9090,
-            extra='{"auth_method": "GSSAPI", "kerberos_service_name": "hbase"}'
+            extra='{"auth_method": "GSSAPI", "kerberos_service_name": "hbase"}',
         )
         mock_get_conn.return_value = mock_conn
-        
+
         mock_client_inst = MagicMock()
         mock_client.return_value = mock_client_inst
-        
+
         hook = HBaseThriftHook(hbase_conn_id="hbase_kerberos")
-        
+
         # Mock log as property
         mock_log = MagicMock()
         type(hook).log = PropertyMock(return_value=mock_log)
-        
+
         hook._get_strategy()
-        
+
         # Verify authentication was logged
-        mock_log.info.assert_any_call(
-            "Authentication enabled: %s (service: %s)", "GSSAPI", "hbase"
-        )
+        mock_log.info.assert_any_call("Authentication enabled: %s (service: %s)", "GSSAPI", "hbase")

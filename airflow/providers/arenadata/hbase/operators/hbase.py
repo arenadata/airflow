@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import Any, Sequence
 
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
@@ -30,9 +30,6 @@ from airflow.providers.arenadata.hbase.utils.data_conversion import (
     convert_scan_results_to_serializable,
     extract_backup_id,
 )
-
-if TYPE_CHECKING:
-    from airflow.utils.context import Context
 
 
 class BackupSetAction(str, Enum):

@@ -27,10 +27,7 @@ from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner, OzoneCliRunner
 from airflow.providers.arenadata.ozone.utils.connection_schema import (
-    FAST_TIMEOUT_SECONDS,
     OZONE_CONNECTION_UI_FIELD_BEHAVIOUR,
-    RETRY_ATTEMPTS,
-    SLOW_TIMEOUT_SECONDS,
     OzoneConnSnapshot,
 )
 from airflow.providers.arenadata.ozone.utils.errors import ADMIN_RESOURCE_SPECS, OzoneCliError
@@ -43,6 +40,10 @@ from airflow.providers.arenadata.ozone.utils.helpers import (
 )
 from airflow.providers.arenadata.ozone.utils.security import KerberosConfig, SSLConfig
 from airflow.utils.log.secrets_masker import redact
+
+RETRY_ATTEMPTS = 3
+FAST_TIMEOUT_SECONDS = 5 * 60
+SLOW_TIMEOUT_SECONDS = 60 * 60
 
 
 class OzoneCliHook(BaseHook):

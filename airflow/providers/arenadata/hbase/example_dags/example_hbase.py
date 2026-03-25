@@ -26,6 +26,8 @@ Host: your-hbase-host
 Port: 9090
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -34,7 +36,7 @@ from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseDeleteTableOperator,
     HBasePutOperator,
 )
-from airflow.providers.arenadata.hbase.sensors.hbase import HBaseTableSensor, HBaseRowSensor
+from airflow.providers.arenadata.hbase.sensors.hbase import HBaseRowSensor, HBaseTableSensor
 
 default_args = {
     "owner": "airflow",

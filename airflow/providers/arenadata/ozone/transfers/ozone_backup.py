@@ -20,11 +20,9 @@ from __future__ import annotations
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.hooks.ozone import (
-    OzoneAdminHook,
-)
-from airflow.providers.arenadata.ozone.utils.connection_schema import (
     RETRY_ATTEMPTS,
     SLOW_TIMEOUT_SECONDS,
+    OzoneAdminHook,
 )
 from airflow.providers.arenadata.ozone.utils.errors import (
     SNAPSHOT_ALREADY_EXISTS_MARKERS,

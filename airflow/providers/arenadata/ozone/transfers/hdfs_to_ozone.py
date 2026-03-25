@@ -24,10 +24,12 @@ from functools import cached_property
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator
-from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner
-from airflow.providers.arenadata.ozone.utils.connection_schema import (
+from airflow.providers.arenadata.ozone.hooks.ozone import (
     RETRY_ATTEMPTS,
     SLOW_TIMEOUT_SECONDS,
+)
+from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner
+from airflow.providers.arenadata.ozone.utils.connection_schema import (
     OzoneConnSnapshot,
 )
 from airflow.providers.arenadata.ozone.utils.helpers import (

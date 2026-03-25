@@ -253,7 +253,7 @@ Process execution helpers are centralized in
 Security runtime helpers are centralized in
 ``airflow/providers/arenadata/ozone/utils/security.py``.
 
-Provider defaults are defined in connection schema module:
+Provider defaults are defined in hook and connection modules:
 
 * ``RETRY_ATTEMPTS = 3``
 * ``FAST_TIMEOUT_SECONDS = 5 * 60``
@@ -262,7 +262,11 @@ Provider defaults are defined in connection schema module:
 * ``MAX_CONTENT_SIZE_BYTES = 1024 * 1024 * 1024`` (1 GiB)
 
 These constants are exported from:
-``airflow/providers/arenadata/ozone/utils/connection_schema.py``.
+
+* ``airflow/providers/arenadata/ozone/hooks/ozone.py``
+  (``RETRY_ATTEMPTS``, ``FAST_TIMEOUT_SECONDS``, ``SLOW_TIMEOUT_SECONDS``)
+* ``airflow/providers/arenadata/ozone/utils/connection_schema.py``
+  (``KINIT_TIMEOUT_SECONDS``, ``MAX_CONTENT_SIZE_BYTES`` and connection contract constants)
 
 Upload/download size limit
 --------------------------

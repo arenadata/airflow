@@ -128,7 +128,6 @@ with DAG(
     },
     doc_md=__doc__,
 ) as dag:
-
     describe_set = PythonOperator(
         task_id="describe_backup_set",
         python_callable=describe_backup_set,

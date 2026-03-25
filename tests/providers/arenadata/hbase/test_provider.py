@@ -19,8 +19,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 
 class TestHBaseProvider:
     """Test HBase provider registration."""
@@ -33,33 +31,33 @@ class TestHBaseProvider:
 
         assert provider_info is not None
         assert isinstance(provider_info, dict)
-        
+
         # Check required fields
         assert "package-name" in provider_info
         assert provider_info["package-name"] == "apache-airflow-providers-arenadata-hbase"
-        
+
         assert "name" in provider_info
         assert provider_info["name"] == "Arenadata HBase"
-        
+
         assert "versions" in provider_info
         assert isinstance(provider_info["versions"], list)
         assert len(provider_info["versions"]) > 0
-        
+
         # Check hooks
         assert "hooks" in provider_info
         assert isinstance(provider_info["hooks"], list)
         assert len(provider_info["hooks"]) > 0
-        
+
         # Check operators
         assert "operators" in provider_info
         assert isinstance(provider_info["operators"], list)
         assert len(provider_info["operators"]) > 0
-        
+
         # Check connection types
         assert "connection-types" in provider_info
         assert isinstance(provider_info["connection-types"], list)
         assert len(provider_info["connection-types"]) == 2  # HBaseThriftHook and HBaseCLIHook
-        
+
         # Verify connection types
         hook_classes = [ct["hook-class-name"] for ct in provider_info["connection-types"]]
         assert "airflow.providers.arenadata.hbase.hooks.hbase.HBaseThriftHook" in hook_classes

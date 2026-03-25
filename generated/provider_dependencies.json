@@ -17,6 +17,7 @@
       "alibabacloud_adb20211201>=1.0.0",
       "alibabacloud_tea_openapi>=0.3.7",
       "apache-airflow>=2.7.0",
+      "apscheduler<3.11.0; python_version >= \"3.8\"",
       "oss2>=2.14.0"
     ],
     "devel-deps": [],
@@ -150,8 +151,7 @@
       "apache-airflow>=2.7.0",
       "hdfs[avro,dataframe,kerberos]>=2.5.4;python_version<\"3.12\"",
       "hdfs[avro,dataframe,kerberos]>=2.7.3;python_version>=\"3.12\"",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\""
+      "pandas>=2.1.2,<2.2"
     ],
     "devel-deps": [],
     "plugins": [],
@@ -165,8 +165,7 @@
       "apache-airflow>=2.7.0",
       "hmsclient>=0.1.0",
       "jmespath>=0.7.0",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\"",
+      "pandas>=2.1.2,<2.2",
       "pyhive[hive_pure_sasl]>=0.7.0",
       "thrift>=0.11.0"
     ],
@@ -313,6 +312,21 @@
     "excluded-python-versions": [],
     "state": "ready"
   },
+  "arenadata.hbase": {
+    "deps": [
+      "apache-airflow>=2.7.0",
+      "sasl>=0.3.1",
+      "thrift>=0.13.0",
+      "thrift_sasl>=0.4.3"
+    ],
+    "devel-deps": [],
+    "plugins": [],
+    "cross-providers-deps": [
+      "openlineage"
+    ],
+    "excluded-python-versions": [],
+    "state": "ready"
+  },
   "arenadata.ozone": {
     "deps": [
       "apache-airflow>=2.10.3"
@@ -400,11 +414,13 @@
   },
   "common.compat": {
     "deps": [
-      "apache-airflow>=2.7.0"
+      "apache-airflow>=2.8.0"
     ],
     "devel-deps": [],
     "plugins": [],
-    "cross-providers-deps": [],
+    "cross-providers-deps": [
+      "openlineage"
+    ],
     "excluded-python-versions": [],
     "state": "ready"
   },
@@ -442,8 +458,7 @@
       "apache-airflow>=2.7.0",
       "databricks-sql-connector>=2.0.0, <3.0.0, !=2.9.0",
       "mergedeep>=1.3.4",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\"",
+      "pandas>=2.1.2,<2.2",
       "pyarrow>=14.0.1",
       "requests>=2.27.0,<3"
     ],
@@ -545,8 +560,7 @@
     "deps": [
       "apache-airflow-providers-common-sql>=1.14.1",
       "apache-airflow>=2.7.0",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\"",
+      "pandas>=2.1.2,<2.2",
       "pyexasol>=0.5.1"
     ],
     "devel-deps": [],
@@ -559,16 +573,22 @@
   },
   "fab": {
     "deps": [
-      "apache-airflow>=2.9.0",
-      "flask-appbuilder==4.5.2",
-      "flask-login>=0.6.2",
-      "flask>=2.2,<2.3",
+      "apache-airflow-providers-common-compat>=1.2.1",
+      "apache-airflow>=2.11.1",
+      "flask-appbuilder==4.5.4",
+      "flask-login>=0.6.3",
+      "flask-session>=0.8.0",
+      "flask>=2.2,<3",
       "google-re2>=1.0",
       "jmespath>=0.7.0"
     ],
-    "devel-deps": [],
+    "devel-deps": [
+      "kerberos>=1.3.0"
+    ],
     "plugins": [],
-    "cross-providers-deps": [],
+    "cross-providers-deps": [
+      "common.compat"
+    ],
     "excluded-python-versions": [],
     "state": "ready"
   },
@@ -667,8 +687,7 @@
       "json-merge-patch>=0.2",
       "looker-sdk>=22.4.0,!=24.18.0",
       "pandas-gbq>=0.7.0",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\"",
+      "pandas>=2.1.2,<2.2",
       "proto-plus>=1.19.6",
       "python-slugify>=7.0.0",
       "sqlalchemy-bigquery>=1.2.1",
@@ -812,7 +831,7 @@
       "azure-synapse-artifacts>=0.17.0",
       "azure-synapse-spark>=0.2.0",
       "microsoft-kiota-abstractions<1.4.0",
-      "msgraph-core>=1.0.0"
+      "msgraph-core>=1.0.0,!=1.1.8"
     ],
     "devel-deps": [
       "pywinrm"
@@ -1015,8 +1034,7 @@
     "deps": [
       "apache-airflow>=2.7.0",
       "ipykernel",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\"",
+      "pandas>=2.1.2,<2.2",
       "papermill[all]>=2.4.0",
       "scrapbook[all]"
     ],
@@ -1046,7 +1064,7 @@
   "pinecone": {
     "deps": [
       "apache-airflow>=2.7.0",
-      "pinecone-client>=3.1.0"
+      "pinecone>=3.1.0"
     ],
     "devel-deps": [],
     "plugins": [],
@@ -1074,8 +1092,7 @@
     "deps": [
       "apache-airflow-providers-common-sql>=1.3.1",
       "apache-airflow>=2.7.0",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\"",
+      "pandas>=2.1.2,<2.2",
       "presto-python-client>=0.8.4"
     ],
     "devel-deps": [],
@@ -1112,8 +1129,7 @@
   "salesforce": {
     "deps": [
       "apache-airflow>=2.7.0",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\"",
+      "pandas>=2.1.2,<2.2",
       "simple-salesforce>=1.0.0"
     ],
     "devel-deps": [],
@@ -1162,7 +1178,7 @@
       "apache-airflow-providers-ssh>=2.1.0",
       "apache-airflow>=2.7.0",
       "asyncssh>=2.12.0",
-      "paramiko>=2.9.0"
+      "paramiko>=2.9.0,<4.0.0"
     ],
     "devel-deps": [],
     "plugins": [],
@@ -1214,8 +1230,7 @@
       "apache-airflow-providers-common-compat>=1.1.0",
       "apache-airflow-providers-common-sql>=1.14.1",
       "apache-airflow>=2.7.0",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\"",
+      "pandas>=2.1.2,<2.2",
       "pyarrow>=14.0.1",
       "snowflake-connector-python>=3.7.1",
       "snowflake-sqlalchemy>=1.4.0"
@@ -1246,8 +1261,18 @@
   "ssh": {
     "deps": [
       "apache-airflow>=2.7.0",
-      "paramiko>=2.9.0",
+      "paramiko>=2.9.0,<4.0.0",
       "sshtunnel>=0.3.2"
+    ],
+    "devel-deps": [],
+    "plugins": [],
+    "cross-providers-deps": [],
+    "excluded-python-versions": [],
+    "state": "ready"
+  },
+  "standard": {
+    "deps": [
+      "apache-airflow>=2.7.0"
     ],
     "devel-deps": [],
     "plugins": [],
@@ -1313,8 +1338,7 @@
     "deps": [
       "apache-airflow-providers-common-sql>=1.3.1",
       "apache-airflow>=2.7.0",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\"",
+      "pandas>=2.1.2,<2.2",
       "trino>=0.318.0"
     ],
     "devel-deps": [],
@@ -1345,8 +1369,7 @@
     "deps": [
       "apache-airflow>=2.7.0",
       "httpx>=0.25.0",
-      "pandas>=1.5.3,<2.2;python_version<\"3.9\"",
-      "pandas>=2.1.2,<2.2;python_version>=\"3.9\"",
+      "pandas>=2.1.2,<2.2",
       "weaviate-client>=4.4.0"
     ],
     "devel-deps": [],

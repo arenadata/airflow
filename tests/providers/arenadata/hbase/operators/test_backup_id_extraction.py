@@ -27,7 +27,7 @@ import pytest
 
 def extract_backup_id(output: str) -> str:
     """Extract backup_id from HBase backup command output."""
-    match = re.search(r'Backup (backup_\d+) started', output)
+    match = re.search(r"Backup (backup_\d+) started", output)
     if match:
         return match.group(1)
     raise ValueError("No backup_id found in output")
@@ -35,31 +35,31 @@ def extract_backup_id(output: str) -> str:
 
 class TestBackupIdExtraction:
     """Test cases for backup_id extraction."""
-    
+
     def test_extract_backup_id_success(self):
         """Test successful backup_id extraction."""
         output = "2025-12-19T17:50:33,416 INFO [main {}] impl.TableBackupClient: Backup backup_1766148633020 started at 1766148633416."
         expected = "backup_1766148633020"
         assert extract_backup_id(output) == expected
-    
+
     def test_extract_backup_id_with_log_prefix(self):
         """Test extraction with Airflow log prefix."""
         output = "[2025-12-19T12:50:33.417+0000] {ssh.py:545} WARNING - 2025-12-19T17:50:33,416 INFO [main {}] impl.TableBackupClient: Backup backup_1766148633020 started at 1766148633416."
         expected = "backup_1766148633020"
         assert extract_backup_id(output) == expected
-    
+
     def test_extract_backup_id_different_timestamp(self):
         """Test extraction with different timestamp."""
         output = "Backup backup_1234567890123 started at 1234567890123."
         expected = "backup_1234567890123"
         assert extract_backup_id(output) == expected
-    
+
     def test_extract_backup_id_no_match(self):
         """Test extraction when no backup_id is found."""
         output = "Some random log output without backup info"
         with pytest.raises(ValueError, match="No backup_id found in output"):
             extract_backup_id(output)
-    
+
     def test_extract_backup_id_empty_string(self):
         """Test extraction with empty string."""
         output = ""

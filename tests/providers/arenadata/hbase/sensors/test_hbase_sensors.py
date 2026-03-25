@@ -15,6 +15,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
@@ -36,13 +37,10 @@ class TestHBaseTableSensor:
         mock_hook.table_exists.return_value = True
         mock_hook_class.return_value = mock_hook
 
-        sensor = HBaseTableSensor(
-            task_id="test_table_sensor",
-            table_name="test_table"
-        )
-        
+        sensor = HBaseTableSensor(task_id="test_table_sensor", table_name="test_table")
+
         result = sensor.poke({})
-        
+
         assert result is True
         mock_hook.table_exists.assert_called_once_with("test_table")
 
@@ -53,13 +51,10 @@ class TestHBaseTableSensor:
         mock_hook.table_exists.return_value = False
         mock_hook_class.return_value = mock_hook
 
-        sensor = HBaseTableSensor(
-            task_id="test_table_sensor",
-            table_name="test_table"
-        )
-        
+        sensor = HBaseTableSensor(task_id="test_table_sensor", table_name="test_table")
+
         result = sensor.poke({})
-        
+
         assert result is False
 
 
@@ -73,14 +68,10 @@ class TestHBaseRowSensor:
         mock_hook.get_row.return_value = {"cf1:col1": "value1"}
         mock_hook_class.return_value = mock_hook
 
-        sensor = HBaseRowSensor(
-            task_id="test_row_sensor",
-            table_name="test_table",
-            row_key="row1"
-        )
-        
+        sensor = HBaseRowSensor(task_id="test_row_sensor", table_name="test_table", row_key="row1")
+
         result = sensor.poke({})
-        
+
         assert result is True
         mock_hook.get_row.assert_called_once_with("test_table", "row1")
 
@@ -91,14 +82,10 @@ class TestHBaseRowSensor:
         mock_hook.get_row.return_value = {}
         mock_hook_class.return_value = mock_hook
 
-        sensor = HBaseRowSensor(
-            task_id="test_row_sensor",
-            table_name="test_table",
-            row_key="row1"
-        )
-        
+        sensor = HBaseRowSensor(task_id="test_row_sensor", table_name="test_table", row_key="row1")
+
         result = sensor.poke({})
-        
+
         assert result is False
 
     @patch("airflow.providers.arenadata.hbase.sensors.hbase.HBaseThriftHook")
@@ -108,11 +95,7 @@ class TestHBaseRowSensor:
         mock_hook.get_row.side_effect = Exception("Connection error")
         mock_hook_class.return_value = mock_hook
 
-        sensor = HBaseRowSensor(
-            task_id="test_row_sensor",
-            table_name="test_table",
-            row_key="row1"
-        )
-        
+        sensor = HBaseRowSensor(task_id="test_row_sensor", table_name="test_table", row_key="row1")
+
         with pytest.raises(Exception, match="Connection error"):
             sensor.poke({})

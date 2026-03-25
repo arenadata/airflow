@@ -23,6 +23,8 @@ This DAG showcases the new batch_size and max_workers parameters
 for efficient bulk data processing with HBase.
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 
 from airflow import DAG

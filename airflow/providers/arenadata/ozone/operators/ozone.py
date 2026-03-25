@@ -23,13 +23,11 @@ from pathlib import Path
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 from airflow.providers.arenadata.ozone.hooks.ozone import (
-    OzoneAdminHook,
-    OzoneFsHook,
-)
-from airflow.providers.arenadata.ozone.utils.connection_schema import (
     FAST_TIMEOUT_SECONDS,
     RETRY_ATTEMPTS,
     SLOW_TIMEOUT_SECONDS,
+    OzoneAdminHook,
+    OzoneFsHook,
 )
 from airflow.providers.arenadata.ozone.utils.helpers import FileHelper, TypeNormalizationHelper
 from airflow.utils.context import Context  # noqa: TCH001

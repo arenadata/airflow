@@ -15,6 +15,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
@@ -66,24 +67,22 @@ class TestThrift2SSL:
         mock_socket_instance = MagicMock()
         mock_socket.return_value = mock_socket_instance
         mock_socket_instance.setTimeout = MagicMock()
-        
+
         mock_transport_instance = MagicMock()
         mock_transport.return_value = mock_transport_instance
-        
-        client = HBaseThrift2Client(
-            host="localhost",
-            port=9090,
-            ssl_options=None
-        )
+
+        client = HBaseThrift2Client(host="localhost", port=9090, ssl_options=None)
         client.open()
-        
+
         # Verify regular TSocket was created
         mock_socket.assert_called_once_with("localhost", 9090)
-        
+
         # Verify TSSLSocket was NOT used
-        with patch("airflow.providers.arenadata.hbase.client.thrift2_client.TSSLSocket.TSSLSocket") as mock_ssl:
+        with patch(
+            "airflow.providers.arenadata.hbase.client.thrift2_client.TSSLSocket.TSSLSocket"
+        ) as mock_ssl:
             mock_ssl.assert_not_called()
-        
+
         # Verify transport was opened
         mock_transport_instance.open.assert_called_once()
 

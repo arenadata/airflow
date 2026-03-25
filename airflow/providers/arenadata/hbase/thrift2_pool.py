@@ -57,7 +57,8 @@ class Thrift2ConnectionPool:
         use_http: bool = False,
         borrow_timeout: float | None = None,
     ):
-        """Initialize connection pool.
+        """
+        Initialize connection pool.
 
         Args:
             size: Pool size
@@ -137,7 +138,8 @@ class Thrift2ConnectionPool:
 
     @contextmanager
     def connection(self, timeout: float | None = None):
-        """Get connection from pool.
+        """
+        Get connection from pool.
 
         Args:
             timeout: Timeout in seconds to wait for available connection from pool.
@@ -234,7 +236,8 @@ def get_or_create_thrift2_pool(  # pylint: disable=too-many-arguments,too-many-p
     use_http: bool = False,
     borrow_timeout: float | None = None,
 ) -> Thrift2ConnectionPool:
-    """Get existing Thrift2 pool or create new one.
+    """
+    Get existing Thrift2 pool or create new one.
 
     Args:
         conn_id: Connection ID
