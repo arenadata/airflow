@@ -257,8 +257,6 @@ Some of those enable Airflow to use executors to run tasks with them - other tha
 +=====================+=====================================================+=================================================================+==============================================+
 | arangodb            | ``pip install 'apache-airflow[arangodb]'``          | ArangoDB operators, sensors and hook                            |                                              |
 +---------------------+-----------------------------------------------------+-----------------------------------------------------------------+----------------------------------------------+
-| arenadata-ozone     | ``pip install 'apache-airflow[arenadata-ozone]'``   | Arenadata Ozone hooks and operators                             |                                              |
-+---------------------+-----------------------------------------------------+-----------------------------------------------------------------+----------------------------------------------+
 | celery              | ``pip install 'apache-airflow[celery]'``            | Celery dependencies and sensor                                  | CeleryExecutor, CeleryKubernetesExecutor     |
 +---------------------+-----------------------------------------------------+-----------------------------------------------------------------+----------------------------------------------+
 | cncf-kubernetes     | ``pip install 'apache-airflow[cncf-kubernetes]'``   | Kubernetes client libraries, KubernetesPodOperator & friends    | KubernetesExecutor, LocalKubernetesExecutor  |
