@@ -17,8 +17,6 @@
 # under the License.
 """Test chunking functionality."""
 
-from __future__ import annotations
-
 import pytest
 
 from airflow.providers.arenadata.hbase.hooks.hbase_strategy import HBaseStrategy

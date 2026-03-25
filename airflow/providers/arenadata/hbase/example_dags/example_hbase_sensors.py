@@ -36,9 +36,9 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.providers.arenadata.hbase.operators.hbase import HBaseDeleteTableOperator
-from airflow.providers.arenadata.hbase.sensors.hbase import HBaseRowSensor, HBaseTableSensor
+from airflow.providers.arenadata.hbase.sensors.hbase import HBaseTableSensor, HBaseRowSensor
+from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +117,7 @@ with DAG(
     catchup=False,
     tags=["example", "hbase", "sensors"],
 ) as dag:
+
     # Step 1: Cleanup any existing table
     cleanup_existing = HBaseDeleteTableOperator(
         task_id="cleanup_existing_table",

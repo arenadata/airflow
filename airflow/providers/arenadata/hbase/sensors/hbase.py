@@ -21,8 +21,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Sequence
 
-from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.sensors.base import BaseSensorOperator
+from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
 if TYPE_CHECKING:
     from airflow.utils.context import Context

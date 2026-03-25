@@ -86,8 +86,7 @@ class HBaseCLIHook(BaseHook):
     _HBASE_SECURITY_OPTS = {"-kt", "--keytab", "-k"}
 
     def _build_hbase_command(self, args: list[str]) -> list[str]:
-        """
-        Build HBase command as list.
+        """Build HBase command as list.
 
         :param args: HBase command arguments (e.g., ["backup", "create", "full", "/backup", "-t", "table1"])
         :return: Full command as list
@@ -96,8 +95,7 @@ class HBaseCLIHook(BaseHook):
         return [hbase_bin, *args]
 
     def _build_kerberos_command(self, hbase_cmd: list[str], keytab: str, principal: str) -> list[str]:
-        """
-        Build command with Kerberos authentication.
+        """Build command with Kerberos authentication.
 
         :param hbase_cmd: HBase command as list
         :param keytab: Path to keytab file
@@ -115,8 +113,7 @@ class HBaseCLIHook(BaseHook):
         return ["sh", "-c", shell_str]
 
     def _mask_cmd(self, cmd: list[str]) -> list[str]:
-        """
-        Mask sensitive parameters in command for logging.
+        """Mask sensitive parameters in command for logging.
 
         :param cmd: Command as list
         :return: Masked command as list
@@ -131,8 +128,7 @@ class HBaseCLIHook(BaseHook):
         return masked
 
     def _prepare_command(self, args: list[str]) -> tuple[list[str], dict[str, str]]:
-        """
-        Prepare full command and environment for execution.
+        """Prepare full command and environment for execution.
 
         :param args: HBase command arguments as list
         :return: Tuple of (full_command, env)
@@ -164,8 +160,7 @@ class HBaseCLIHook(BaseHook):
         return full_command, env
 
     def _execute_hbase_command(self, args: list[str]) -> str:
-        """
-        Execute HBase CLI command.
+        """Execute HBase CLI command.
 
         :param args: HBase command arguments as list
         :return: Command output
@@ -185,8 +180,7 @@ class HBaseCLIHook(BaseHook):
             raise RuntimeError(f"Failed to execute HBase command: {e}") from e
 
     def _execute_hbase_command_stream(self, args: list[str]) -> str:
-        """
-        Execute long-running HBase CLI command with real-time log streaming.
+        """Execute long-running HBase CLI command with real-time log streaming.
 
         Uses Popen for backup/restore operations that may run for hours.
 

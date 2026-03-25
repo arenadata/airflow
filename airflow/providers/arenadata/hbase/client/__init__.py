@@ -17,8 +17,6 @@
 # under the License.
 """HBase Thrift2 client module."""
 
-from __future__ import annotations
-
 from airflow.providers.arenadata.hbase.client.thrift2_client import HBaseThrift2Client
 
 __all__ = ["HBaseThrift2Client"]

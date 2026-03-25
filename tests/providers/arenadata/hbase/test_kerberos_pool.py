@@ -15,8 +15,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from __future__ import annotations
 
+import pytest
 from unittest.mock import MagicMock, patch
 
 from airflow.providers.arenadata.hbase.thrift2_pool import (
@@ -31,9 +31,13 @@ class TestKerberosPool:
     def test_pool_initialization_with_kerberos(self):
         """Test pool initialization with Kerberos parameters."""
         pool = Thrift2ConnectionPool(
-            size=5, host="localhost", port=9090, auth_method="GSSAPI", kerberos_service_name="hbase"
+            size=5,
+            host="localhost",
+            port=9090,
+            auth_method="GSSAPI",
+            kerberos_service_name="hbase"
         )
-
+        
         assert pool.size == 5
         assert pool.config.host == "localhost"
         assert pool.config.port == 9090
@@ -43,9 +47,13 @@ class TestKerberosPool:
     def test_pool_initialization_with_custom_service_name(self):
         """Test pool initialization with custom Kerberos service name."""
         pool = Thrift2ConnectionPool(
-            size=5, host="localhost", port=9090, auth_method="GSSAPI", kerberos_service_name="HTTP"
+            size=5,
+            host="localhost",
+            port=9090,
+            auth_method="GSSAPI",
+            kerberos_service_name="HTTP"
         )
-
+        
         assert pool.config.kerberos_service_name == "HTTP"
 
     @patch("airflow.providers.arenadata.hbase.thrift2_pool.HBaseThrift2Client")
@@ -53,13 +61,17 @@ class TestKerberosPool:
         """Test that pool creates clients with Kerberos parameters."""
         mock_client_inst = MagicMock()
         mock_client.return_value = mock_client_inst
-
+        
         pool = Thrift2ConnectionPool(
-            size=5, host="localhost", port=9090, auth_method="GSSAPI", kerberos_service_name="hbase"
+            size=5,
+            host="localhost",
+            port=9090,
+            auth_method="GSSAPI",
+            kerberos_service_name="hbase"
         )
-
+        
         pool._create_connection()
-
+        
         mock_client.assert_called_once_with(
             host="localhost",
             port=9090,
@@ -69,11 +81,11 @@ class TestKerberosPool:
             kerberos_service_name="hbase",
             kerberos_principal=None,
             kerberos_keytab=None,
-            namespace="default",
+            namespace='default',
             retry_max_attempts=3,
             retry_delay=1.0,
             retry_backoff_factor=2.0,
-            use_http=False,
+            use_http=False
         )
         mock_client_inst.open.assert_called_once()
 
@@ -82,7 +94,7 @@ class TestKerberosPool:
         """Test that pool creates clients with both Kerberos and SSL."""
         mock_client_inst = MagicMock()
         mock_client.return_value = mock_client_inst
-
+        
         ssl_options = {"ca_certs": "/path/to/ca.crt", "validate": True}
         pool = Thrift2ConnectionPool(
             size=5,
@@ -90,11 +102,11 @@ class TestKerberosPool:
             port=9090,
             ssl_options=ssl_options,
             auth_method="GSSAPI",
-            kerberos_service_name="hbase",
+            kerberos_service_name="hbase"
         )
-
+        
         pool._create_connection()
-
+        
         call_kwargs = mock_client.call_args[1]
         assert call_kwargs["ssl_options"] == ssl_options
         assert call_kwargs["auth_method"] == "GSSAPI"
@@ -108,9 +120,9 @@ class TestKerberosPool:
             host="localhost",
             port=9090,
             auth_method="GSSAPI",
-            kerberos_service_name="hbase",
+            kerberos_service_name="hbase"
         )
-
+        
         assert pool.config.auth_method == "GSSAPI"
         assert pool.config.kerberos_service_name == "hbase"
         assert pool.size == 10
@@ -118,17 +130,21 @@ class TestKerberosPool:
     def test_get_or_create_pool_returns_existing_pool(self):
         """Test that get_or_create_thrift2_pool returns existing pool."""
         pool1 = get_or_create_thrift2_pool(
-            conn_id="test_existing", pool_size=10, host="localhost", port=9090, auth_method="GSSAPI"
+            conn_id="test_existing",
+            pool_size=10,
+            host="localhost",
+            port=9090,
+            auth_method="GSSAPI"
         )
-
+        
         pool2 = get_or_create_thrift2_pool(
             conn_id="test_existing",
             pool_size=20,  # Different size
             host="different",  # Different host
             port=9091,
-            auth_method="GSSAPI",
+            auth_method="GSSAPI"
         )
-
+        
         # Should return the same pool instance
         assert pool1 is pool2
 
@@ -137,21 +153,29 @@ class TestKerberosPool:
         """Test pool connection context manager with Kerberos."""
         mock_client_inst = MagicMock()
         mock_client.return_value = mock_client_inst
-
+        
         pool = Thrift2ConnectionPool(
-            size=5, host="localhost", port=9090, auth_method="GSSAPI", kerberos_service_name="hbase"
+            size=5,
+            host="localhost",
+            port=9090,
+            auth_method="GSSAPI",
+            kerberos_service_name="hbase"
         )
-
+        
         with pool.connection() as client:
             assert client == mock_client_inst
-
+        
         # Verify client was created with Kerberos
         call_kwargs = mock_client.call_args[1]
         assert call_kwargs["auth_method"] == "GSSAPI"
 
     def test_pool_without_auth_method(self):
         """Test pool without auth_method uses None."""
-        pool = Thrift2ConnectionPool(size=5, host="localhost", port=9090)
-
+        pool = Thrift2ConnectionPool(
+            size=5,
+            host="localhost",
+            port=9090
+        )
+        
         assert pool.config.auth_method is None
         assert pool.config.kerberos_service_name == "hbase"  # Default value

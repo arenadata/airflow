@@ -72,8 +72,7 @@ def create_connection_config(  # pylint: disable=too-many-arguments,too-many-pos
     retry_backoff_factor: float = 2.0,
     use_http: bool = False,
 ) -> HBaseConnectionConfig:
-    """
-    Create HBase connection configuration.
+    """Create HBase connection configuration.
 
     Helper function to avoid code duplication.
     """

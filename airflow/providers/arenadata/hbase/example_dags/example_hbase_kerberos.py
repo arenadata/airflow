@@ -41,9 +41,9 @@ from datetime import datetime
 from airflow import DAG
 from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseCreateTableOperator,
-    HBaseDeleteTableOperator,
     HBasePutOperator,
     HBaseScanOperator,
+    HBaseDeleteTableOperator,
 )
 
 with DAG(

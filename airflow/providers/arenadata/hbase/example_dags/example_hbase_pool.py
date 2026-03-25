@@ -29,8 +29,8 @@ import time
 from datetime import datetime
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
+from airflow.operators.python import PythonOperator
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +184,7 @@ with DAG(
     tags=["example", "hbase", "pool"],
     doc_md=__doc__,
 ) as dag:
+
     setup = PythonOperator(
         task_id="setup_table",
         python_callable=setup_table,

@@ -15,12 +15,11 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from __future__ import annotations
 
-import shlex
 from unittest.mock import MagicMock, patch
 
 import pytest
+import shlex
 
 from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 
@@ -295,7 +294,9 @@ class TestHBaseCLIHook:
         mock_popen.return_value = mock_process
 
         hook = HBaseCLIHook(hbase_conn_id="hbase_default")
-        hook.restore_backup("/backup", "backup_123", backup_set_name="my_set", tables=["table1"])
+        hook.restore_backup(
+            "/backup", "backup_123", backup_set_name="my_set", tables=["table1"]
+        )
 
         call_args = mock_popen.call_args[0][0]
         assert "-s" in call_args
@@ -367,7 +368,9 @@ class TestHBaseCLIHook:
         hook.execute_command('backup create full "/backup dir/my backup" -t table1')
 
         call_args = mock_run.call_args[0][0]
-        assert call_args[-6:] == ["backup", "create", "full", "/backup dir/my backup", "-t", "table1"]
+        assert call_args[-6:] == [
+            "backup", "create", "full", "/backup dir/my backup", "-t", "table1"
+        ]
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
@@ -382,9 +385,7 @@ class TestHBaseCLIHook:
         call_args = mock_run.call_args[0][0]
         assert call_args[-3:] == ["backup", "set", "list"]
 
-    @patch(
-        "airflow.providers.arenadata.hbase.hooks.hbase_cli.socket.getfqdn", return_value="worker1.example.com"
-    )
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.socket.getfqdn", return_value="worker1.example.com")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
     def test_execute_command_kerberos(self, mock_run, mock_get_conn, mock_fqdn):
@@ -409,9 +410,7 @@ class TestHBaseCLIHook:
         assert "&& sudo -u hbase" in shell_cmd
         assert "backup set list" in shell_cmd
 
-    @patch(
-        "airflow.providers.arenadata.hbase.hooks.hbase_cli.socket.getfqdn", return_value="worker1.example.com"
-    )
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.socket.getfqdn", return_value="worker1.example.com")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
     def test_execute_command_kerberos_with_spaces_in_args(self, mock_run, mock_get_conn, mock_fqdn):

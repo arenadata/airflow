@@ -29,8 +29,7 @@ from airflow.models import Variable  # pylint: disable=import-error
 
 
 def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Callable[[], None]]:
-    """
-    Create SSL context from configuration.
+    """Create SSL context from configuration.
 
     Args:
         ssl_config: SSL configuration dictionary with keys:

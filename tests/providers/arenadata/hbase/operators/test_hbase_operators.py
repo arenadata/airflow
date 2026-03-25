@@ -15,7 +15,6 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
@@ -43,11 +42,14 @@ class TestHBasePutOperator:
         mock_hook_class.return_value = mock_hook
 
         operator = HBasePutOperator(
-            task_id="test_put", table_name="test_table", row_key="row1", data={"cf1:col1": "value1"}
+            task_id="test_put",
+            table_name="test_table",
+            row_key="row1",
+            data={"cf1:col1": "value1"}
         )
-
+        
         operator.execute()
-
+        
         mock_hook.put_row.assert_called_once_with("test_table", "row1", {"cf1:col1": "value1"})
 
 
@@ -62,11 +64,13 @@ class TestHBaseCreateTableOperator:
         mock_hook_class.return_value = mock_hook
 
         operator = HBaseCreateTableOperator(
-            task_id="test_create", table_name="test_table", families={"cf1": {}, "cf2": {}}
+            task_id="test_create",
+            table_name="test_table",
+            families={"cf1": {}, "cf2": {}}
         )
-
+        
         operator.execute()
-
+        
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_called_once_with("test_table", {"cf1": {}, "cf2": {}})
 
@@ -78,11 +82,13 @@ class TestHBaseCreateTableOperator:
         mock_hook_class.return_value = mock_hook
 
         operator = HBaseCreateTableOperator(
-            task_id="test_create", table_name="test_table", families={"cf1": {}, "cf2": {}}
+            task_id="test_create",
+            table_name="test_table",
+            families={"cf1": {}, "cf2": {}}
         )
-
+        
         operator.execute()
-
+        
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_not_called()
 
@@ -97,12 +103,12 @@ class TestHBaseCreateTableOperator:
             task_id="test_create",
             table_name="test_table",
             families={"cf1": {}, "cf2": {}},
-            if_exists=IfExistsAction.ERROR,
+            if_exists=IfExistsAction.ERROR
         )
-
+        
         with pytest.raises(ValueError, match="Table test_table already exists"):
             operator.execute()
-
+        
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_not_called()
 
@@ -117,10 +123,13 @@ class TestHBaseDeleteTableOperator:
         mock_hook.table_exists.return_value = True
         mock_hook_class.return_value = mock_hook
 
-        operator = HBaseDeleteTableOperator(task_id="test_delete", table_name="test_table")
-
+        operator = HBaseDeleteTableOperator(
+            task_id="test_delete",
+            table_name="test_table"
+        )
+        
         operator.execute()
-
+        
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.delete_table.assert_called_once_with("test_table")
 
@@ -131,10 +140,13 @@ class TestHBaseDeleteTableOperator:
         mock_hook.table_exists.return_value = False
         mock_hook_class.return_value = mock_hook
 
-        operator = HBaseDeleteTableOperator(task_id="test_delete", table_name="test_table")
-
+        operator = HBaseDeleteTableOperator(
+            task_id="test_delete",
+            table_name="test_table"
+        )
+        
         operator.execute()
-
+        
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.delete_table.assert_not_called()
 
@@ -146,12 +158,14 @@ class TestHBaseDeleteTableOperator:
         mock_hook_class.return_value = mock_hook
 
         operator = HBaseDeleteTableOperator(
-            task_id="test_delete", table_name="test_table", if_not_exists=IfNotExistsAction.ERROR
+            task_id="test_delete",
+            table_name="test_table",
+            if_not_exists=IfNotExistsAction.ERROR
         )
-
+        
         with pytest.raises(ValueError, match="Table test_table does not exist"):
             operator.execute()
-
+        
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.delete_table.assert_not_called()
 
@@ -165,17 +179,25 @@ class TestHBaseScanOperator:
         mock_hook = MagicMock()
         mock_hook.scan_table.return_value = [
             ("row1", {"cf1:col1": "value1"}),
-            ("row2", {"cf1:col1": "value2"}),
+            ("row2", {"cf1:col1": "value2"})
         ]
         mock_hook_class.return_value = mock_hook
 
-        operator = HBaseScanOperator(task_id="test_scan", table_name="test_table", limit=10)
-
+        operator = HBaseScanOperator(
+            task_id="test_scan",
+            table_name="test_table",
+            limit=10
+        )
+        
         result = operator.execute()
-
+        
         assert len(result) == 2
         mock_hook.scan_table.assert_called_once_with(
-            table_name="test_table", row_start=None, row_stop=None, columns=None, limit=10
+            table_name="test_table",
+            row_start=None,
+            row_stop=None,
+            columns=None,
+            limit=10
         )
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
@@ -183,15 +205,19 @@ class TestHBaseScanOperator:
         """Test execute method with custom encoding."""
         mock_hook = MagicMock()
         mock_hook.scan_table.return_value = [
-            (b"row1", {b"cf1:col1": "café".encode("latin-1")}),
-            (b"row2", {b"cf1:col1": "naïve".encode("latin-1")}),
+            (b"row1", {b"cf1:col1": "café".encode('latin-1')}),
+            (b"row2", {b"cf1:col1": "naïve".encode('latin-1')})
         ]
         mock_hook_class.return_value = mock_hook
 
-        operator = HBaseScanOperator(task_id="test_scan", table_name="test_table", encoding="latin-1")
-
+        operator = HBaseScanOperator(
+            task_id="test_scan",
+            table_name="test_table",
+            encoding='latin-1'
+        )
+        
         result = operator.execute()
-
+        
         assert len(result) == 2
         assert result[0]["row_key"] == "row1"
         assert result[0]["cf1:col1"] == "café"
@@ -207,14 +233,21 @@ class TestHBaseBatchPutOperator:
         mock_hook = MagicMock()
         mock_hook_class.return_value = mock_hook
 
-        rows = [{"row_key": "row1", "cf1:col1": "value1"}, {"row_key": "row2", "cf1:col1": "value2"}]
+        rows = [
+            {"row_key": "row1", "cf1:col1": "value1"},
+            {"row_key": "row2", "cf1:col1": "value2"}
+        ]
 
         operator = HBaseBatchPutOperator(
-            task_id="test_batch_put", table_name="test_table", rows=rows, batch_size=500, max_workers=2
+            task_id="test_batch_put",
+            table_name="test_table",
+            rows=rows,
+            batch_size=500,
+            max_workers=2
         )
-
+        
         operator.execute()
-
+        
         mock_hook.batch_put_rows.assert_called_once_with("test_table", rows, 500, 2)
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
@@ -223,12 +256,19 @@ class TestHBaseBatchPutOperator:
         mock_hook = MagicMock()
         mock_hook_class.return_value = mock_hook
 
-        rows = [{"row_key": "row1", "cf1:col1": "value1"}, {"row_key": "row2", "cf1:col1": "value2"}]
+        rows = [
+            {"row_key": "row1", "cf1:col1": "value1"},
+            {"row_key": "row2", "cf1:col1": "value2"}
+        ]
 
-        operator = HBaseBatchPutOperator(task_id="test_batch_put", table_name="test_table", rows=rows)
-
+        operator = HBaseBatchPutOperator(
+            task_id="test_batch_put",
+            table_name="test_table",
+            rows=rows
+        )
+        
         operator.execute()
-
+        
         mock_hook.batch_put_rows.assert_called_once_with("test_table", rows, 200, 4)
 
 
@@ -239,34 +279,47 @@ class TestHBaseBatchGetOperator:
     def test_execute(self, mock_hook_class):
         """Test execute method."""
         mock_hook = MagicMock()
-        mock_hook.batch_get_rows.return_value = [{"cf1:col1": "value1"}, {"cf1:col1": "value2"}]
+        mock_hook.batch_get_rows.return_value = [
+            {"cf1:col1": "value1"},
+            {"cf1:col1": "value2"}
+        ]
         mock_hook_class.return_value = mock_hook
 
         operator = HBaseBatchGetOperator(
-            task_id="test_batch_get", table_name="test_table", row_keys=["row1", "row2"], columns=["cf1:col1"]
+            task_id="test_batch_get",
+            table_name="test_table",
+            row_keys=["row1", "row2"],
+            columns=["cf1:col1"]
         )
-
+        
         result = operator.execute()
-
+        
         assert len(result) == 2
-        mock_hook.batch_get_rows.assert_called_once_with("test_table", ["row1", "row2"], ["cf1:col1"])
+        mock_hook.batch_get_rows.assert_called_once_with(
+            "test_table", 
+            ["row1", "row2"], 
+            ["cf1:col1"]
+        )
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
     def test_execute_with_custom_encoding(self, mock_hook_class):
         """Test execute method with custom encoding."""
         mock_hook = MagicMock()
         mock_hook.batch_get_rows.return_value = [
-            {b"cf1:col1": "résumé".encode("latin-1")},
-            {b"cf1:col1": "façade".encode("latin-1")},
+            {b"cf1:col1": "résumé".encode('latin-1')},
+            {b"cf1:col1": "façade".encode('latin-1')}
         ]
         mock_hook_class.return_value = mock_hook
 
         operator = HBaseBatchGetOperator(
-            task_id="test_batch_get", table_name="test_table", row_keys=["row1", "row2"], encoding="latin-1"
+            task_id="test_batch_get",
+            table_name="test_table",
+            row_keys=["row1", "row2"],
+            encoding='latin-1'
         )
-
+        
         result = operator.execute()
-
+        
         assert len(result) == 2
         assert result[0]["cf1:col1"] == "résumé"
         assert result[1]["cf1:col1"] == "façade"

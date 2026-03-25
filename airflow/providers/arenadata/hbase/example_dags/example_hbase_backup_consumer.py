@@ -39,8 +39,6 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import BranchPythonOperator
-from airflow.providers.arenadata.hbase.datasets.hbase import hbase_table_dataset
-from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 from airflow.providers.arenadata.hbase.operators.hbase import (
     BackupSetAction,
     BackupType,
@@ -48,6 +46,8 @@ from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseBackupSetOperator,
     HBaseCreateBackupOperator,
 )
+from airflow.providers.arenadata.hbase.datasets.hbase import hbase_table_dataset
+from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,7 @@ with DAG(
     catchup=False,
     tags=["example", "hbase", "backup", "consumer"],
 ) as dag:
+
     # Cleanup any stuck backup sessions before starting
     cleanup_stuck_sessions = BashOperator(
         task_id="cleanup_stuck_sessions",

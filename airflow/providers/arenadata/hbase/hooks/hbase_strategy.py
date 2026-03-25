@@ -19,9 +19,9 @@
 
 from __future__ import annotations
 
-import concurrent.futures
 import os
 import time
+import concurrent.futures
 from abc import ABC, abstractmethod
 from typing import Any
 

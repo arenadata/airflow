@@ -38,10 +38,13 @@ class TestDataConversion:
 
     def test_convert_scan_results_to_serializable(self):
         """Test scan results conversion."""
-        results = [(b"row1", {b"cf1:col1": b"value1"}), ("row2", {"cf1:col2": "value2"})]
-
+        results = [
+            (b"row1", {b"cf1:col1": b"value1"}),
+            ("row2", {"cf1:col2": "value2"})
+        ]
+        
         converted = convert_scan_results_to_serializable(results)
-
+        
         assert len(converted) == 2
         assert converted[0]["row_key"] == "row1"
         assert converted[0]["cf1:col1"] == "value1"
@@ -50,10 +53,13 @@ class TestDataConversion:
 
     def test_convert_batch_results_to_serializable(self):
         """Test batch results conversion."""
-        results = [{b"cf1:col1": b"value1"}, {"cf1:col2": "value2"}]
-
+        results = [
+            {b"cf1:col1": b"value1"},
+            {"cf1:col2": "value2"}
+        ]
+        
         converted = convert_batch_results_to_serializable(results)
-
+        
         assert len(converted) == 2
         assert converted[0]["cf1:col1"] == "value1"
         assert converted[1]["cf1:col2"] == "value2"
@@ -62,9 +68,9 @@ class TestDataConversion:
         """Test backup ID extraction."""
         output = "Backup backup_1234567890123 completed."
         assert extract_backup_id(output) == "backup_1234567890123"
-
+        
         output = "Some other output"
         assert extract_backup_id(output) is None
-
+        
         output = "Multiple backup_111 and backup_222"
         assert extract_backup_id(output) == "backup_111"

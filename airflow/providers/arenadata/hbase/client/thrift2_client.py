@@ -27,7 +27,7 @@ import time
 from typing import Any
 
 from thrift.protocol import TBinaryProtocol
-from thrift.transport import THttpClient, TSocket, TSSLSocket, TTransport
+from thrift.transport import TSocket, TTransport, TSSLSocket, THttpClient
 from thrift.transport.TTransport import TTransportException
 
 try:
@@ -40,8 +40,8 @@ except ImportError:
     sasl = None  # type: ignore
     TSaslClientTransport = None  # type: ignore
 
-from airflow.providers.arenadata.hbase.connection_config import create_connection_config
 from airflow.providers.arenadata.hbase.hbase_thrift2_generated import THBaseService, ttypes
+from airflow.providers.arenadata.hbase.connection_config import create_connection_config
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,7 @@ class HBaseThrift2Client:
         retry_backoff_factor: float = 2.0,
         use_http: bool = False,
     ):
-        """
-        Initialize Thrift2 client.
+        """Initialize Thrift2 client.
 
         Args:
             host: HBase Thrift2 server host
@@ -121,8 +120,7 @@ class HBaseThrift2Client:
         self.close()
 
     def _create_ssl_context(self) -> ssl_module.SSLContext | None:
-        """
-        Create SSL context from connection config.
+        """Create SSL context from connection config.
 
         Returns:
             Configured SSLContext or None if SSL is not configured.
@@ -150,8 +148,7 @@ class HBaseThrift2Client:
         return ctx
 
     def _create_socket(self) -> TSocket.TSocket | TSSLSocket.TSSLSocket:
-        """
-        Create socket (SSL or regular).
+        """Create socket (SSL or regular).
 
         Returns:
             Configured socket instance
@@ -170,8 +167,7 @@ class HBaseThrift2Client:
         return sock
 
     def _setup_kerberos(self) -> None:  # pylint: disable=too-many-branches
-        """
-        Setup Kerberos authentication.
+        """Setup Kerberos authentication.
 
         Raises:
             RuntimeError: If Kerberos setup fails
@@ -235,8 +231,7 @@ class HBaseThrift2Client:
                 )
 
     def _create_sasl_transport(self, sock: TSocket.TSocket | TSSLSocket.TSSLSocket):
-        """
-        Create SASL transport for Kerberos authentication.
+        """Create SASL transport for Kerberos authentication.
 
         Args:
             sock: Base socket
@@ -272,8 +267,7 @@ class HBaseThrift2Client:
         return TSaslClientTransport(sasl_factory, "GSSAPI", sock)
 
     def _setup_kerberos_transport(self, sock: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
-        """
-        Setup Kerberos transport and client.
+        """Setup Kerberos transport and client.
 
         Args:
             sock: Base socket
@@ -288,8 +282,7 @@ class HBaseThrift2Client:
         self._transport.open()
 
     def _setup_simple_transport(self, sock: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
-        """
-        Setup simple transport without authentication.
+        """Setup simple transport without authentication.
 
         Args:
             sock: Base socket
@@ -332,8 +325,7 @@ class HBaseThrift2Client:
                     raise transport_error
 
     def _test_connection(self) -> None:
-        """
-        Test connection with a simple operation.
+        """Test connection with a simple operation.
 
         Raises:
             Exception: If connection test fails
@@ -343,8 +335,7 @@ class HBaseThrift2Client:
         self._client.getTableNamesByPattern(regex=None, includeSysTables=False)
 
     def open(self) -> None:
-        """
-        Open connection to Thrift2 server with retry logic.
+        """Open connection to Thrift2 server with retry logic.
 
         Raises:
             ConnectionError: If connection fails after all retries
@@ -436,8 +427,7 @@ class HBaseThrift2Client:
         return self._client.tableExists(table_name_obj)
 
     def create_table(self, table_name: str, families: dict[str, dict]) -> None:
-        """
-        Create table.
+        """Create table.
 
         Args:
             table_name: Name of the table
@@ -457,8 +447,7 @@ class HBaseThrift2Client:
         self._client.createTable(table_desc, None)
 
     def delete_table(self, table_name: str) -> None:
-        """
-        Delete table.
+        """Delete table.
 
         Args:
             table_name: Name of the table
@@ -484,8 +473,7 @@ class HBaseThrift2Client:
             raise
 
     def put(self, table_name: str, row_key: str, data: dict[str, str]) -> None:
-        """
-        Put data into table.
+        """Put data into table.
 
         Args:
             table_name: Name of the table
@@ -510,8 +498,7 @@ class HBaseThrift2Client:
         self._client.put(self._resolve_table_name(table_name), tput)
 
     def put_multiple(self, table_name: str, puts: list[tuple[str, dict[str, str]]]) -> None:
-        """
-        Put multiple rows in batch.
+        """Put multiple rows in batch.
 
         Args:
             table_name: Name of the table
@@ -537,8 +524,7 @@ class HBaseThrift2Client:
         self._client.putMultiple(self._resolve_table_name(table_name), tputs)
 
     def get(self, table_name: str, row_key: str, columns: list[str] | None = None) -> dict[str, Any]:
-        """
-        Get row from table.
+        """Get row from table.
 
         Args:
             table_name: Name of the table
@@ -565,8 +551,7 @@ class HBaseThrift2Client:
     def get_multiple(
         self, table_name: str, row_keys: list[str], columns: list[str] | None = None
     ) -> list[dict[str, Any]]:
-        """
-        Get multiple rows in batch.
+        """Get multiple rows in batch.
 
         Args:
             table_name: Name of the table
@@ -595,8 +580,7 @@ class HBaseThrift2Client:
         return [self._parse_result(r) for r in results]
 
     def delete(self, table_name: str, row_key: str, columns: list[str] | None = None) -> None:
-        """
-        Delete row or columns.
+        """Delete row or columns.
 
         Args:
             table_name: Name of the table
@@ -617,8 +601,7 @@ class HBaseThrift2Client:
         self._client.deleteSingle(self._resolve_table_name(table_name), tdelete)
 
     def delete_multiple(self, table_name: str, deletes: list[tuple[str, list[str] | None]]) -> None:
-        """
-        Delete multiple rows in batch.
+        """Delete multiple rows in batch.
 
         Args:
             table_name: Name of the table
@@ -649,8 +632,7 @@ class HBaseThrift2Client:
         columns: list[str] | None = None,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Scan table.
+        """Scan table.
 
         Args:
             table_name: Name of the table
@@ -701,8 +683,7 @@ class HBaseThrift2Client:
             self._client.closeScanner(scanner_id)
 
     def _resolve_table_name(self, table_name: str) -> bytes:
-        """
-        Resolve table name with namespace prefix.
+        """Resolve table name with namespace prefix.
 
         If table_name already contains ':' (fully qualified), it is used as-is.
         Otherwise, the configured namespace is prepended when it differs from 'default'.
@@ -714,8 +695,7 @@ class HBaseThrift2Client:
         return table_name.encode()
 
     def _parse_result(self, result) -> dict[str, Any]:
-        """
-        Parse Thrift2 result to dictionary.
+        """Parse Thrift2 result to dictionary.
 
         Args:
             result: TResult object from Thrift2

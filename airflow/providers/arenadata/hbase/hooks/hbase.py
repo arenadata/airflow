@@ -27,8 +27,8 @@ from airflow.hooks.base import BaseHook
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
 from airflow.providers.arenadata.hbase.hooks.hbase_strategy import (
     HBaseStrategy,
-    PooledThrift2Strategy,
     Thrift2Strategy,
+    PooledThrift2Strategy,
 )
 from airflow.providers.arenadata.hbase.thrift2_pool import get_or_create_thrift2_pool
 
@@ -138,8 +138,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
         return self._strategy
 
     def _get_ssl_options(self, extra_config: dict[str, Any]) -> dict[str, Any] | None:
-        """
-        Get SSL options from connection extra.
+        """Get SSL options from connection extra.
 
         Supports two formats:
         1. Nested: {"ssl_options": {"ca_certs": "...", ...}}
@@ -246,9 +245,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
     def get_openlineage_database_info(self, connection):
         """Return HBase specific information for OpenLineage."""
         try:
-            from airflow.providers.openlineage.sqlparser import (
-                DatabaseInfo,  # pylint: disable=import-outside-toplevel
-            )
+            from airflow.providers.openlineage.sqlparser import DatabaseInfo  # pylint: disable=import-outside-toplevel
 
             return DatabaseInfo(
                 scheme="hbase",
@@ -263,7 +260,7 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
         """Return custom UI field behaviour for HBase connection."""
         # Load extra placeholder from JSON file
         json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui_field_behaviour.json")
-        with open(json_path, encoding="utf-8") as f:
+        with open(json_path, "r", encoding="utf-8") as f:
             extra_placeholder = json.load(f)
 
         return {

@@ -24,8 +24,7 @@ from typing import Any
 
 
 def convert_bytes_to_str(value: bytes | str, encoding: str = "utf-8") -> str:
-    """
-    Convert bytes to string using specified encoding.
+    """Convert bytes to string using specified encoding.
 
     Args:
         value: Value to convert
@@ -40,8 +39,7 @@ def convert_bytes_to_str(value: bytes | str, encoding: str = "utf-8") -> str:
 def convert_scan_results_to_serializable(
     results: list[tuple[str, dict[str, Any]]], encoding: str = "utf-8"
 ) -> list[dict[str, Any]]:
-    """
-    Convert scan results to JSON-serializable format.
+    """Convert scan results to JSON-serializable format.
 
     Args:
         results: List of (row_key, data) tuples from scan
@@ -64,8 +62,7 @@ def convert_scan_results_to_serializable(
 def convert_batch_results_to_serializable(
     results: list[dict[str, Any]], encoding: str = "utf-8"
 ) -> list[dict[str, Any]]:
-    """
-    Convert batch get results to JSON-serializable format.
+    """Convert batch get results to JSON-serializable format.
 
     Args:
         results: List of data dictionaries from batch get
@@ -86,8 +83,7 @@ def convert_batch_results_to_serializable(
 
 
 def extract_backup_id(output: str) -> str | None:
-    """
-    Extract backup ID from HBase backup command output.
+    """Extract backup ID from HBase backup command output.
 
     Args:
         output: Command output string
