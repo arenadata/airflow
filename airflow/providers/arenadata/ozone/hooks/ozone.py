@@ -294,6 +294,11 @@ class OzoneFsHook(OzoneCliHook):
         """Return the most useful key properties as a compact dictionary."""
         info = self.get_key_info(path, timeout=timeout)
         replication_config = info.get("replicationConfig")
+        if replication_config is None:
+            self.log.warning(
+                "Key info for %s does not contain 'replicationConfig'; falling back to top-level fields",
+                path,
+            )
         if isinstance(replication_config, dict):
             replication_type = replication_config.get("replicationType", info.get("replicationType"))
             replication_value = replication_config.get("requiredNodes", info.get("replicationFactor"))

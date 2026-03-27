@@ -273,16 +273,20 @@ class OzoneUploadContentOperator(BaseOperator):
             retry_attempts=self.retry_attempts,
         )
         size_limit_bytes = self.max_content_size_bytes or hook.connection_snapshot.max_content_size_bytes
-        content_size_bytes = len(self.content.encode("utf-8"))
-        if content_size_bytes > size_limit_bytes:
-            raise AirflowException(
-                f"Content size ({content_size_bytes} bytes) exceeds configured limit "
-                f"({size_limit_bytes} bytes) for Ozone upload."
-            )
-
         with tempfile.TemporaryDirectory(prefix="ozone_fs_put_") as tmp_dir:
             tmp_path = Path(tmp_dir) / "payload.txt"
             tmp_path.write_text(self.content, encoding="utf-8")
+            content_size_bytes = FileHelper.get_file_size_bytes(tmp_path)
+            if content_size_bytes <= 0:
+                raise AirflowException(
+                    "Unable to determine payload size for Ozone upload "
+                    f"({content_size_bytes} bytes) from temporary file: {tmp_path}"
+                )
+            if content_size_bytes > size_limit_bytes:
+                raise AirflowException(
+                    f"Content size ({content_size_bytes} bytes) exceeds configured limit "
+                    f"({size_limit_bytes} bytes) for Ozone upload."
+                )
             hook.upload_key(
                 str(tmp_path),
                 self.remote_path,
@@ -445,6 +449,10 @@ class OzoneUploadFileOperator(BaseOperator):
 
         size_limit_bytes = self.max_content_size_bytes or hook.connection_snapshot.max_content_size_bytes
         file_size_bytes = FileHelper.get_file_size_bytes(local_path_obj)
+        if file_size_bytes <= 0:
+            raise AirflowException(
+                f"Local file size is unavailable or non-positive ({file_size_bytes} bytes): {self.local_path}"
+            )
         if file_size_bytes > size_limit_bytes:
             raise AirflowException(
                 f"Local file size ({file_size_bytes} bytes) exceeds configured limit "

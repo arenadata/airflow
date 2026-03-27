@@ -254,3 +254,15 @@ class TestOzoneFsHook:
         ok, message = ozone_fs_hook.test_connection()
         assert ok is False
         assert "connection test failed" in message
+
+    def test_get_key_property_warns_when_replication_config_missing(self, ozone_fs_hook: OzoneFsHook, caplog):
+        with patch.object(
+            ozone_fs_hook,
+            "get_key_info",
+            return_value={"name": "file.txt", "replicationType": "RATIS", "replicationFactor": 3},
+        ):
+            with caplog.at_level("WARNING"):
+                result = ozone_fs_hook.get_key_property("ofs://vol1/b1/file.txt")
+        assert result["replication_type"] == "RATIS"
+        assert result["replication"] == 3
+        assert "does not contain 'replicationConfig'" in caplog.text

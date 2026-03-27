@@ -161,8 +161,11 @@ class FileHelper:
 
     @staticmethod
     def get_file_size_bytes(path: str | Path) -> int:
-        """Return file size in bytes for an existing local file path."""
-        return Path(path).stat().st_size
+        """Return file size in bytes for an existing local file path, or -1 when unavailable."""
+        try:
+            return Path(path).stat().st_size
+        except OSError:
+            return -1
 
 
 class TypeNormalizationHelper:

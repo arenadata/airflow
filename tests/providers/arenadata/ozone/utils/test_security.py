@@ -53,14 +53,14 @@ class TestGetSecretValue:
         with pytest.raises(ValueError, match="Secret not found"):
             SecretResolver.get_secret_value("secret://missing/uri")
 
-    def test_get_secret_value_masks_plain_value_when_requested(self, monkeypatch):
+    def test_get_secret_value_masks_plain_value_by_default(self, monkeypatch):
         masked: dict[str, object] = {}
 
         def _capture_masked(value: object) -> None:
             masked["value"] = value
 
         monkeypatch.setattr("airflow.providers.arenadata.ozone.utils.security.mask_secret", _capture_masked)
-        result = SecretResolver.get_secret_value("plain_secret", mask=True)
+        result = SecretResolver.get_secret_value("plain_secret")
         assert result == "plain_secret"
         assert masked["value"] == "plain_secret"
 
@@ -207,3 +207,39 @@ class TestSnapshotDrivenKerberosRuntime:
             ozone_site_xml="custom-ozone.xml",
         )
         assert KerberosConfig.check_config_files_exist(str(tmp_path), snapshot=snapshot)
+
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosCliRunner.run_kerberos")
+    def test_has_valid_ticket_uses_klist(self, mock_run_kerberos: MagicMock):
+        mock_run_kerberos.return_value = True
+        snapshot = OzoneConnSnapshot(host="om", port=9862, kinit_timeout_seconds=44)
+        assert KerberosConfig.has_valid_ticket(snapshot=snapshot)
+        mock_run_kerberos.assert_called_once_with(
+            ["klist", "-s"],
+            timeout=44,
+            log_output=False,
+        )
+
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_from_env_vars")
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.has_valid_ticket")
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.get_env_vars")
+    def test_ensure_ticket_rechecks_lifetime_when_cached(
+        self,
+        mock_get_env_vars: MagicMock,
+        mock_has_valid_ticket: MagicMock,
+        mock_kinit_from_env_vars: MagicMock,
+    ):
+        snapshot = OzoneConnSnapshot(host="om", port=9862)
+        mock_get_env_vars.return_value = {
+            "KERBEROS_PRINCIPAL": "user@REALM",
+            "KERBEROS_KEYTAB": "/tmp/user.keytab",
+        }
+        mock_has_valid_ticket.return_value = False
+        mock_kinit_from_env_vars.return_value = True
+
+        assert KerberosConfig.ensure_ticket(
+            snapshot=snapshot,
+            conn_id="ozone_default",
+            kerberos_ticket_ready=True,
+        )
+        mock_has_valid_ticket.assert_called_once_with(snapshot=snapshot)
+        mock_kinit_from_env_vars.assert_called_once()

@@ -47,7 +47,7 @@ class SecretResolver:
 
     @classmethod
     def get_secret_value(
-        cls, value: str | None, conn_id: str | None = None, *, mask: bool = False
+        cls, value: str | None, conn_id: str | None = None, *, mask: bool = True
     ) -> str | None:
         """
         Resolve secret from Airflow Secrets Backend or return value as-is.
@@ -122,7 +122,7 @@ class SSLConfig:
                 if value is None:
                     continue
                 if is_secret:
-                    value = SecretResolver.get_secret_value(str(value), conn_id=conn_id, mask=True)
+                    value = SecretResolver.get_secret_value(str(value), conn_id=conn_id)
                 env[env_key] = str(value)
         return env
 
@@ -137,7 +137,7 @@ class SSLConfig:
                 if value is None:
                     continue
                 if is_secret:
-                    value = SecretResolver.get_secret_value(str(value), conn_id=conn_id, mask=True)
+                    value = SecretResolver.get_secret_value(str(value), conn_id=conn_id)
                 env[env_key] = str(value)
         return env
 
@@ -178,7 +178,7 @@ class KerberosConfig:
             return None
         return (
             str(principal_value),
-            str(SecretResolver.get_secret_value(str(keytab_value), conn_id=conn_id, mask=True)),
+            str(SecretResolver.get_secret_value(str(keytab_value), conn_id=conn_id)),
         )
 
     @classmethod
@@ -193,7 +193,7 @@ class KerberosConfig:
                 if value is None:
                     continue
                 if is_secret:
-                    value = SecretResolver.get_secret_value(str(value), conn_id=conn_id, mask=True)
+                    value = SecretResolver.get_secret_value(str(value), conn_id=conn_id)
                 env_vars[env_key] = str(value)
 
         return env_vars
@@ -391,8 +391,13 @@ class KerberosConfig:
         kerberos_ticket_ready: bool,
     ) -> bool:
         """Ensure Kerberos ticket is initialized; returns updated readiness flag."""
-        if kerberos_ticket_ready:
+        if kerberos_ticket_ready and cls.has_valid_ticket(snapshot=snapshot):
             return True
+        if kerberos_ticket_ready:
+            log.warning(
+                "Cached Kerberos ticket flag is set but no valid ticket found; re-initializing for connection '%s'",
+                conn_id,
+            )
 
         kerberos_env_vars = cls.get_env_vars(snapshot, scope="ozone", conn_id=conn_id)
         principal = kerberos_env_vars.get("KERBEROS_PRINCIPAL")
@@ -406,6 +411,15 @@ class KerberosConfig:
             )
         log.debug("Kerberos ticket is ready for connection '%s'", conn_id)
         return True
+
+    @classmethod
+    def has_valid_ticket(cls, *, snapshot: OzoneConnSnapshot) -> bool:
+        """Return True when current default Kerberos ticket cache has non-expired credentials."""
+        return KerberosCliRunner.run_kerberos(
+            ["klist", "-s"],
+            timeout=snapshot.kinit_timeout_seconds,
+            log_output=False,
+        )
 
     @staticmethod
     def is_enabled(kerberos_env: dict[str, str] | None) -> bool:

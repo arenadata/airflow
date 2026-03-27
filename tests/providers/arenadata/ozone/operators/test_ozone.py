@@ -186,6 +186,8 @@ class TestOzoneFileOperators:
         "is_readable,file_size,remote_exists,overwrite,expected_error",
         [
             (False, 1, False, False, "Local file not found or is not readable"),
+            (True, -1, False, False, "size is unavailable or non-positive"),
+            (True, 0, False, False, "size is unavailable or non-positive"),
             (True, 1025, False, False, "exceeds configured limit"),
             (True, 100, True, False, "already exists and overwrite is False"),
         ],
