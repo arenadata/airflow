@@ -1,0 +1,128 @@
+#!/usr/bin/env python
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+"""
+Multi-Tenant Management Example DAG
+
+This DAG demonstrates how to automate the setup of storage resources for new projects/tenants:
+1. Creates a dedicated volume for a new project
+2. Sets quota limits to prevent resource overuse
+3. Creates standard directory structure (landing, processed, etc.)
+
+This example shows how Airflow can be used for administrative tasks,
+automating the provisioning of storage resources for new teams or projects.
+Useful for multi-tenant environments where each project needs isolated storage.
+"""
+
+from __future__ import annotations
+
+import os
+from datetime import timedelta
+from pathlib import PurePosixPath
+
+from airflow.models.dag import DAG
+from airflow.providers.arenadata.ozone.operators.ozone import (
+    OzoneCreateBucketOperator,
+    OzoneCreatePathOperator,
+    OzoneCreateVolumeOperator,
+    OzoneSetQuotaOperator,
+)
+from airflow.utils import timezone
+
+
+def _example_env(name: str, default: str | None = None) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip()
+    return normalized if normalized else default
+
+
+OM_HOST = _example_env("OZONE_EXAMPLE_OM_HOST", "om")
+MULTI_TENANT_CONN_ID = _example_env("OZONE_EXAMPLE_MULTI_TENANT_CONN_ID", "ozone_admin_default")
+PROJECT_VOLUME = _example_env("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_VOLUME", "project-alpha")
+PROJECT_QUOTA = _example_env("OZONE_EXAMPLE_MULTI_TENANT_PROJECT_QUOTA", "10GB")
+LANDING_BUCKET = _example_env("OZONE_EXAMPLE_MULTI_TENANT_LANDING_BUCKET", "landing")
+PROCESSED_BUCKET = _example_env("OZONE_EXAMPLE_MULTI_TENANT_PROCESSED_BUCKET", "processed")
+BUCKET_QUOTA = _example_env("OZONE_EXAMPLE_MULTI_TENANT_BUCKET_QUOTA", "1GB")
+
+with DAG(
+    dag_id="example_ozone_multi_tenant_management",
+    start_date=timezone.datetime(2025, 1, 1),
+    catchup=False,
+    schedule=None,
+    tags=["ozone", "example"],
+) as dag:
+    LANDING_DATA_PATH = f"ofs://{OM_HOST}/{PurePosixPath(PROJECT_VOLUME, LANDING_BUCKET, 'data')}"
+    PROCESSED_DATA_PATH = f"ofs://{OM_HOST}/{PurePosixPath(PROJECT_VOLUME, PROCESSED_BUCKET, 'data')}"
+
+    # 1. Create a dedicated volume for the new project
+    create_volume = OzoneCreateVolumeOperator(
+        task_id="create_project_volume",
+        volume_name=PROJECT_VOLUME,
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
+        execution_timeout=timedelta(minutes=1),
+    )
+
+    # 2. Set a hard limit on the volume to prevent overuse
+    set_quota = OzoneSetQuotaOperator(
+        task_id="set_project_quota",
+        volume=PROJECT_VOLUME,
+        quota=PROJECT_QUOTA,
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
+        execution_timeout=timedelta(minutes=1),
+    )
+
+    # 3. Create buckets with quotas (required when volume has quota)
+    create_landing_bucket = OzoneCreateBucketOperator(
+        task_id="create_landing_bucket",
+        volume_name=PROJECT_VOLUME,
+        bucket_name=LANDING_BUCKET,
+        quota=BUCKET_QUOTA,
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
+        execution_timeout=timedelta(minutes=1),
+    )
+
+    create_processed_bucket = OzoneCreateBucketOperator(
+        task_id="create_processed_bucket",
+        volume_name=PROJECT_VOLUME,
+        bucket_name=PROCESSED_BUCKET,
+        quota=BUCKET_QUOTA,
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
+        execution_timeout=timedelta(minutes=1),
+    )
+
+    # 4. Create standard subdirectories inside the buckets
+    create_landing_dir = OzoneCreatePathOperator(
+        task_id="create_landing_dir",
+        path=LANDING_DATA_PATH,
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
+        execution_timeout=timedelta(minutes=1),
+    )
+
+    create_processed_dir = OzoneCreatePathOperator(
+        task_id="create_processed_dir",
+        path=PROCESSED_DATA_PATH,
+        ozone_conn_id=MULTI_TENANT_CONN_ID,
+        execution_timeout=timedelta(minutes=1),
+    )
+
+    create_volume >> set_quota
+    set_quota >> [create_landing_bucket, create_processed_bucket]
+    create_landing_bucket >> create_landing_dir
+    create_processed_bucket >> create_processed_dir

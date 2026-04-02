@@ -43,6 +43,7 @@ body:
         - apache-spark
         - apprise
         - arangodb
+        - arenadata-ozone
         - asana
         - atlassian-jira
         - celery

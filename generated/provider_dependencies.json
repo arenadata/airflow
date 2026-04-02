@@ -327,6 +327,16 @@
     "excluded-python-versions": [],
     "state": "ready"
   },
+  "arenadata.ozone": {
+    "deps": [
+      "apache-airflow>=2.10.3"
+    ],
+    "devel-deps": [],
+    "plugins": [],
+    "cross-providers-deps": [],
+    "excluded-python-versions": [],
+    "state": "ready"
+  },
   "asana": {
     "deps": [
       "apache-airflow>=2.7.0",
