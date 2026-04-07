@@ -51,6 +51,8 @@ PRE_INSTALLED_PROVIDERS = [
     "sqlite",
 ]
 
+PROVIDERS_BUNDLED_IN_CORE = frozenset({"arenadata.hbase", "arenadata.ozone"})
+
 # Those extras are dynamically added by hatch in the build hook to metadata optional dependencies
 # when project is installed locally (editable build) or when wheel package is built based on it.
 CORE_EXTRAS: dict[str, list[str]] = {
@@ -896,7 +898,7 @@ class CustomBuildHook(BuildHookInterface[BuilderConfig]):
             deps = [dep for dep in deps if not dep.startswith("apache-airflow>=")]
             devel_deps: list[str] = PROVIDER_DEPENDENCIES[dependency_id].get("devel-deps", [])
 
-            if version == "standard":
+            if version == "standard" and dependency_id not in PROVIDERS_BUNDLED_IN_CORE:
                 # add providers instead of dependencies for wheel builds
                 dependency = (
                     f"apache-airflow-providers-{normalized_extra_name}"
