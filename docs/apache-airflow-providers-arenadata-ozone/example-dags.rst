@@ -15,15 +15,15 @@
    specific language governing permissions and limitations
    under the License.
 
-Example DAG configuration
+Apache Ozone Example DAGs
 =========================
 
 This provider ships example DAGs that demonstrate native Ozone workflows.
 Examples are configured via environment variables to simplify local runs
 and CI checks without editing DAG source code.
 
-Where examples are located
---------------------------
+Where example DAGs are located
+------------------------------
 
 ``airflow/providers/arenadata/ozone/example_dags/``
 
