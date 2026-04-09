@@ -65,3 +65,9 @@ transfers:
 connection-types:
   - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliHook
     connection-type: ozone
+
+example-dags:
+  - airflow.providers.arenadata.ozone.example_dags.example_ozone_usage
+  - airflow.providers.arenadata.ozone.example_dags.example_ozone_data_pipeline
+  - airflow.providers.arenadata.ozone.example_dags.example_ozone_data_lifecycle
+  - airflow.providers.arenadata.ozone.example_dags.example_ozone_multi_tenant_management

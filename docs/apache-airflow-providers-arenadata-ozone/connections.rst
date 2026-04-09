@@ -18,8 +18,8 @@
 
 .. _howto/connection:ozone:
 
-Ozone Connection
-================
+Apache Ozone Connections
+========================
 
 The ``ozone`` connection type is the main runtime contract for this provider.
 It is used by hooks/operators/sensors/transfers for Native Ozone CLI execution
@@ -29,13 +29,13 @@ Provider runtime reads this connection via:
 ``airflow/providers/arenadata/ozone/utils/connection_schema.py``
 (``OzoneConnSnapshot.from_connection(...)``).
 
-The worker running a task must have:
+The worker runtime must have:
 
 * Java runtime
 * Ozone CLI binary available in ``PATH``
-* client config directory/files reachable from the task environment
+* client config directory/files reachable from the worker runtime
 
-Default Connection IDs
+Default connection IDs
 ----------------------
 
 * ``ozone_default`` is used by ``OzoneCliHook`` and ``OzoneFsHook`` by default.
@@ -79,7 +79,7 @@ Ozone Kerberos scope:
 * ``krb5_conf`` (optional)
 * ``ozone_conf_dir`` (recommended for all modes)
 
-Connection Extra by scenario
+Connection extra by scenario
 ----------------------------
 
 Use one of the following templates depending on your runtime mode.
@@ -143,7 +143,7 @@ Field-by-field explanation for SSL + Kerberos extra
     demo setups). Must match actual OM SSL config.
 
 ``ozone_ssl_keystore_location`` / ``ozone_ssl_truststore_location``
-    Absolute paths inside Airflow worker/container to keystore and truststore
+    Absolute paths inside the Airflow worker runtime to keystore and truststore
     files used by Ozone CLI/JVM SSL layer.
 
 ``ozone_ssl_keystore_password`` / ``ozone_ssl_truststore_password``
@@ -162,22 +162,26 @@ Field-by-field explanation for SSL + Kerberos extra
     ``testuser@EXAMPLE.COM``).
 
 ``kerberos_keytab``
-    Absolute path to keytab file inside Airflow worker/container.
+    Absolute path to a keytab file inside the Airflow worker runtime.
     The file must exist and be readable by the task process.
 
 ``krb5_conf``
     Optional explicit path to ``krb5.conf``. Recommended in containerized runs
-    to avoid relying on image-level defaults.
+    to avoid relying on container-image defaults.
 
 ``ozone_conf_dir``
     Directory with Ozone/Hadoop client configs (usually ``ozone-site.xml`` and
     ``core-site.xml``). This is one of the most important fields: provider uses
     it to set ``OZONE_CONF_DIR`` and (when needed) ``HADOOP_CONF_DIR``.
 
+``host`` and ``port`` still matter even when ``ozone_conf_dir`` points to a
+valid runtime config directory: the provider uses them to prepare CLI endpoint
+wiring for task execution.
+
 Common validation checklist for DAG developers
 ----------------------------------------------
 
-* Paths in extra must be valid inside the runtime container/worker, not on your laptop.
+* Paths in extra must be valid inside the worker runtime, not on your laptop.
 * SSL store files and keytab must be mounted/readable for Airflow task user.
 * Kerberos principal/keytab pair must be valid for your KDC realm.
 * ``ozone_conf_dir`` must contain config files pointing to real OM/SCM endpoints.
@@ -185,7 +189,7 @@ Common validation checklist for DAG developers
 Why ``ozone_conf_dir`` is important
 -----------------------------------
 
-``ozone_conf_dir`` points to the directory inside the worker/container where
+``ozone_conf_dir`` points to the directory inside the worker runtime where
 Ozone/Hadoop client configs are available (usually ``ozone-site.xml`` and
 ``core-site.xml``).
 
@@ -219,16 +223,12 @@ HDFS Kerberos keys:
 * ``hdfs_kerberos_keytab`` (supports ``secret://...``)
 * optional ``krb5_conf`` for explicit Kerberos config path
 
-Recommended runtime notes for DAG developers
---------------------------------------------
+Recommended runtime notes
+-------------------------
 
 * Set ``ozone_conf_dir`` explicitly in connection extra for plain/SSL/Kerberos modes.
 * Keep all security-sensitive values in Airflow Connection/Secrets backend,
   not in DAG source code.
-* If you write custom operators/sensors/transfers, use
-  ``hook.connection_snapshot`` for typed provider keys.
-* For custom non-provider keys, read
-  ``hook.connection_snapshot.raw_extra``.
 * Do not rely on key aliases: only canonical key names are supported.
 
 Recommended Kerberos extra (explicit paths):
@@ -243,30 +243,6 @@ Recommended Kerberos extra (explicit paths):
     "krb5_conf": "/opt/airflow/kerberos-config/krb5.conf",
     "ozone_conf_dir": "/opt/airflow/ozone-conf"
   }
-
-Retry and timeout tuning
-------------------------
-
-Process execution helpers are centralized in
-``airflow/providers/arenadata/ozone/utils/cli_runner.py``.
-
-Security runtime helpers are centralized in
-``airflow/providers/arenadata/ozone/utils/security.py``.
-
-Provider defaults are defined in hook and connection modules:
-
-* ``RETRY_ATTEMPTS = 3``
-* ``FAST_TIMEOUT_SECONDS = 5 * 60``
-* ``SLOW_TIMEOUT_SECONDS = 60 * 60``
-* ``KINIT_TIMEOUT_SECONDS = 5 * 60``
-* ``MAX_CONTENT_SIZE_BYTES = 1024 * 1024 * 1024`` (1 GiB)
-
-These constants are exported from:
-
-* ``airflow/providers/arenadata/ozone/hooks/ozone.py``
-  (``RETRY_ATTEMPTS``, ``FAST_TIMEOUT_SECONDS``, ``SLOW_TIMEOUT_SECONDS``)
-* ``airflow/providers/arenadata/ozone/utils/connection_schema.py``
-  (``KINIT_TIMEOUT_SECONDS``, ``MAX_CONTENT_SIZE_BYTES`` and connection contract constants)
 
 Upload/download size limit
 --------------------------
@@ -283,35 +259,6 @@ This value is read from ``OzoneConnSnapshot`` and is used by:
 
 Each of these operators also accepts an optional ``max_content_size_bytes`` parameter
 to override the connection-level value for that task.
-
-Operators, sensors, and transfers pass ``timeout`` and ``retry_attempts``
-to hook methods. Use ``FAST_TIMEOUT_SECONDS`` for quick CLI calls and
-``SLOW_TIMEOUT_SECONDS`` for long-running operations.
-
-Hook API coverage
------------------
-
-The main Native CLI hook module is now fully located in
-``airflow/providers/arenadata/ozone/hooks/ozone.py``.
-
-Key ``OzoneFsHook`` methods include:
-
-* ``list_keys``, ``list_paths``, ``list_wildcard_matches``
-* ``path_exists``, ``delete_key``, ``delete_path``
-* ``create_path``, ``create_key``
-* ``move``, ``copy_path``
-* ``upload_key``, ``download_key``, ``set_key_property``
-
-Key ``OzoneAdminHook`` methods include:
-
-* ``create_volume``, ``delete_volume``
-* ``create_bucket``, ``delete_bucket``
-* ``set_quota``
-
-Key ``OzoneAdminExtraHook`` methods include:
-
-* ``set_bucket_replication_config``, ``create_bucket_link``
-* ``get_container_report``
 
 Testing connections in Airflow UI
 ---------------------------------
