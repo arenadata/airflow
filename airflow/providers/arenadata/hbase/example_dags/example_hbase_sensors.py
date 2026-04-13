@@ -89,6 +89,7 @@ def simulate_external_system():
         },
     )
     logger.info("External system wrote control row: %s", CONTROL_ROW)
+    return "External system simulation complete"
 
 
 def process_data():
@@ -107,6 +108,7 @@ def process_data():
         logger.info("  Processing %s: %s", row_key, data)
 
     logger.info("Data processing complete!")
+    return f"Processed {len(rows)} rows"
 
 
 with DAG(

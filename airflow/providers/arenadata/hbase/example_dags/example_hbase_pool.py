@@ -54,6 +54,7 @@ def setup_table(conn_id: str):
     families: dict[str, dict] = {"cf1": {}, "cf2": {}, "cf3": {}}
     hook.create_table(TABLE_NAME, families)
     logger.info("Created table: %s", TABLE_NAME)
+    return f"Table {TABLE_NAME} created"
 
 
 def benchmark_single_connection():
@@ -167,6 +168,7 @@ def verify_data():
 
     results = hook.scan_table(TABLE_NAME, row_start="large_000000", row_stop="large_000010")
     logger.info("Large dataset sample: %d rows", len(results))
+    return "Verification complete"
 
 
 def cleanup_table():
@@ -174,6 +176,7 @@ def cleanup_table():
     hook = HBaseThriftHook(hbase_conn_id=POOLED_CONN_ID)
     hook.delete_table(TABLE_NAME)
     logger.info("Deleted table: %s", TABLE_NAME)
+    return f"Table {TABLE_NAME} deleted"
 
 
 with DAG(
