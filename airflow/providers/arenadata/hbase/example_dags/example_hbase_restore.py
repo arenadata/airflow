@@ -104,7 +104,7 @@ def verify_restored_data(**context):
             logger.info("Then restart HBase cluster.")
             logger.info("See: http://hbase.apache.org/book.html#backuprestore")
             logger.warning("=" * 60)
-            return
+            return "BACKUP_NOT_ENABLED"
 
     # Check if table exists
     if not hook.table_exists(table_name):
@@ -114,7 +114,7 @@ def verify_restored_data(**context):
         logger.info("  2. Incorrect backup_id specified")
         logger.info("  3. Backup doesn't contain this table")
         logger.info("  4. Insufficient permissions")
-        return
+        return "TABLE_NOT_FOUND"
 
     logger.info("✓ Table '%s' exists", table_name)
 
@@ -130,7 +130,7 @@ def verify_restored_data(**context):
         logger.info("  1. The backup was empty")
         logger.info("  2. The backup_id is incorrect")
         logger.info("  3. The restore operation didn't complete successfully")
-        return
+        return "TABLE_EMPTY"
 
     # Show sample data
     logger.info("Sample restored data (first 5 rows):")
@@ -138,6 +138,7 @@ def verify_restored_data(**context):
         logger.info("  Row %d: %s -> %s", i + 1, row_key, data)
 
     logger.info("Restore verification successful: %d rows restored", row_count)
+    return f"Restore verified: {row_count} rows"
 
 
 # Step 1: Delete table to simulate data loss (ignore if not exists)

@@ -29,6 +29,9 @@ from airflow.providers.arenadata.hbase.operators.hbase import (
     HBaseScanOperator,
     IfExistsAction,
     IfNotExistsAction,
+    BackupSetAction,
+    HBaseBackupHistoryOperator,
+    HBaseBackupSetOperator,
 )
 
 
@@ -47,9 +50,9 @@ class TestHBasePutOperator:
             row_key="row1",
             data={"cf1:col1": "value1"}
         )
-        
+
         operator.execute()
-        
+
         mock_hook.put_row.assert_called_once_with("test_table", "row1", {"cf1:col1": "value1"})
 
 
@@ -68,9 +71,9 @@ class TestHBaseCreateTableOperator:
             table_name="test_table",
             families={"cf1": {}, "cf2": {}}
         )
-        
+
         operator.execute()
-        
+
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_called_once_with("test_table", {"cf1": {}, "cf2": {}})
 
@@ -86,9 +89,9 @@ class TestHBaseCreateTableOperator:
             table_name="test_table",
             families={"cf1": {}, "cf2": {}}
         )
-        
+
         operator.execute()
-        
+
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_not_called()
 
@@ -105,10 +108,10 @@ class TestHBaseCreateTableOperator:
             families={"cf1": {}, "cf2": {}},
             if_exists=IfExistsAction.ERROR
         )
-        
+
         with pytest.raises(ValueError, match="Table test_table already exists"):
             operator.execute()
-        
+
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.create_table.assert_not_called()
 
@@ -127,9 +130,9 @@ class TestHBaseDeleteTableOperator:
             task_id="test_delete",
             table_name="test_table"
         )
-        
+
         operator.execute()
-        
+
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.delete_table.assert_called_once_with("test_table")
 
@@ -144,9 +147,9 @@ class TestHBaseDeleteTableOperator:
             task_id="test_delete",
             table_name="test_table"
         )
-        
+
         operator.execute()
-        
+
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.delete_table.assert_not_called()
 
@@ -162,10 +165,10 @@ class TestHBaseDeleteTableOperator:
             table_name="test_table",
             if_not_exists=IfNotExistsAction.ERROR
         )
-        
+
         with pytest.raises(ValueError, match="Table test_table does not exist"):
             operator.execute()
-        
+
         mock_hook.table_exists.assert_called_once_with("test_table")
         mock_hook.delete_table.assert_not_called()
 
@@ -188,9 +191,9 @@ class TestHBaseScanOperator:
             table_name="test_table",
             limit=10
         )
-        
+
         result = operator.execute()
-        
+
         assert len(result) == 2
         mock_hook.scan_table.assert_called_once_with(
             table_name="test_table",
@@ -215,9 +218,9 @@ class TestHBaseScanOperator:
             table_name="test_table",
             encoding='latin-1'
         )
-        
+
         result = operator.execute()
-        
+
         assert len(result) == 2
         assert result[0]["row_key"] == "row1"
         assert result[0]["cf1:col1"] == "café"
@@ -245,9 +248,9 @@ class TestHBaseBatchPutOperator:
             batch_size=500,
             max_workers=2
         )
-        
+
         operator.execute()
-        
+
         mock_hook.batch_put_rows.assert_called_once_with("test_table", rows, 500, 2)
 
     @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseThriftHook")
@@ -266,9 +269,9 @@ class TestHBaseBatchPutOperator:
             table_name="test_table",
             rows=rows
         )
-        
+
         operator.execute()
-        
+
         mock_hook.batch_put_rows.assert_called_once_with("test_table", rows, 200, 4)
 
 
@@ -291,13 +294,13 @@ class TestHBaseBatchGetOperator:
             row_keys=["row1", "row2"],
             columns=["cf1:col1"]
         )
-        
+
         result = operator.execute()
-        
+
         assert len(result) == 2
         mock_hook.batch_get_rows.assert_called_once_with(
-            "test_table", 
-            ["row1", "row2"], 
+            "test_table",
+            ["row1", "row2"],
             ["cf1:col1"]
         )
 
@@ -317,9 +320,157 @@ class TestHBaseBatchGetOperator:
             row_keys=["row1", "row2"],
             encoding='latin-1'
         )
-        
+
         result = operator.execute()
-        
+
         assert len(result) == 2
         assert result[0]["cf1:col1"] == "résumé"
         assert result[1]["cf1:col1"] == "façade"
+
+
+class TestHBaseBackupSetOperatorLogging:
+    """Test HBaseBackupSetOperator log messages."""
+
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_add_empty_output_logs_success(self, mock_hook_class):
+        """Test that empty CLI output produces a clear success message."""
+        mock_hook = MagicMock()
+        mock_hook.create_backup_set.return_value = ""
+        mock_hook_class.return_value = mock_hook
+
+        operator = HBaseBackupSetOperator(
+            task_id="test_add",
+            action=BackupSetAction.ADD,
+            backup_set_name="my_set",
+            tables=["table1", "table2"],
+        )
+
+        result = operator.execute()
+
+        assert result == ""
+        mock_hook.create_backup_set.assert_called_once_with("my_set", ["table1", "table2"])
+
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_add_with_output_logs_result(self, mock_hook_class):
+        """Test that non-empty CLI output is logged as result."""
+        mock_hook = MagicMock()
+        mock_hook.create_backup_set.return_value = "Backup set created"
+        mock_hook_class.return_value = mock_hook
+
+        operator = HBaseBackupSetOperator(
+            task_id="test_add",
+            action=BackupSetAction.ADD,
+            backup_set_name="my_set",
+            tables=["table1"],
+        )
+
+        result = operator.execute()
+
+        assert result == "Backup set created"
+
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_list_empty_output(self, mock_hook_class):
+        """Test that empty list result produces 'No backup sets found' log."""
+        mock_hook = MagicMock()
+        mock_hook.list_backup_sets.return_value = ""
+        mock_hook_class.return_value = mock_hook
+
+        operator = HBaseBackupSetOperator(
+            task_id="test_list",
+            action=BackupSetAction.LIST,
+        )
+
+        result = operator.execute()
+
+        assert result == ""
+
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_list_with_output(self, mock_hook_class):
+        """Test that non-empty list result is logged."""
+        mock_hook = MagicMock()
+        mock_hook.list_backup_sets.return_value = "set1\nset2"
+        mock_hook_class.return_value = mock_hook
+
+        operator = HBaseBackupSetOperator(
+            task_id="test_list",
+            action=BackupSetAction.LIST,
+        )
+
+        result = operator.execute()
+
+        assert result == "set1\nset2"
+
+
+class TestHBaseBackupHistoryOperatorLogging:
+    """Test HBaseBackupHistoryOperator log messages."""
+
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_empty_history_no_filters(self, mock_hook_class):
+        """Test empty history without filters."""
+        mock_hook = MagicMock()
+        mock_hook.get_backup_history.return_value = ""
+        mock_hook_class.return_value = mock_hook
+
+        operator = HBaseBackupHistoryOperator(task_id="test_history")
+
+        result = operator.execute()
+
+        assert result == ""
+        mock_hook.get_backup_history.assert_called_once_with(
+            backup_set_name=None, backup_path=None
+        )
+
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_empty_history_with_set_filter(self, mock_hook_class):
+        """Test empty history with backup_set_name filter."""
+        mock_hook = MagicMock()
+        mock_hook.get_backup_history.return_value = ""
+        mock_hook_class.return_value = mock_hook
+
+        operator = HBaseBackupHistoryOperator(
+            task_id="test_history",
+            backup_set_name="my_set",
+        )
+
+        result = operator.execute()
+
+        assert result == ""
+        mock_hook.get_backup_history.assert_called_once_with(
+            backup_set_name="my_set", backup_path=None
+        )
+
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_empty_history_with_both_filters(self, mock_hook_class):
+        """Test empty history with both filters."""
+        mock_hook = MagicMock()
+        mock_hook.get_backup_history.return_value = ""
+        mock_hook_class.return_value = mock_hook
+
+        operator = HBaseBackupHistoryOperator(
+            task_id="test_history",
+            backup_set_name="my_set",
+            backup_path="/hbase/backup",
+        )
+
+        result = operator.execute()
+
+        assert result == ""
+        mock_hook.get_backup_history.assert_called_once_with(
+            backup_set_name="my_set", backup_path="/hbase/backup"
+        )
+
+    @patch("airflow.providers.arenadata.hbase.operators.hbase.HBaseCLIHook")
+    def test_history_with_output(self, mock_hook_class):
+        """Test history with non-empty output."""
+        mock_hook = MagicMock()
+        mock_hook.get_backup_history.return_value = "backup_123 FULL 2024-01-01"
+        mock_hook_class.return_value = mock_hook
+
+        operator = HBaseBackupHistoryOperator(
+            task_id="test_history",
+            backup_set_name="my_set",
+        )
+
+        result = operator.execute()
+
+        assert result == "backup_123 FULL 2024-01-01"

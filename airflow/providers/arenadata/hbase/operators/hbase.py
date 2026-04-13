@@ -334,11 +334,21 @@ class HBaseBackupSetOperator(BaseOperator):  # pylint: disable=too-few-public-me
             if not self.backup_set_name or not self.tables:
                 raise ValueError("backup_set_name and tables are required for 'add' action")
             result = hook.create_backup_set(self.backup_set_name, self.tables)
-            self.log.info("Backup set operation result:\n%s", result if result else "(empty)")
+            if result:
+                self.log.info("Backup set '%s' operation result:\n%s", self.backup_set_name, result)
+            else:
+                self.log.info(
+                    "Backup set '%s' created successfully (tables: %s)",
+                    self.backup_set_name,
+                    ", ".join(self.tables),
+                )
             return result
         if self.action == BackupSetAction.LIST:
             result = hook.list_backup_sets()
-            self.log.info("Backup sets:\n%s", result if result else "(empty)")
+            if result:
+                self.log.info("Backup sets:\n%s", result)
+            else:
+                self.log.info("No backup sets found")
             return result
         raise ValueError(f"Unsupported action: {self.action}")
 
@@ -492,10 +502,14 @@ class HBaseBackupHistoryOperator(BaseOperator):  # pylint: disable=too-few-publi
             backup_set_name=self.backup_set_name,
             backup_path=self.backup_path,
         )
-        self.log.info(
-            "Backup history (set=%s, path=%s):\n%s",
-            self.backup_set_name or "(none)",
-            self.backup_path or "(none)",
-            history if history else "(empty)",
-        )
+        if history:
+            self.log.info("Backup history:\n%s", history)
+        else:
+            filters = []
+            if self.backup_set_name:
+                filters.append(f"set='{self.backup_set_name}'")
+            if self.backup_path:
+                filters.append(f"path='{self.backup_path}'")
+            filter_str = f" for {', '.join(filters)}" if filters else ""
+            self.log.info("No backup history found%s", filter_str)
         return history
