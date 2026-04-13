@@ -25,7 +25,7 @@ The Apache HBase connection type enables connection to `Apache HBase <https://hb
 Default Connection IDs
 ----------------------
 
-HBase hook and HBase operators use ``hbase_default`` by default.
+HBase hook and HBase operators use ``hbase_thrift2`` by default.
 
 Supported Connection Types
 --------------------------
@@ -40,8 +40,8 @@ Connection Strategies
 
 The provider supports two connection strategies for optimal performance:
 
-* **Thrift2Strategy** - Single connection for simple operations
-* **PooledThrift2Strategy** - Connection pooling for high-throughput operations
+* **Thrift2Strategy** - Single connection for simple operations (hbase_thrift2)
+* **PooledThrift2Strategy** - Connection pooling for high-throughput operations (hbase_thrift2_pooled)
 
 Connection pooling is enabled when ``connection_pool.enabled`` is set to ``true`` in the connection Extra field.
 Pooled connections provide better performance for batch operations and concurrent access.
