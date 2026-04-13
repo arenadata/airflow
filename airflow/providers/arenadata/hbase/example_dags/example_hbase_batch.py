@@ -68,7 +68,7 @@ with DAG(
             for i in range(100)
         ],
         batch_size=20,
-        max_workers=2,
+        max_workers=1,
         hbase_conn_id=HBASE_CONN_ID,
     )
 
