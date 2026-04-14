@@ -43,6 +43,7 @@ from airflow_breeze.global_constants import (
     DRILL_HOST_PORT,
     EDGE_EXECUTOR,
     FLOWER_HOST_PORT,
+    HBASE_THRIFT_HOST_PORT,
     KEYCLOAK_INTEGRATION,
     MOUNT_ALL,
     MOUNT_PROVIDERS_AND_TESTS,
@@ -558,6 +559,7 @@ class ShellParams:
         _set_var(_env, "DOWNGRADE_SQLALCHEMY", self.downgrade_sqlalchemy)
         _set_var(_env, "DOWNGRADE_PENDULUM", self.downgrade_pendulum)
         _set_var(_env, "DRILL_HOST_PORT", None, DRILL_HOST_PORT)
+        _set_var(_env, "HBASE_THRIFT_HOST_PORT", None, HBASE_THRIFT_HOST_PORT)
         _set_var(_env, "ENABLE_COVERAGE", self.enable_coverage)
         _set_var(_env, "FLOWER_HOST_PORT", None, FLOWER_HOST_PORT)
         _set_var(_env, "EXCLUDED_PROVIDERS", self.excluded_providers)
