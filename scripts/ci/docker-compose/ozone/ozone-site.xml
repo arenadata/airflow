@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  Minimal Ozone client configuration for Breeze integration tests.
+  Points CLI to the Ozone Manager running in the 'ozone' container.
+-->
+<configuration>
+  <property>
+    <name>ozone.om.address</name>
+    <value>ozone</value>
+  </property>
+  <property>
+    <name>ozone.scm.names</name>
+    <value>ozone</value>
+  </property>
+  <property>
+    <name>ozone.scm.client.address</name>
+    <value>ozone</value>
+  </property>
+  <property>
+    <name>ozone.scm.block.client.address</name>
+    <value>ozone</value>
+  </property>
+  <property>
+    <name>ozone.server.default.replication</name>
+    <value>1</value>
+  </property>
+  <property>
+    <name>ozone.server.default.replication.type</name>
+    <value>RATIS</value>
+  </property>
+  <property>
+    <name>ozone.client.checksum.type</name>
+    <value>NONE</value>
+  </property>
+</configuration>

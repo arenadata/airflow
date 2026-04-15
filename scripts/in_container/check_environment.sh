@@ -203,6 +203,10 @@ if [[ ${INTEGRATION_HBASE} == "true" ]]; then
     check_service "HBase Thrift2" "run_nc hbase 9090" 50
 fi
 
+if [[ ${INTEGRATION_OZONE} == "true" ]]; then
+    check_service "Ozone OM" "run_nc ozone 9862" 50
+fi
+
 if [[ ${INTEGRATION_YDB} == "true" ]]; then
     check_service "YDB Cluster" "run_nc ydb 2136" 50
 fi

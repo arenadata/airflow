@@ -1,0 +1,88 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+---
+services:
+  ozone:
+    image: apache/ozone:2.0.0
+    container_name: ozone
+    hostname: ozone
+    labels:
+      breeze.description: "Integration required for Ozone hooks."
+    ports:
+      - "${OZONE_OM_HOST_PORT}:9862"
+    volumes:
+      - ./ozone/start-all.sh:/start-all.sh:ro
+      - ozone-bin:/opt/hadoop
+      - ozone-java:/usr/local/jdk-21.0.2
+      - ozone-data:/data
+    environment:
+      OZONE-SITE.XML_ozone.om.address: "ozone"
+      OZONE-SITE.XML_ozone.om.http-address: "ozone:9874"
+      OZONE-SITE.XML_ozone.scm.names: "ozone"
+      OZONE-SITE.XML_ozone.scm.client.address: "ozone"
+      OZONE-SITE.XML_ozone.scm.block.client.address: "ozone"
+      OZONE-SITE.XML_ozone.scm.http-address: "ozone:9876"
+      OZONE-SITE.XML_ozone.scm.datanode.id.dir: "/data/metadata"
+      OZONE-SITE.XML_ozone.scm.container.size: "1GB"
+      OZONE-SITE.XML_ozone.scm.block.size: "1MB"
+      OZONE-SITE.XML_ozone.scm.pipeline.owner.container.count: "1"
+      OZONE-SITE.XML_ozone.scm.datanode.ratis.volume.free-space.min: "10MB"
+      OZONE-SITE.XML_ozone.metadata.dirs: "/data/metadata"
+      OZONE-SITE.XML_hdds.datanode.dir: "/data/hdds"
+      OZONE-SITE.XML_hdds.datanode.volume.min.free.space: "100MB"
+      OZONE-SITE.XML_hdds.datanode.host.address: "ozone"
+      OZONE-SITE.XML_ozone.datanode.pipeline.limit: "1"
+      OZONE-SITE.XML_hdds.scm.safemode.min.datanode: "1"
+      OZONE-SITE.XML_hdds.scm.safemode.enabled: "false"
+      OZONE-SITE.XML_hdds.scmclient.max.retry.timeout: "30s"
+      OZONE-SITE.XML_hdds.heartbeat.interval: "3s"
+      OZONE-SITE.XML_ozone.server.default.replication: "1"
+      OZONE-SITE.XML_ozone.server.default.replication.type: "RATIS"
+      OZONE-SITE.XML_ozone.http.basedir: "/tmp/ozone_http"
+      OZONE_CONF_DIR: "/etc/hadoop"
+    command: ["bash", "/start-all.sh"]
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/hadoop/bin/ozone sh volume list / 2>/dev/null | grep -q 'name'"]
+      interval: 15s
+      timeout: 30s
+      retries: 40
+      start_period: 30s
+    restart: "on-failure"
+
+  airflow:
+    environment:
+      - INTEGRATION_OZONE=true
+      - PATH=/opt/ozone/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - OZONE_HOME=/opt/ozone
+      - OZONE_CONF_DIR=/opt/ozone-conf
+      - JAVA_HOME=/opt/ozone-java
+    volumes:
+      - ozone-bin:/opt/ozone:ro
+      - ozone-java:/opt/ozone-java:ro
+      - ./ozone/ozone-site.xml:/opt/ozone-conf/ozone-site.xml:ro
+    depends_on:
+      ozone:
+        condition: service_healthy
+
+volumes:
+  ozone-bin:
+  ozone-java:
+  ozone-data:
