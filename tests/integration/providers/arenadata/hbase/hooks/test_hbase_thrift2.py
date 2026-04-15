@@ -27,7 +27,7 @@ from airflow.utils import db
 
 TABLE_NAME = "integration_test_table"
 CONN_ID = "hbase_test"
-HBASE_HOST = os.environ.get("HBASE_HOST", "localhost")
+HBASE_HOST = os.environ.get("HBASE_HOST", "hbase" if os.environ.get("INTEGRATION_HBASE") == "true" else "localhost")
 
 
 @pytest.mark.integration("hbase")
