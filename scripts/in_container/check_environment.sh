@@ -204,7 +204,7 @@ if [[ ${INTEGRATION_HBASE} == "true" ]]; then
 fi
 
 if [[ ${INTEGRATION_OZONE} == "true" ]]; then
-    check_service "Ozone OM" "run_nc ozone 9862" 50
+    check_service "Ozone OM" "run_nc om 9862" 50
 fi
 
 if [[ ${INTEGRATION_YDB} == "true" ]]; then

@@ -27,7 +27,7 @@ from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminHook, OzoneF
 from airflow.utils import db
 
 CONN_ID = "ozone_test"
-OZONE_HOST = os.environ.get("OZONE_HOST", "ozone")
+OZONE_HOST = os.environ.get("OZONE_HOST", "om")
 OZONE_PORT = int(os.environ.get("OZONE_PORT", "9862"))
 VOLUME = "inttest-volume"
 BUCKET = "inttest-bucket"
@@ -53,7 +53,7 @@ def _cleanup_volume(hook: OzoneAdminHook) -> None:
         # Purge bucket contents via fs -rm -r, then delete bucket
         try:
             hook.run_cli(
-                ["ozone", "fs", "-rm", "-r", "-skipTrash", f"ofs://ozone/{VOLUME}/{BUCKET}/*"],
+                ["ozone", "fs", "-rm", "-r", "-skipTrash", f"ofs://om/{VOLUME}/{BUCKET}/*"],
                 check=False,
                 log_output=False,
                 retry_attempts=0,
@@ -133,7 +133,7 @@ class TestOzoneFsHookIntegration:
         _cleanup_volume(self.admin)
         self.admin.create_volume(VOLUME)
         self.admin.create_bucket(VOLUME, BUCKET, replication_type="RATIS", replication="ONE")
-        self.base_path = f"ofs://ozone/{VOLUME}/{BUCKET}"
+        self.base_path = f"ofs://om/{VOLUME}/{BUCKET}"
 
     def teardown_method(self):
         _cleanup_volume(self.admin)

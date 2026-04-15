@@ -15,57 +15,72 @@
 # specific language governing permissions and limitations
 # under the License.
 ---
+x-ozone-common:
+  &ozone-common
+  image: apache/ozone:2.0.0
+  env_file:
+    - ./ozone/docker-config
+  restart: "on-failure"
+
 services:
-  ozone:
-    image: apache/ozone:2.0.0
-    container_name: ozone
-    hostname: ozone
+  ozone-scm:
+    <<: *ozone-common
+    container_name: ozone-scm
+    hostname: scm
     labels:
-      breeze.description: "Integration required for Ozone hooks."
+      breeze.description: "Ozone Storage Container Manager."
     ports:
-      - "${OZONE_OM_HOST_PORT}:9862"
+      - "${OZONE_SCM_HOST_PORT}:9860"
+    environment:
+      ENSURE_SCM_INITIALIZED: /data/metadata/scm/current/VERSION
     volumes:
-      - ./ozone/start-all.sh:/start-all.sh:ro
       - ozone-bin:/opt/hadoop
       - ozone-java:/usr/local/jdk-21.0.2
-      - ozone-data:/data
-    environment:
-      OZONE-SITE.XML_ozone.om.address: "ozone"
-      OZONE-SITE.XML_ozone.om.http-address: "ozone:9874"
-      OZONE-SITE.XML_ozone.scm.names: "ozone"
-      OZONE-SITE.XML_ozone.scm.client.address: "ozone"
-      OZONE-SITE.XML_ozone.scm.block.client.address: "ozone"
-      OZONE-SITE.XML_ozone.scm.http-address: "ozone:9876"
-      OZONE-SITE.XML_ozone.scm.datanode.id.dir: "/data/metadata"
-      OZONE-SITE.XML_ozone.scm.container.size: "1GB"
-      OZONE-SITE.XML_ozone.scm.block.size: "1MB"
-      OZONE-SITE.XML_ozone.scm.pipeline.owner.container.count: "1"
-      OZONE-SITE.XML_ozone.scm.datanode.ratis.volume.free-space.min: "10MB"
-      OZONE-SITE.XML_ozone.metadata.dirs: "/data/metadata"
-      OZONE-SITE.XML_hdds.datanode.dir: "/data/hdds"
-      OZONE-SITE.XML_hdds.datanode.volume.min.free.space: "100MB"
-      OZONE-SITE.XML_hdds.datanode.host.address: "ozone"
-      OZONE-SITE.XML_ozone.datanode.pipeline.limit: "1"
-      OZONE-SITE.XML_hdds.scm.safemode.min.datanode: "1"
-      OZONE-SITE.XML_hdds.scm.safemode.enabled: "false"
-      OZONE-SITE.XML_hdds.scmclient.max.retry.timeout: "30s"
-      OZONE-SITE.XML_hdds.heartbeat.interval: "3s"
-      OZONE-SITE.XML_ozone.server.default.replication: "1"
-      OZONE-SITE.XML_ozone.server.default.replication.type: "RATIS"
-      OZONE-SITE.XML_ozone.http.basedir: "/tmp/ozone_http"
-      OZONE_CONF_DIR: "/etc/hadoop"
-    command: ["bash", "/start-all.sh"]
-    deploy:
-      resources:
-        limits:
-          memory: 2048M
+    command: ["ozone", "scm"]
     healthcheck:
-      test: ["CMD-SHELL", "/opt/hadoop/bin/ozone sh volume list / 2>/dev/null | grep -q 'name'"]
-      interval: 15s
+      test: ["CMD-SHELL", "/opt/hadoop/bin/ozone admin scm roles 2>/dev/null | grep -q LEADER"]
+      interval: 10s
       timeout: 30s
+      retries: 30
+      start_period: 20s
+
+  ozone-om:
+    <<: *ozone-common
+    container_name: ozone-om
+    hostname: om
+    labels:
+      breeze.description: "Ozone Manager."
+    ports:
+      - "${OZONE_OM_HOST_PORT}:9862"
+    environment:
+      ENSURE_OM_INITIALIZED: /data/metadata/om/current/VERSION
+    command: ["ozone", "om"]
+    depends_on:
+      ozone-scm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/hadoop/bin/ozone sh volume list / 2>/dev/null | grep -q '\\['"]
+      interval: 10s
+      timeout: 30s
+      retries: 30
+      start_period: 20s
+
+  ozone-datanode:
+    <<: *ozone-common
+    container_name: ozone-datanode
+    hostname: datanode
+    labels:
+      breeze.description: "Ozone Datanode."
+    command: ["ozone", "datanode"]
+    depends_on:
+      ozone-scm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9882' 2>/dev/null"]
+      interval: 10s
+      timeout: 10s
       retries: 40
       start_period: 30s
-    restart: "on-failure"
 
   airflow:
     environment:
@@ -79,10 +94,11 @@ services:
       - ozone-java:/opt/ozone-java:ro
       - ./ozone/ozone-site.xml:/opt/ozone-conf/ozone-site.xml:ro
     depends_on:
-      ozone:
+      ozone-om:
+        condition: service_healthy
+      ozone-datanode:
         condition: service_healthy
 
 volumes:
   ozone-bin:
   ozone-java:
-  ozone-data:
