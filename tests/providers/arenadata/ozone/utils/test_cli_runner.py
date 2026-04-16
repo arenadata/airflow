@@ -4,8 +4,46 @@ import subprocess
 
 import pytest
 
-from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner, OzoneCliRunner
+from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner, OzoneCliRunner, ProcessOutputAnalysis
 from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
+
+
+def test_process_output_analysis_filters_noise_and_prefers_meaningful_lines() -> None:
+    result = subprocess.CompletedProcess(
+        args=["ozone", "sh", "bucket", "delete", "/vol/missing"],
+        returncode=255,
+        stdout="",
+        stderr=(
+            "log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).\n"
+            "BUCKET_NOT_FOUND Bucket not exists"
+        ),
+    )
+
+    output = ProcessOutputAnalysis.from_completed_process(result)
+
+    assert output.raw_output == result.stderr
+    assert output.meaningful_lines == ("BUCKET_NOT_FOUND Bucket not exists",)
+    assert output.skipped_lines == (
+        "log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).",
+    )
+    assert output.meaningful_output == "BUCKET_NOT_FOUND Bucket not exists"
+    assert output.preferred_output == "BUCKET_NOT_FOUND Bucket not exists"
+    assert output.normalized_preferred_output == "bucket_not_found bucket not exists"
+
+
+def test_process_output_analysis_falls_back_to_raw_output_when_only_noise() -> None:
+    result = subprocess.CompletedProcess(
+        args=["ozone", "fs", "-test", "-e", "ofs://om/vol/bucket/missing.txt"],
+        returncode=1,
+        stdout="",
+        stderr="log4j:WARN Please initialize the log4j system properly.",
+    )
+
+    output = ProcessOutputAnalysis.from_completed_process(result)
+
+    assert output.meaningful_lines == ()
+    assert output.preferred_output == "log4j:WARN Please initialize the log4j system properly."
+    assert output.normalized_meaningful_output == ""
 
 
 def test_clirunner_run_process_retries_and_returns_result(monkeypatch: pytest.MonkeyPatch) -> None:
