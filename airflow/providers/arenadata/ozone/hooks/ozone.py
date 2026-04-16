@@ -25,12 +25,16 @@ from pathlib import Path
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
-from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner, OzoneCliRunner
+from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner, OzoneCliRunner, ProcessOutputAnalysis
 from airflow.providers.arenadata.ozone.utils.connection_schema import (
     OZONE_CONNECTION_UI_FIELD_BEHAVIOUR,
     OzoneConnSnapshot,
 )
-from airflow.providers.arenadata.ozone.utils.errors import ADMIN_RESOURCE_SPECS, OzoneCliError
+from airflow.providers.arenadata.ozone.utils.errors import (
+    ADMIN_RESOURCE_SPECS,
+    OzoneCliError,
+    OzoneCliErrors,
+)
 from airflow.providers.arenadata.ozone.utils.helpers import (
     FileHelper,
     JsonDict,
@@ -152,7 +156,7 @@ class OzoneCliHook(BaseHook):
         if result.returncode == 0:
             return True, "Ozone CLI connection test succeeded."
 
-        error_text = CliRunner.pick_process_output(result) or "Unknown CLI error"
+        error_text = ProcessOutputAnalysis.pick_process_output(result) or "Unknown CLI error"
         return False, f"Ozone CLI connection test failed: {error_text}"
 
     def _prepare_cli_command(self, cmd: list[str]) -> list[str]:
@@ -242,7 +246,7 @@ class OzoneCliHook(BaseHook):
         )
         if return_result:
             return result
-        output = CliRunner.pick_process_output(result)
+        output = ProcessOutputAnalysis.pick_process_output(result)
         if return_json_result:
             return TypeNormalizationHelper.parse_json_output(output)
         return output
@@ -381,19 +385,36 @@ class OzoneFsHook(OzoneCliHook):
 
     def exists(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> bool:
         """Return True when a file or directory exists in Ozone FS."""
-        try:
-            self.run_cli(
-                self._fs_cmd("-test", "-e", path),
-                timeout=timeout,
-                check=True,
-                log_output=True,
-            )
+        result = self.run_cli(
+            self._fs_cmd("-test", "-e", path),
+            timeout=timeout,
+            retry_attempts=0,
+            check=False,
+            log_output=False,
+            return_result=True,
+        )
+        if result.returncode == 0:
             return True
-        except OzoneCliError as err:
-            error_text = (err.stderr or "").lower()
-            if any(marker in error_text for marker in ("not found", "does not exist", "no such file")):
-                return False
-            raise
+
+        output = ProcessOutputAnalysis.from_completed_process(result)
+        normalized = output.normalized_meaningful_output
+        if any(marker in normalized for marker in ("not found", "does not exist", "no such file")):
+            return False
+        if result.returncode == 1 and not output.meaningful_lines:
+            self.log.debug(
+                "Treating `ozone fs -test -e` return code 1 for %s as missing path because only noise output was produced.",
+                path,
+            )
+            return False
+
+        error_text = output.preferred_output or "Unknown CLI error"
+        raise OzoneCliError(
+            f"Ozone FS existence check failed (return code: {result.returncode}): {redact(error_text)}",
+            command=self._fs_cmd("-test", "-e", path),
+            stderr=result.stderr,
+            returncode=result.returncode,
+            retryable=OzoneCliErrors.is_retryable_failure(result.returncode, error_text),
+        )
 
     def path_exists(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> bool:
         """Return True when a path exists in Ozone FS."""
@@ -402,7 +423,7 @@ class OzoneFsHook(OzoneCliHook):
     def list_paths(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> list[str]:
         """List file system paths under the provided Ozone URI."""
         output = self.run_cli(self._fs_cmd("-ls", "-C", path), timeout=timeout)
-        paths, skipped_lines = CliRunner.extract_meaningful_output_lines(
+        paths, skipped_lines = ProcessOutputAnalysis.extract_meaningful_output_lines(
             output,
             accept_line=lambda line: (
                 URIHelper.parse_ozone_uri(line)[0] in {"ofs", "o3fs", "o3"} or line.startswith("/")
@@ -1032,25 +1053,26 @@ class OzoneAdminHook(OzoneCliHook):
             cmd.extend(extra_args)
         cmd.append(resource_path)
 
-        try:
-            self.run_cli(
-                cmd,
-                timeout=timeout,
-                check=True,
-                log_output=True,
-                return_result=True,
-            )
+        result = self.run_cli(
+            cmd,
+            timeout=timeout,
+            retry_attempts=0,
+            check=False,
+            log_output=False,
+            return_result=True,
+        )
+        if result.returncode == 0:
             return
-        except OzoneCliError as err:
-            error_message = (err.stderr or "").strip() or "No error message provided"
-            if spec.already_exists_marker.lower() in error_message.lower():
-                self.log.info(
-                    "%s %s already exists, treating as success.", resource.value.capitalize(), resource_path
-                )
-                return
-            raise AirflowException(
-                f"Ozone command failed (return code: {err.returncode}): {redact(error_message)}"
-            ) from err
+
+        output = ProcessOutputAnalysis.from_completed_process(result)
+        error_message = output.preferred_output or "No error message provided"
+        if spec.already_exists_marker.lower() in error_message.lower():
+            self.log.info("%s %s already exists, treating as success.", resource.value.capitalize(), resource_path)
+            return
+
+        raise AirflowException(
+            f"Ozone command failed (return code: {result.returncode}): {redact(error_message)}"
+        )
 
     def _delete_resource(
         self,
@@ -1069,30 +1091,26 @@ class OzoneAdminHook(OzoneCliHook):
         cmd.append(resource_path)
         input_text = "yes\n" if recursive and force else None
 
-        try:
-            self.run_cli(
-                cmd,
-                timeout=timeout,
-                input_text=input_text,
-                check=True,
-                log_output=True,
-                return_result=True,
-            )
+        result = self.run_cli(
+            cmd,
+            timeout=timeout,
+            input_text=input_text,
+            retry_attempts=0,
+            check=False,
+            log_output=False,
+            return_result=True,
+        )
+        if result.returncode == 0:
             return
-        except OzoneCliError as err:
-            stderr = (err.stderr or "").strip()
-            stderr_lower = stderr.lower()
-            if (
-                any(marker.lower() in stderr_lower for marker in spec.not_found_markers)
-                or "does not exist" in stderr_lower
-            ):
-                self.log.info(
-                    "%s %s does not exist, treating as success.", resource.value.capitalize(), resource_path
-                )
-                return
-            raise AirflowException(
-                f"Failed to delete {resource.value} {resource_path}: {redact(stderr or 'Unknown error')}"
-            ) from err
+
+        output = ProcessOutputAnalysis.from_completed_process(result)
+        error_text = output.preferred_output or "Unknown error"
+        normalized = output.normalized_preferred_output
+        if any(marker.lower() in normalized for marker in spec.not_found_markers) or "does not exist" in normalized:
+            self.log.info("%s %s does not exist, treating as success.", resource.value.capitalize(), resource_path)
+            return
+
+        raise AirflowException(f"Failed to delete {resource.value} {resource_path}: {redact(error_text)}")
 
     def _get_resource_info(
         self,
@@ -1136,8 +1154,9 @@ class OzoneAdminHook(OzoneCliHook):
         if result.returncode == 0:
             return True
 
-        error_text = CliRunner.pick_process_output(result)
-        normalized = error_text.lower()
+        output = ProcessOutputAnalysis.from_completed_process(result)
+        error_text = output.preferred_output
+        normalized = output.normalized_preferred_output
         if (
             any(marker.lower() in normalized for marker in spec.not_found_markers)
             or "does not exist" in normalized

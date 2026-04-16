@@ -93,14 +93,13 @@ class OzoneCliErrors:
     @classmethod
     def is_retryable_failure(cls, return_code: int | None, stderr: str) -> bool:
         """Return True when CLI failure matches retryable return code or markers."""
+        normalized = (stderr or "").lower()
+        if any(marker in normalized for marker in cls.non_retryable_errors):
+            return False
         if return_code in cls.non_retryable_return_codes:
             return False
         if return_code in cls.retryable_return_codes:
             return True
-
-        normalized = (stderr or "").lower()
-        if any(marker in normalized for marker in cls.non_retryable_errors):
-            return False
         return any(marker in normalized for marker in cls.retryable_errors)
 
 
