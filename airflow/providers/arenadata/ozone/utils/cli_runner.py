@@ -25,6 +25,7 @@ import shlex
 import subprocess
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import TypeVar
 
 from tenacity import (
@@ -51,10 +52,10 @@ DEFAULT_PROCESS_TIMEOUT_SECONDS = 300
 DEFAULT_RETRY_WAIT = wait_exponential(multiplier=2, min=2, max=60)
 
 
-class CliRunner:
-    """Subprocess execution helpers grouped by provider use-cases."""
+@dataclass(frozen=True)
+class ProcessOutputAnalysis:
+    """Immutable parsed snapshot of a completed process output."""
 
-    TERMINATE_GRACE_PERIOD_SECONDS = 5
     NOISE_LINE_PREFIXES = (
         "log4j:",
         "usage:",
@@ -65,6 +66,14 @@ class CliRunner:
         "please initialize the log4j system properly",
         "see http://logging.apache.org/log4j",
     )
+
+    raw_output: str
+    meaningful_lines: tuple[str, ...]
+    skipped_lines: tuple[str, ...]
+    meaningful_output: str
+    preferred_output: str
+    normalized_meaningful_output: str
+    normalized_preferred_output: str
 
     @staticmethod
     def pick_process_output(process_result: subprocess.CompletedProcess[str]) -> str:
@@ -109,6 +118,37 @@ class CliRunner:
             else:
                 skipped.append(line)
         return accepted, skipped
+
+    @classmethod
+    def from_completed_process(
+        cls,
+        process_result: subprocess.CompletedProcess[str],
+        *,
+        accept_line: Callable[[str], bool] | None = None,
+    ) -> ProcessOutputAnalysis:
+        """Build a normalized analysis snapshot for a completed process."""
+        raw_output = "\n".join(part for part in (process_result.stderr, process_result.stdout) if part)
+        meaningful_lines, skipped_lines = cls.extract_meaningful_output_lines(
+            raw_output,
+            accept_line=accept_line,
+        )
+        meaningful_output = "\n".join(meaningful_lines)
+        preferred_output = meaningful_output or cls.pick_process_output(process_result)
+        return cls(
+            raw_output=raw_output,
+            meaningful_lines=tuple(meaningful_lines),
+            skipped_lines=tuple(skipped_lines),
+            meaningful_output=meaningful_output,
+            preferred_output=preferred_output,
+            normalized_meaningful_output=meaningful_output.lower(),
+            normalized_preferred_output=preferred_output.lower(),
+        )
+
+
+class CliRunner:
+    """Subprocess execution helpers grouped by provider use-cases."""
+
+    TERMINATE_GRACE_PERIOD_SECONDS = 5
 
     @staticmethod
     def merge_env(env_overrides: EnvOverridesMapping | None) -> dict[str, str]:

@@ -33,6 +33,7 @@ Main examples:
 * ``example_ozone_data_pipeline.py``
 * ``example_ozone_data_lifecycle.py``
 * ``example_ozone_multi_tenant_management.py``
+* ``example_ozone_edge_cases.py``
 
 What each example DAG does
 --------------------------
@@ -70,6 +71,12 @@ What each example DAG does
 * Creates standard landing/processed buckets with bucket quotas.
 * Creates standard ``data`` directories in each bucket.
 * Useful for platform teams that provision isolated tenant/project storage.
+
+``example_ozone_edge_cases.py`` (edge-case checks):
+
+* Intended for manual verification of provider behavior in non-standard or edge-case scenarios.
+* Useful as a lightweight diagnostic DAG when validating recent fixes around missing resources
+  and idempotent behavior.
 
 How configuration is applied
 ----------------------------

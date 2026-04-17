@@ -173,12 +173,14 @@ class TestOzoneAdminHook:
     def test_create_volume_already_exists_is_idempotent(
         self, mock_run_with_retry: MagicMock, admin_hook: OzoneAdminHook
     ):
-        mock_run_with_retry.side_effect = OzoneCliError(
-            "VOLUME_ALREADY_EXISTS",
-            command=["ozone", "sh", "volume", "create", "/test_vol"],
-            stderr="VOLUME_ALREADY_EXISTS",
-            returncode=1,
-            retryable=False,
+        mock_run_with_retry.return_value = subprocess.CompletedProcess(
+            args=["ozone", "sh", "volume", "create", "/test_vol"],
+            returncode=255,
+            stdout="",
+            stderr=(
+                "log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).\n"
+                "VOLUME_ALREADY_EXISTS Volume already exists"
+            ),
         )
         admin_hook.create_volume(volume_name="test_vol")
         mock_run_with_retry.assert_called_once()
@@ -187,15 +189,46 @@ class TestOzoneAdminHook:
     def test_create_bucket_raises_on_non_idempotent_failure(
         self, mock_run_with_retry: MagicMock, admin_hook: OzoneAdminHook
     ):
-        mock_run_with_retry.side_effect = OzoneCliError(
-            "ACCESS_DENIED",
-            command=["ozone", "sh", "bucket", "create", "/test_vol/test_bkt", "--quota", "100GB"],
-            stderr="ACCESS_DENIED",
+        mock_run_with_retry.return_value = subprocess.CompletedProcess(
+            args=["ozone", "sh", "bucket", "create", "/test_vol/test_bkt", "--space-quota", "100GB"],
             returncode=1,
-            retryable=False,
+            stdout="",
+            stderr="ACCESS_DENIED",
         )
         with pytest.raises(AirflowException, match="Ozone command failed"):
             admin_hook.create_bucket(volume_name="test_vol", bucket_name="test_bkt", quota="100GB")
+
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_delete_bucket_missing_is_idempotent(
+        self, mock_run_with_retry: MagicMock, admin_hook: OzoneAdminHook
+    ):
+        mock_run_with_retry.return_value = subprocess.CompletedProcess(
+            args=["ozone", "sh", "bucket", "delete", "/test_vol/missing_bkt"],
+            returncode=255,
+            stdout="",
+            stderr=(
+                "log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).\n"
+                "BUCKET_NOT_FOUND Bucket not exists"
+            ),
+        )
+        admin_hook.delete_bucket(volume_name="test_vol", bucket_name="missing_bkt")
+        mock_run_with_retry.assert_called_once()
+
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_delete_volume_missing_is_idempotent(
+        self, mock_run_with_retry: MagicMock, admin_hook: OzoneAdminHook
+    ):
+        mock_run_with_retry.return_value = subprocess.CompletedProcess(
+            args=["ozone", "sh", "volume", "delete", "/missing_vol"],
+            returncode=255,
+            stdout="",
+            stderr=(
+                "log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).\n"
+                "VOLUME_NOT_FOUND Volume missing_vol is not found"
+            ),
+        )
+        admin_hook.delete_volume(volume_name="missing_vol")
+        mock_run_with_retry.assert_called_once()
 
     @patch(MOCK_CLI_PATH)
     def test_get_container_report(self, mock_run_cli: MagicMock, admin_extra_hook: OzoneAdminExtraHook):
@@ -213,18 +246,47 @@ class TestOzoneAdminHook:
 class TestOzoneFsHook:
     @patch(MOCK_RUN_RETRY_PATH)
     def test_exists_false(self, mock_run_cli: MagicMock, ozone_fs_hook: OzoneFsHook):
-        mock_run_cli.side_effect = OzoneCliError(
-            "not found",
-            command=["ozone", "fs", "-test", "-e", "ofs://path/does_not_exist"],
-            stderr="not found",
+        mock_run_cli.return_value = subprocess.CompletedProcess(
+            args=["ozone", "fs", "-test", "-e", "ofs://path/does_not_exist"],
             returncode=1,
-            retryable=False,
+            stdout="",
+            stderr="not found",
         )
         assert ozone_fs_hook.exists("ofs://path/does_not_exist") is False
         mock_run_cli.assert_called_once()
         command = mock_run_cli.call_args.args[0]
         assert command[:4] == ["ozone", "fs", "-test", "-e"]
         assert command[-1] == "ofs://path/does_not_exist"
+
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_exists_false_when_returncode_one_has_only_noise_stderr(
+        self, mock_run_cli: MagicMock, ozone_fs_hook: OzoneFsHook
+    ):
+        mock_run_cli.return_value = subprocess.CompletedProcess(
+            args=["ozone", "fs", "-test", "-e", "ofs://path/does_not_exist"],
+            returncode=1,
+            stdout="",
+            stderr=(
+                "log4j:WARN No appenders could be found for logger "
+                "(org.apache.hadoop.metrics2.lib.MutableMetricsFactory).\n"
+                "log4j:WARN Please initialize the log4j system properly.\n"
+                "log4j:WARN See http://logging.apache.org/log4j/1.2/faq.html#noconfig for more info."
+            ),
+        )
+        assert ozone_fs_hook.exists("ofs://path/does_not_exist") is False
+
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_exists_raises_on_meaningful_non_not_found_error(
+        self, mock_run_cli: MagicMock, ozone_fs_hook: OzoneFsHook
+    ):
+        mock_run_cli.return_value = subprocess.CompletedProcess(
+            args=["ozone", "fs", "-test", "-e", "ofs://path/forbidden"],
+            returncode=1,
+            stdout="",
+            stderr="Permission denied",
+        )
+        with pytest.raises(OzoneCliError, match="existence check failed"):
+            ozone_fs_hook.exists("ofs://path/forbidden")
 
     @patch(MOCK_RUN_RETRY_PATH)
     def test_exists_raises_when_cli_missing(self, mock_run_cli: MagicMock, ozone_fs_hook: OzoneFsHook):
