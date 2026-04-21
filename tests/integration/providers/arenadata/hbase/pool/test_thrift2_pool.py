@@ -171,6 +171,43 @@ class TestPoolConcurrency:
 
 
 @pytest.mark.integration("hbase")
+class TestPoolConnectionReuse:
+    """Verify that alive connections are reused without reconnect."""
+
+    def test_no_reconnect_over_multiple_borrows(self):
+        """Multiple sequential borrows must never trigger reconnect on a healthy pool."""
+        pool = _make_pool(size=1)
+        try:
+            # Warm up — create the connection
+            with pool.connection() as client:
+                client.list_tables()
+
+            # Patch
+            queued_client = pool._pool.get_nowait()
+            open_call_count = 0
+            original_open = queued_client.open
+
+            def counting_open():
+                nonlocal open_call_count
+                open_call_count += 1
+                original_open()
+
+            queued_client.open = counting_open
+            pool._pool.put(queued_client)
+
+            for _ in range(10):
+                with pool.connection() as client:
+                    client.list_tables()
+
+            assert open_call_count == 0, (
+                f"open() was called {open_call_count} time(s) over 10 borrows. "
+                "Alive connections should be reused without reconnect."
+            )
+        finally:
+            pool.close_all()
+
+
+@pytest.mark.integration("hbase")
 class TestPoolReconnect:
 
     def test_reconnects_dead_connection(self):
