@@ -129,7 +129,7 @@ class Thrift2ConnectionPool:
             if client._client is None:  # pylint: disable=protected-access
                 return False
             # Test connection with lightweight request
-            client._client.listTableNames()  # pylint: disable=protected-access
+            client._client.getTableNamesByPattern(regex=None, includeSysTables=False)  # pylint: disable=protected-access
             return True
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.debug("Connection check failed: %s", e)
