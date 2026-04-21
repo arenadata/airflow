@@ -33,7 +33,7 @@ class TestThrift2ConnectionPool:
             port=9090,
             timeout=30000
         )
-        
+
         assert pool.size == 5
         assert pool.config.host == "localhost"
         assert pool.config.port == 9090
@@ -45,9 +45,9 @@ class TestThrift2ConnectionPool:
         mock_client = MagicMock()
         mock_client._client = MagicMock()  # Simulate alive connection
         mock_client_class.return_value = mock_client
-        
+
         pool = Thrift2ConnectionPool(size=2, host="localhost", port=9090)
-        
+
         # Use context manager to get connection
         with pool.connection() as conn:
             mock_client.open.assert_called()
@@ -60,7 +60,7 @@ class TestThrift2ConnectionPool:
         mock_client = MagicMock()
         mock_client._client = MagicMock()
         mock_client_class.return_value = mock_client
-        
+
         pool = Thrift2ConnectionPool(
             size=2,
             host="localhost",
@@ -68,7 +68,7 @@ class TestThrift2ConnectionPool:
             ssl_options=ssl_options,
             use_http=True
         )
-        
+
         with pool.connection():
             # Verify SSL options were passed to client
             mock_client_class.assert_called_with(
@@ -93,7 +93,7 @@ class TestThrift2ConnectionPool:
         mock_client = MagicMock()
         mock_client._client = MagicMock()
         mock_client_class.return_value = mock_client
-        
+
         pool = Thrift2ConnectionPool(
             size=2,
             host="localhost",
@@ -102,7 +102,7 @@ class TestThrift2ConnectionPool:
             retry_delay=2.0,
             retry_backoff_factor=3.0
         )
-        
+
         with pool.connection():
             # Verify retry config was passed to client
             mock_client_class.assert_called_with(
@@ -145,3 +145,56 @@ class TestThrift2ConnectionPool:
         )
 
         assert pool.borrow_timeout == POOL_CONNECTION_TIMEOUT
+
+
+class TestIsConnectionAlive:
+    """Test _is_connection_alive uses correct Thrift2 API method"""
+
+    @patch("airflow.providers.arenadata.hbase.thrift2_pool.HBaseThrift2Client")
+    def test_calls_correct_thrift2_method(self, mock_client_class):
+        """Must use getTableNamesByPattern"""
+        mock_client = MagicMock()
+        mock_client._client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        pool = Thrift2ConnectionPool(size=1, host="localhost", port=9090)
+
+        assert pool._is_connection_alive(mock_client) is True
+        mock_client._client.getTableNamesByPattern.assert_called_once_with(
+            regex=None, includeSysTables=False
+        )
+
+        # Dead connection
+        mock_client._client.getTableNamesByPattern.side_effect = Exception("broken")
+        assert pool._is_connection_alive(mock_client) is False
+
+        # None client
+        mock_client._client = None
+        assert pool._is_connection_alive(mock_client) is False
+
+    @patch("airflow.providers.arenadata.hbase.thrift2_pool.HBaseThrift2Client")
+    def test_alive_skips_reconnect_dead_triggers_reconnect(self, mock_client_class):
+        """Alive connection must not call open(), dead connection must call open() again"""
+        mock_client = MagicMock()
+        mock_client._client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        pool = Thrift2ConnectionPool(size=1, host="localhost", port=9090)
+
+        # First borrow: creates connection (open called once)
+        with pool.connection():
+            pass
+        assert mock_client.open.call_count == 1
+
+        # Second borrow: alive, no extra open()
+        with pool.connection():
+            pass
+        assert mock_client.open.call_count == 1
+
+        # Simulate dead connection
+        mock_client._client.getTableNamesByPattern.side_effect = Exception("dead")
+
+        # Third borrow: dead, reconnect (open called again)
+        with pool.connection():
+            pass
+        assert mock_client.open.call_count == 2
