@@ -212,6 +212,9 @@ DEVEL_EXTRAS: dict[str, list[str]] = {
         "towncrier>=23.11.0",
         "twine>=4.0.2",
     ],
+    "devel-dbt": [
+        "dbt-af>=0.14.0",
+    ],
     "devel-duckdb": [
         # Python 3.12 support was added in 0.10.0
         "duckdb>=0.10.0; python_version >= '3.12'",
@@ -281,6 +284,7 @@ DEVEL_EXTRAS: dict[str, list[str]] = {
     "devel": [
         "apache-airflow[celery]",
         "apache-airflow[cncf-kubernetes]",
+        "apache-airflow[devel-dbt]",
         "apache-airflow[devel-debuggers]",
         "apache-airflow[devel-devscripts]",
         "apache-airflow[devel-duckdb]",

@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: src
+    schema: src
+    freshness:
+      warn_after: {count: 24, period: hour}
+      error_after: {count: 48, period: hour}
+    loaded_at_field: loaded_at
+    tables:
+      - name: orders
+      - name: customers
+      - name: customers_scd
