@@ -26,6 +26,9 @@ from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzon
 
 
 class TestHdfsToOzoneOperator:
+    def test_template_fields_cover_runtime_params(self):
+        assert HdfsToOzoneOperator.template_fields == ("source_path", "dest_path", "hdfs_conn_id")
+
     @patch(
         "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which",
         return_value="/usr/bin/hadoop",

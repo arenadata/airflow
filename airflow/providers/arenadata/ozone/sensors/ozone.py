@@ -35,7 +35,7 @@ class OzoneKeySensor(BaseSensorOperator):
     Uses OzoneFsHook; retryable CLI errors are treated as "not yet" and trigger retry.
     """
 
-    template_fields = ("path",)
+    template_fields = ("path", "ozone_conn_id")
 
     def __init__(
         self,

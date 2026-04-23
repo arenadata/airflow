@@ -25,6 +25,9 @@ from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
 
 class TestOzoneKeySensor:
+    def test_template_fields_cover_runtime_params(self):
+        assert OzoneKeySensor.template_fields == ("path", "ozone_conn_id")
+
     @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneFsHook")
     def test_poke_key_exists(self, mock_ozone_hook: MagicMock):
         mock_hook_instance = mock_ozone_hook.return_value

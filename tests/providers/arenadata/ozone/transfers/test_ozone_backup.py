@@ -24,6 +24,9 @@ from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
 
 class TestOzoneBackupOperator:
+    def test_template_fields_cover_runtime_params(self):
+        assert OzoneBackupOperator.template_fields == ("volume", "bucket", "snapshot_name", "ozone_conn_id")
+
     @patch("airflow.providers.arenadata.ozone.transfers.ozone_backup.OzoneAdminHook")
     def test_execute_create_snapshot(self, mock_admin_hook: MagicMock):
         mock_hook_instance = mock_admin_hook.return_value

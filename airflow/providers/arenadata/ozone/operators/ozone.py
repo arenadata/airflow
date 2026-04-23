@@ -36,6 +36,8 @@ from airflow.utils.context import Context  # noqa: TCH001
 class OzoneCreateVolumeOperator(BaseOperator):
     """Create an Ozone Volume using Native Admin CLI."""
 
+    template_fields = ("volume_name", "quota", "ozone_conn_id")
+
     def __init__(
         self,
         volume_name: str,
@@ -65,6 +67,8 @@ class OzoneCreateVolumeOperator(BaseOperator):
 
 class OzoneCreateBucketOperator(BaseOperator):
     """Create an Ozone Bucket using Native Admin CLI."""
+
+    template_fields = ("volume_name", "bucket_name", "quota", "ozone_conn_id")
 
     def __init__(
         self,
@@ -103,6 +107,8 @@ class OzoneCreateBucketOperator(BaseOperator):
 class OzoneSetQuotaOperator(BaseOperator):
     """Dynamically adjust volume or bucket quotas."""
 
+    template_fields = ("volume", "quota", "bucket", "ozone_conn_id")
+
     def __init__(
         self,
         volume: str,
@@ -140,6 +146,8 @@ class OzoneSetQuotaOperator(BaseOperator):
 class OzoneDeleteVolumeOperator(BaseOperator):
     """Delete an Ozone Volume using Native Admin CLI."""
 
+    template_fields = ("volume_name", "ozone_conn_id")
+
     def __init__(
         self,
         volume_name: str,
@@ -176,6 +184,8 @@ class OzoneDeleteVolumeOperator(BaseOperator):
 
 class OzoneDeleteBucketOperator(BaseOperator):
     """Delete an Ozone Bucket using Native Admin CLI."""
+
+    template_fields = ("volume_name", "bucket_name", "ozone_conn_id")
 
     def __init__(
         self,
@@ -217,7 +227,7 @@ class OzoneDeleteBucketOperator(BaseOperator):
 class OzoneCreatePathOperator(BaseOperator):
     """Create directory path via FS interface."""
 
-    template_fields = ("path",)
+    template_fields = ("path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -244,6 +254,8 @@ class OzoneCreatePathOperator(BaseOperator):
 
 class OzoneUploadContentOperator(BaseOperator):
     """Put content string to a file via FS interface."""
+
+    template_fields = ("content", "remote_path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -297,7 +309,7 @@ class OzoneUploadContentOperator(BaseOperator):
 class OzoneDeleteKeyOperator(BaseOperator):
     """Deletes a key (file) from Ozone FS."""
 
-    template_fields = ("path",)
+    template_fields = ("path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -325,7 +337,7 @@ class OzoneDeleteKeyOperator(BaseOperator):
 class OzoneDeletePathOperator(BaseOperator):
     """Delete file/directory path from Ozone FS."""
 
-    template_fields = ("path",)
+    template_fields = ("path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -355,7 +367,7 @@ class OzoneDeletePathOperator(BaseOperator):
 class OzonePathExistsOperator(BaseOperator):
     """Check whether Ozone path exists and return boolean via XCom."""
 
-    template_fields = ("path",)
+    template_fields = ("path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -383,7 +395,7 @@ class OzonePathExistsOperator(BaseOperator):
 class OzoneListOperator(BaseOperator):
     """Lists keys/prefixes in an Ozone path and returns them via XCom."""
 
-    template_fields = ("path",)
+    template_fields = ("path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -412,7 +424,7 @@ class OzoneListOperator(BaseOperator):
 class OzoneUploadFileOperator(BaseOperator):
     """Upload a file from the local filesystem to Ozone."""
 
-    template_fields = ("local_path", "remote_path")
+    template_fields = ("local_path", "remote_path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -472,7 +484,7 @@ class OzoneUploadFileOperator(BaseOperator):
 class OzoneMoveOperator(BaseOperator):
     """Move or rename a key within the same Ozone cluster."""
 
-    template_fields = ("source_path", "dest_path")
+    template_fields = ("source_path", "dest_path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -503,7 +515,7 @@ class OzoneMoveOperator(BaseOperator):
 class OzoneCopyOperator(BaseOperator):
     """Copy one key or wildcard-selected keys within Ozone."""
 
-    template_fields = ("source_path", "dest_path")
+    template_fields = ("source_path", "dest_path", "ozone_conn_id")
 
     def __init__(
         self,
@@ -534,7 +546,7 @@ class OzoneCopyOperator(BaseOperator):
 class OzoneDownloadFileOperator(BaseOperator):
     """Download a file from Ozone to local filesystem."""
 
-    template_fields = ("remote_path", "local_path")
+    template_fields = ("remote_path", "local_path", "ozone_conn_id")
 
     def __init__(
         self,

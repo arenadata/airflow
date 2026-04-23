@@ -58,6 +58,8 @@ class HdfsToOzoneOperator(BaseOperator):
     - hdfs_ssl_truststore_password: Truststore password
     """
 
+    template_fields = ("source_path", "dest_path", "hdfs_conn_id")
+
     def __init__(
         self,
         source_path: str,

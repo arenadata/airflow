@@ -24,6 +24,10 @@ This DAG is intended for manual verification of non-standard provider behavior:
 2. Verifies `OzoneFsHook.exists/path_exists/key_exists` return `False` for a missing key.
 3. Verifies `OzoneAdminHook.bucket_exists/volume_exists` return `False` for missing resources.
 4. Verifies delete operations on missing resources behave as no-op/idempotent checks.
+
+Runtime values can be overridden from the Trigger UI or via `dag_run.conf`;
+legacy `OZONE_EXAMPLE_*` environment variables are kept as defaults for
+compatibility.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ from pathlib import PurePosixPath
 
 from airflow import DAG
 from airflow.exceptions import AirflowException
+from airflow.models.param import Param
 from airflow.operators.python import PythonOperator
 from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminHook, OzoneFsHook
 from airflow.providers.arenadata.ozone.operators.ozone import (
@@ -48,31 +53,26 @@ from airflow.utils.trigger_rule import TriggerRule
 
 logger = logging.getLogger(__name__)
 
-
-def _example_env(name: str, default: str | None = None) -> str | None:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    normalized = value.strip()
-    return normalized if normalized else default
-
-
-OM_HOST = _example_env("OZONE_EXAMPLE_OM_HOST", "om")
-TEST_CONN_ID = _example_env("OZONE_EXAMPLE_TEST_CONN_ID", "ozone_admin_default")
-TEST_VOLUME = _example_env("OZONE_EXAMPLE_TEST_VOLUME", "provider-test-volume")
-TEST_BUCKET = _example_env("OZONE_EXAMPLE_TEST_BUCKET", "provider-test-bucket")
-MISSING_BUCKET = _example_env("OZONE_EXAMPLE_TEST_MISSING_BUCKET", "provider-test-missing-bucket")
-MISSING_VOLUME = _example_env("OZONE_EXAMPLE_TEST_MISSING_VOLUME", "provider-test-missing-volume")
-MISSING_KEY = _example_env("OZONE_EXAMPLE_TEST_MISSING_KEY", "missing/to_delete.txt")
+DEFAULT_OM_HOST = os.getenv("OZONE_EXAMPLE_OM_HOST") or "om"
+DEFAULT_CONN_ID = os.getenv("OZONE_EXAMPLE_TEST_CONN_ID") or "ozone_admin_default"
+DEFAULT_TEST_VOLUME = os.getenv("OZONE_EXAMPLE_TEST_VOLUME") or "provider-test-volume"
+DEFAULT_TEST_BUCKET = os.getenv("OZONE_EXAMPLE_TEST_BUCKET") or "provider-test-bucket"
+DEFAULT_MISSING_BUCKET = os.getenv("OZONE_EXAMPLE_TEST_MISSING_BUCKET") or "provider-test-missing-bucket"
+DEFAULT_MISSING_VOLUME = os.getenv("OZONE_EXAMPLE_TEST_MISSING_VOLUME") or "provider-test-missing-volume"
+DEFAULT_MISSING_KEY = os.getenv("OZONE_EXAMPLE_TEST_MISSING_KEY") or "missing/to_delete.txt"
 
 
-def _missing_key_path() -> str:
-    return f"ofs://{OM_HOST}/{PurePosixPath(TEST_VOLUME, TEST_BUCKET, MISSING_KEY)}"
+def _missing_key_path(params: dict[str, str]) -> str:
+    return (
+        f"ofs://{params['om_host']}/"
+        f"{PurePosixPath(params['test_volume'], params['test_bucket'], params['missing_key'])}"
+    )
 
 
-def _verify_missing_fs_path() -> dict[str, bool]:
-    hook = OzoneFsHook(ozone_conn_id=TEST_CONN_ID)
-    path = _missing_key_path()
+def _verify_missing_fs_path_runtime(**context) -> dict[str, bool]:
+    params = context["params"]
+    hook = OzoneFsHook(ozone_conn_id=params["test_conn_id"])
+    path = _missing_key_path(params)
     results = {
         "exists": hook.exists(path),
         "path_exists": hook.path_exists(path),
@@ -85,41 +85,57 @@ def _verify_missing_fs_path() -> dict[str, bool]:
     return results
 
 
-def _delete_missing_fs_path() -> None:
-    hook = OzoneFsHook(ozone_conn_id=TEST_CONN_ID)
-    path = _missing_key_path()
+def _delete_missing_fs_path_runtime(**context) -> None:
+    params = context["params"]
+    hook = OzoneFsHook(ozone_conn_id=params["test_conn_id"])
+    path = _missing_key_path(params)
     hook.delete_key(path)
     logger.info("Delete missing FS key completed without error: %s", path)
 
 
-def _verify_missing_bucket() -> dict[str, bool]:
-    hook = OzoneAdminHook(ozone_conn_id=TEST_CONN_ID)
-    result = hook.bucket_exists(TEST_VOLUME, MISSING_BUCKET)
-    logger.info("Missing bucket probe for /%s/%s returned: %s", TEST_VOLUME, MISSING_BUCKET, result)
+def _verify_missing_bucket_runtime(**context) -> dict[str, bool]:
+    params = context["params"]
+    hook = OzoneAdminHook(ozone_conn_id=params["test_conn_id"])
+    result = hook.bucket_exists(params["test_volume"], params["missing_bucket"])
+    logger.info(
+        "Missing bucket probe for /%s/%s returned: %s",
+        params["test_volume"],
+        params["missing_bucket"],
+        result,
+    )
     if result is not False:
-        raise AirflowException(f"Expected False for missing bucket check: /{TEST_VOLUME}/{MISSING_BUCKET}")
+        raise AirflowException(
+            f"Expected False for missing bucket check: /{params['test_volume']}/{params['missing_bucket']}"
+        )
     return {"bucket_exists": result}
 
 
-def _delete_missing_bucket() -> None:
-    hook = OzoneAdminHook(ozone_conn_id=TEST_CONN_ID)
-    hook.delete_bucket(TEST_VOLUME, MISSING_BUCKET)
-    logger.info("Delete missing bucket completed without error: /%s/%s", TEST_VOLUME, MISSING_BUCKET)
+def _delete_missing_bucket_runtime(**context) -> None:
+    params = context["params"]
+    hook = OzoneAdminHook(ozone_conn_id=params["test_conn_id"])
+    hook.delete_bucket(params["test_volume"], params["missing_bucket"])
+    logger.info(
+        "Delete missing bucket completed without error: /%s/%s",
+        params["test_volume"],
+        params["missing_bucket"],
+    )
 
 
-def _verify_missing_volume() -> dict[str, bool]:
-    hook = OzoneAdminHook(ozone_conn_id=TEST_CONN_ID)
-    result = hook.volume_exists(MISSING_VOLUME)
-    logger.info("Missing volume probe for /%s returned: %s", MISSING_VOLUME, result)
+def _verify_missing_volume_runtime(**context) -> dict[str, bool]:
+    params = context["params"]
+    hook = OzoneAdminHook(ozone_conn_id=params["test_conn_id"])
+    result = hook.volume_exists(params["missing_volume"])
+    logger.info("Missing volume probe for /%s returned: %s", params["missing_volume"], result)
     if result is not False:
-        raise AirflowException(f"Expected False for missing volume check: /{MISSING_VOLUME}")
+        raise AirflowException(f"Expected False for missing volume check: /{params['missing_volume']}")
     return {"volume_exists": result}
 
 
-def _delete_missing_volume() -> None:
-    hook = OzoneAdminHook(ozone_conn_id=TEST_CONN_ID)
-    hook.delete_volume(MISSING_VOLUME)
-    logger.info("Delete missing volume completed without error: /%s", MISSING_VOLUME)
+def _delete_missing_volume_runtime(**context) -> None:
+    params = context["params"]
+    hook = OzoneAdminHook(ozone_conn_id=params["test_conn_id"])
+    hook.delete_volume(params["missing_volume"])
+    logger.info("Delete missing volume completed without error: /%s", params["missing_volume"])
 
 
 with DAG(
@@ -129,72 +145,81 @@ with DAG(
     schedule=None,
     tags=["ozone", "example", "edge-cases"],
     default_args={"owner": "airflow", "retries": 0},
+    params={
+        "om_host": Param(DEFAULT_OM_HOST, type="string", title="OM host / Ozone authority"),
+        "test_conn_id": Param(DEFAULT_CONN_ID, type="string", title="Ozone connection ID"),
+        "test_volume": Param(DEFAULT_TEST_VOLUME, type="string", title="Test volume"),
+        "test_bucket": Param(DEFAULT_TEST_BUCKET, type="string", title="Test bucket"),
+        "missing_bucket": Param(DEFAULT_MISSING_BUCKET, type="string", title="Missing bucket probe"),
+        "missing_volume": Param(DEFAULT_MISSING_VOLUME, type="string", title="Missing volume probe"),
+        "missing_key": Param(DEFAULT_MISSING_KEY, type="string", title="Missing key probe path"),
+    },
     doc_md=__doc__,
 ) as dag:
     create_test_volume = OzoneCreateVolumeOperator(
         task_id="create_test_volume",
-        volume_name=TEST_VOLUME,
-        ozone_conn_id=TEST_CONN_ID,
+        volume_name="{{ params.test_volume }}",
+        ozone_conn_id="{{ params.test_conn_id }}",
         execution_timeout=timedelta(minutes=2),
     )
 
     create_test_bucket = OzoneCreateBucketOperator(
         task_id="create_test_bucket",
-        volume_name=TEST_VOLUME,
-        bucket_name=TEST_BUCKET,
-        ozone_conn_id=TEST_CONN_ID,
+        volume_name="{{ params.test_volume }}",
+        bucket_name="{{ params.test_bucket }}",
+        ozone_conn_id="{{ params.test_conn_id }}",
         execution_timeout=timedelta(minutes=2),
     )
 
     verify_missing_fs_path = PythonOperator(
         task_id="verify_missing_fs_path",
-        python_callable=_verify_missing_fs_path,
+        python_callable=_verify_missing_fs_path_runtime,
         execution_timeout=timedelta(minutes=2),
     )
 
     delete_missing_fs_path = PythonOperator(
         task_id="delete_missing_fs_path",
-        python_callable=_delete_missing_fs_path,
+        python_callable=_delete_missing_fs_path_runtime,
         execution_timeout=timedelta(minutes=2),
     )
 
     verify_missing_bucket = PythonOperator(
         task_id="verify_missing_bucket",
-        python_callable=_verify_missing_bucket,
+        python_callable=_verify_missing_bucket_runtime,
         execution_timeout=timedelta(minutes=2),
     )
 
     delete_missing_bucket = PythonOperator(
         task_id="delete_missing_bucket",
-        python_callable=_delete_missing_bucket,
+        python_callable=_delete_missing_bucket_runtime,
         execution_timeout=timedelta(minutes=2),
     )
 
     verify_missing_volume = PythonOperator(
         task_id="verify_missing_volume",
-        python_callable=_verify_missing_volume,
+        python_callable=_verify_missing_volume_runtime,
         execution_timeout=timedelta(minutes=2),
     )
 
     delete_missing_volume = PythonOperator(
         task_id="delete_missing_volume",
-        python_callable=_delete_missing_volume,
+        python_callable=_delete_missing_volume_runtime,
         execution_timeout=timedelta(minutes=2),
     )
 
     cleanup_test_bucket = OzoneDeleteBucketOperator(
         task_id="cleanup_test_bucket",
-        volume_name=TEST_VOLUME,
-        bucket_name=TEST_BUCKET,
-        ozone_conn_id=TEST_CONN_ID,
+        volume_name="{{ params.test_volume }}",
+        bucket_name="{{ params.test_bucket }}",
+        ozone_conn_id="{{ params.test_conn_id }}",
         execution_timeout=timedelta(minutes=2),
         trigger_rule=TriggerRule.ALL_DONE,
     )
 
     cleanup_test_volume = OzoneDeleteVolumeOperator(
         task_id="cleanup_test_volume",
-        volume_name=TEST_VOLUME,
-        ozone_conn_id=TEST_CONN_ID,
+        volume_name="{{ params.test_volume }}",
+        ozone_conn_id="{{ params.test_conn_id }}",
         execution_timeout=timedelta(minutes=2),
         trigger_rule=TriggerRule.ALL_DONE,
     )

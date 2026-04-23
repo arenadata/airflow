@@ -25,8 +25,10 @@ This DAG demonstrates fundamental native Ozone operations:
 - Uses a sensor to wait for a file to appear
 
 The same DAG works for plain, SSL, Kerberos, and SSL+Kerberos modes.
-The active mode is defined by the selected Airflow connection
-(``OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID``) and its ``Connection Extra``.
+The active mode is defined by the selected Airflow connection and its
+``Connection Extra``. Runtime values can be overridden from the Trigger UI or
+via ``dag_run.conf``; legacy ``OZONE_EXAMPLE_*`` environment variables are kept
+as defaults for compatibility.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from datetime import timedelta
 from pathlib import PurePosixPath
 
 from airflow import DAG
+from airflow.models.param import Param
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
     OzoneCreatePathOperator,
@@ -45,21 +48,14 @@ from airflow.providers.arenadata.ozone.operators.ozone import (
 from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
 from airflow.utils import timezone
 
-
-def _example_env(name: str, default: str | None = None) -> str | None:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    normalized = value.strip()
-    return normalized if normalized else default
-
-
-OM_HOST = _example_env("OZONE_EXAMPLE_OM_HOST", "om")
-NATIVE_VOLUME = _example_env("OZONE_EXAMPLE_USAGE_VOLUME", "vol1")
-NATIVE_BUCKET = _example_env("OZONE_EXAMPLE_USAGE_BUCKET", "bucket-native")
-NATIVE_DIR = _example_env("OZONE_EXAMPLE_USAGE_DIR", "data_dir")
-NATIVE_FILE = _example_env("OZONE_EXAMPLE_USAGE_FILE", "file.txt")
-ADMIN_CONN_ID = _example_env("OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID", "ozone_admin_default")
+DEFAULT_OM_HOST = os.getenv("OZONE_EXAMPLE_OM_HOST") or "om"
+DEFAULT_VOLUME = os.getenv("OZONE_EXAMPLE_USAGE_VOLUME") or "vol1"
+DEFAULT_BUCKET = os.getenv("OZONE_EXAMPLE_USAGE_BUCKET") or "bucket-native"
+DEFAULT_DIR = os.getenv("OZONE_EXAMPLE_USAGE_DIR") or "data_dir"
+DEFAULT_FILE = os.getenv("OZONE_EXAMPLE_USAGE_FILE") or "file.txt"
+DEFAULT_CONN_ID = os.getenv("OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID") or "ozone_admin_default"
+DEFAULT_VOLUME_QUOTA = os.getenv("OZONE_EXAMPLE_USAGE_VOLUME_QUOTA") or "10GB"
+DEFAULT_BUCKET_QUOTA = os.getenv("OZONE_EXAMPLE_USAGE_BUCKET_QUOTA") or "10GB"
 
 default_args = {
     "owner": "airflow",
@@ -74,31 +70,57 @@ with DAG(
     schedule=None,
     catchup=False,
     tags=["ozone", "example"],
+    params={
+        "om_host": Param(DEFAULT_OM_HOST, type="string", title="OM host / Ozone authority"),
+        "admin_conn_id": Param(DEFAULT_CONN_ID, type="string", title="Ozone admin connection ID"),
+        "volume": Param(DEFAULT_VOLUME, type="string", title="Volume name"),
+        "bucket": Param(DEFAULT_BUCKET, type="string", title="Bucket name"),
+        "directory": Param(DEFAULT_DIR, type="string", title="Directory path inside bucket"),
+        "file_name": Param(DEFAULT_FILE, type="string", title="File name"),
+        "volume_quota": Param(
+            DEFAULT_VOLUME_QUOTA,
+            type="string",
+            title="Volume quota",
+            description="Quota string accepted by Ozone CLI, for example 10GB.",
+        ),
+        "bucket_quota": Param(
+            DEFAULT_BUCKET_QUOTA,
+            type="string",
+            title="Bucket quota",
+            description="Quota string accepted by Ozone CLI, for example 10GB.",
+        ),
+    },
 ) as dag:
-    FS_DIR_PATH = f"ofs://{OM_HOST}/{PurePosixPath(NATIVE_VOLUME, NATIVE_BUCKET, NATIVE_DIR)}"
-    FS_FILE_PATH = f"ofs://{OM_HOST}/{PurePosixPath(NATIVE_VOLUME, NATIVE_BUCKET, NATIVE_DIR, NATIVE_FILE)}"
+    FS_DIR_PATH = (
+        f"ofs://{{{{ params.om_host }}}}/"
+        f"{PurePosixPath('{{ params.volume }}', '{{ params.bucket }}', '{{ params.directory }}')}"
+    )
+    FS_FILE_PATH = (
+        f"ofs://{{{{ params.om_host }}}}/"
+        f"{PurePosixPath('{{ params.volume }}', '{{ params.bucket }}', '{{ params.directory }}', '{{ params.file_name }}')}"
+    )
 
     create_vol = OzoneCreateVolumeOperator(
         task_id="create_volume",
-        volume_name=NATIVE_VOLUME,
-        quota="10GB",
-        ozone_conn_id=ADMIN_CONN_ID,
+        volume_name="{{ params.volume }}",
+        quota="{{ params.volume_quota }}",
+        ozone_conn_id="{{ params.admin_conn_id }}",
         execution_timeout=timedelta(minutes=5),
     )
 
     create_bucket_native = OzoneCreateBucketOperator(
         task_id="create_bucket_native",
-        volume_name=NATIVE_VOLUME,
-        bucket_name=NATIVE_BUCKET,
-        quota="10GB",
-        ozone_conn_id=ADMIN_CONN_ID,
+        volume_name="{{ params.volume }}",
+        bucket_name="{{ params.bucket }}",
+        quota="{{ params.bucket_quota }}",
+        ozone_conn_id="{{ params.admin_conn_id }}",
         execution_timeout=timedelta(minutes=5),
     )
 
     fs_mkdir = OzoneCreatePathOperator(
         task_id="fs_mkdir",
         path=FS_DIR_PATH,
-        ozone_conn_id=ADMIN_CONN_ID,
+        ozone_conn_id="{{ params.admin_conn_id }}",
         execution_timeout=timedelta(minutes=5),
     )
 
@@ -106,14 +128,14 @@ with DAG(
         task_id="fs_put_file",
         content="Hello from FS Layer",
         remote_path=FS_FILE_PATH,
-        ozone_conn_id=ADMIN_CONN_ID,
+        ozone_conn_id="{{ params.admin_conn_id }}",
         execution_timeout=timedelta(minutes=5),
     )
 
     wait_fs_file = OzoneKeySensor(
         task_id="wait_fs_file",
         path=FS_FILE_PATH,
-        ozone_conn_id=ADMIN_CONN_ID,
+        ozone_conn_id="{{ params.admin_conn_id }}",
         mode="reschedule",
         timeout=60,
     )
