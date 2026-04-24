@@ -4,7 +4,11 @@ import subprocess
 
 import pytest
 
-from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner, OzoneCliRunner, ProcessOutputAnalysis
+from airflow.providers.arenadata.ozone.utils.cli_runner import (
+    CliRunner,
+    OzoneCliRunner,
+    ProcessOutputAnalysis,
+)
 from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
 
 

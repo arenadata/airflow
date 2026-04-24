@@ -137,7 +137,7 @@ with DAG(
         path=FS_FILE_PATH,
         ozone_conn_id="{{ params.admin_conn_id }}",
         mode="reschedule",
-        timeout=60,
+        cli_timeout=60,
     )
 
     create_vol >> create_bucket_native >> fs_mkdir >> fs_put >> wait_fs_file
