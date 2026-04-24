@@ -1,0 +1,11 @@
+version: 2
+
+models:
+  - name: int_orders_enriched
+    description: "Orders enriched with customer data"
+    config:
+      schedule: "@hourly"
+      sql_cluster: dev
+      py_cluster: dev
+      daily_sql_cluster: dev
+      bf_cluster: dev

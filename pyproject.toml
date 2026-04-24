@@ -89,7 +89,7 @@ dynamic = ["version", "optional-dependencies", "dependencies"]
 #
 # START DEVEL EXTRAS HERE
 #
-# devel, devel-all-dbs, devel-ci, devel-debuggers, devel-devscripts, devel-duckdb, devel-hadoop,
+# devel, devel-all-dbs, devel-ci, devel-dbt, devel-debuggers, devel-devscripts, devel-duckdb, devel-hadoop,
 # devel-mypy, devel-sentry, devel-static-checks, devel-tests
 #
 # END DEVEL EXTRAS HERE

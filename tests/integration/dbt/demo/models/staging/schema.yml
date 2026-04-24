@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: stg_orders
+    config:
+      schedule: "@daily"
+      sql_cluster: dev
+      py_cluster: dev
+      daily_sql_cluster: dev
+      bf_cluster: dev
+
+  - name: stg_customers
+    config:
+      schedule: "@daily"
+      sql_cluster: dev
+      py_cluster: dev
+      daily_sql_cluster: dev
+      bf_cluster: dev

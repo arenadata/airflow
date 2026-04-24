@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: orders
+    description: "Core orders mart"
+    config:
+      schedule: "@daily"
+      sql_cluster: dev
+      py_cluster: dev
+      daily_sql_cluster: dev
+      bf_cluster: dev
+
+  - name: customers
+    description: "Core customers mart"
+    config:
+      schedule: "@daily"
+      sql_cluster: dev
+      py_cluster: dev
+      daily_sql_cluster: dev
+      bf_cluster: dev
+
+  - name: revenue_by_region
+    description: "Monthly revenue by market segment"
+    config:
+      schedule: "@daily"
+      sql_cluster: dev
+      py_cluster: dev
+      daily_sql_cluster: dev
+      bf_cluster: dev

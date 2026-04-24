@@ -1,0 +1,24 @@
+name: 'dbt_af_demo'
+version: '1.0.0'
+config-version: 2
+
+profile: 'dbt_af_demo'
+
+model-paths: ["models"]
+snapshot-paths: ["snapshots"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  dbt_af_demo:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: table
+    marts:
+      +materialized: table
+      core:
+        +schema: marts_core
+      analytics:
+        +schema: marts_analytics
