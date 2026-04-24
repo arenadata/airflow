@@ -63,9 +63,11 @@ TESTABLE_CORE_INTEGRATIONS = [
 TESTABLE_PROVIDERS_INTEGRATIONS = [
     "cassandra",
     "drill",
+    "hbase",
     "kafka",
     "mongo",
     "mssql",
+    "ozone",
     "pinot",
     "qdrant",
     "redis",
@@ -295,6 +297,9 @@ DOCKER_DEFAULT_PLATFORM = f"linux/{get_default_platform_machine()}"
 DOCKER_BUILDKIT = 1
 
 DRILL_HOST_PORT = "28047"
+HBASE_THRIFT_HOST_PORT = "29090"
+OZONE_OM_HOST_PORT = "29862"
+OZONE_SCM_HOST_PORT = "29860"
 FLOWER_HOST_PORT = "25555"
 MSSQL_HOST_PORT = "21433"
 MYSQL_HOST_PORT = "23306"

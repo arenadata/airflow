@@ -1,0 +1,104 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+---
+x-ozone-common:
+  &ozone-common
+  image: apache/ozone:2.0.0
+  env_file:
+    - ./ozone/docker-config
+  restart: "on-failure"
+
+services:
+  ozone-scm:
+    <<: *ozone-common
+    container_name: ozone-scm
+    hostname: scm
+    labels:
+      breeze.description: "Ozone Storage Container Manager."
+    ports:
+      - "${OZONE_SCM_HOST_PORT}:9860"
+    environment:
+      ENSURE_SCM_INITIALIZED: /data/metadata/scm/current/VERSION
+    volumes:
+      - ozone-bin:/opt/hadoop
+      - ozone-java:/usr/local/jdk-21.0.2
+    command: ["ozone", "scm"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/hadoop/bin/ozone admin scm roles 2>/dev/null | grep -q LEADER"]
+      interval: 10s
+      timeout: 30s
+      retries: 30
+      start_period: 20s
+
+  ozone-om:
+    <<: *ozone-common
+    container_name: ozone-om
+    hostname: om
+    labels:
+      breeze.description: "Ozone Manager."
+    ports:
+      - "${OZONE_OM_HOST_PORT}:9862"
+    environment:
+      ENSURE_OM_INITIALIZED: /data/metadata/om/current/VERSION
+    command: ["ozone", "om"]
+    depends_on:
+      ozone-scm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/hadoop/bin/ozone sh volume list / 2>/dev/null | grep -q '\\['"]
+      interval: 10s
+      timeout: 30s
+      retries: 30
+      start_period: 20s
+
+  ozone-datanode:
+    <<: *ozone-common
+    container_name: ozone-datanode
+    hostname: datanode
+    labels:
+      breeze.description: "Ozone Datanode."
+    command: ["ozone", "datanode"]
+    depends_on:
+      ozone-scm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9882' 2>/dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 40
+      start_period: 30s
+
+  airflow:
+    environment:
+      - INTEGRATION_OZONE=true
+      - PATH=/opt/ozone/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - OZONE_HOME=/opt/ozone
+      - OZONE_CONF_DIR=/opt/ozone-conf
+      - JAVA_HOME=/opt/ozone-java
+    volumes:
+      - ozone-bin:/opt/ozone:ro
+      - ozone-java:/opt/ozone-java:ro
+      - ./ozone/ozone-site.xml:/opt/ozone-conf/ozone-site.xml:ro
+    depends_on:
+      ozone-om:
+        condition: service_healthy
+      ozone-datanode:
+        condition: service_healthy
+
+volumes:
+  ozone-bin:
+  ozone-java:
