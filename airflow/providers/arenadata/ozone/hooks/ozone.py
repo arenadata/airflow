@@ -25,7 +25,11 @@ from pathlib import Path
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
-from airflow.providers.arenadata.ozone.utils.cli_runner import CliRunner, OzoneCliRunner, ProcessOutputAnalysis
+from airflow.providers.arenadata.ozone.utils.cli_runner import (
+    CliRunner,
+    OzoneCliRunner,
+    ProcessOutputAnalysis,
+)
 from airflow.providers.arenadata.ozone.utils.connection_schema import (
     OZONE_CONNECTION_UI_FIELD_BEHAVIOUR,
     OzoneConnSnapshot,
@@ -1067,7 +1071,9 @@ class OzoneAdminHook(OzoneCliHook):
         output = ProcessOutputAnalysis.from_completed_process(result)
         error_message = output.preferred_output or "No error message provided"
         if spec.already_exists_marker.lower() in error_message.lower():
-            self.log.info("%s %s already exists, treating as success.", resource.value.capitalize(), resource_path)
+            self.log.info(
+                "%s %s already exists, treating as success.", resource.value.capitalize(), resource_path
+            )
             return
 
         raise AirflowException(
@@ -1106,8 +1112,13 @@ class OzoneAdminHook(OzoneCliHook):
         output = ProcessOutputAnalysis.from_completed_process(result)
         error_text = output.preferred_output or "Unknown error"
         normalized = output.normalized_preferred_output
-        if any(marker.lower() in normalized for marker in spec.not_found_markers) or "does not exist" in normalized:
-            self.log.info("%s %s does not exist, treating as success.", resource.value.capitalize(), resource_path)
+        if (
+            any(marker.lower() in normalized for marker in spec.not_found_markers)
+            or "does not exist" in normalized
+        ):
+            self.log.info(
+                "%s %s does not exist, treating as success.", resource.value.capitalize(), resource_path
+            )
             return
 
         raise AirflowException(f"Failed to delete {resource.value} {resource_path}: {redact(error_text)}")

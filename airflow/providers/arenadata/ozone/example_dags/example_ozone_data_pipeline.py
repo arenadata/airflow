@@ -27,6 +27,10 @@ This DAG demonstrates a typical ETL workflow with Ozone:
 This example is import-safe even when the HDFS provider is not installed.
 HdfsToOzoneOperator relies on Hadoop DistCp runtime, and runtime validation
 happens only when task `migrate_legacy_data` executes.
+
+Runtime values can be overridden from the Trigger UI or via `dag_run.conf`;
+legacy `OZONE_EXAMPLE_*` environment variables are kept as defaults for
+compatibility.
 """
 
 from __future__ import annotations
@@ -36,64 +40,70 @@ from datetime import timedelta
 from pathlib import PurePosixPath
 
 from airflow import DAG
+from airflow.models.param import Param
 from airflow.providers.arenadata.ozone.operators.ozone import OzoneSetQuotaOperator
 from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
 from airflow.utils import timezone
 
-
-def _example_env(name: str, default: str | None = None) -> str | None:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    normalized = value.strip()
-    return normalized if normalized else default
-
-
-OM_HOST = _example_env("OZONE_EXAMPLE_OM_HOST", "om")
-PIPELINE_CONN_ID = _example_env("OZONE_EXAMPLE_PIPELINE_CONN_ID", "ozone_admin_default")
-PIPELINE_HDFS_CONN_ID = _example_env("OZONE_EXAMPLE_PIPELINE_HDFS_CONN_ID")
-PIPELINE_VOLUME = _example_env("OZONE_EXAMPLE_PIPELINE_VOLUME", "vol1")
-PIPELINE_BUCKET = _example_env("OZONE_EXAMPLE_PIPELINE_BUCKET", "bucket1")
-PIPELINE_TRIGGER_FILE = _example_env("OZONE_EXAMPLE_PIPELINE_TRIGGER_FILE", "trigger.lck")
-PIPELINE_QUOTA = _example_env("OZONE_EXAMPLE_PIPELINE_QUOTA", "500GB")
-PIPELINE_SOURCE_PATH = _example_env("OZONE_EXAMPLE_PIPELINE_SOURCE_PATH", "hdfs:///user/data/legacy/")
-PIPELINE_DEST_SUBPATH = _example_env("OZONE_EXAMPLE_PIPELINE_DEST_SUBPATH", "migrated/")
+DEFAULT_OM_HOST = os.getenv("OZONE_EXAMPLE_OM_HOST") or "om"
+DEFAULT_CONN_ID = os.getenv("OZONE_EXAMPLE_PIPELINE_CONN_ID") or "ozone_admin_default"
+DEFAULT_HDFS_CONN_ID = os.getenv("OZONE_EXAMPLE_PIPELINE_HDFS_CONN_ID") or "hdfs_default"
+DEFAULT_VOLUME = os.getenv("OZONE_EXAMPLE_PIPELINE_VOLUME") or "vol1"
+DEFAULT_BUCKET = os.getenv("OZONE_EXAMPLE_PIPELINE_BUCKET") or "bucket1"
+DEFAULT_TRIGGER_FILE = os.getenv("OZONE_EXAMPLE_PIPELINE_TRIGGER_FILE") or "trigger.lck"
+DEFAULT_QUOTA = os.getenv("OZONE_EXAMPLE_PIPELINE_QUOTA") or "500GB"
+DEFAULT_SOURCE_PATH = os.getenv("OZONE_EXAMPLE_PIPELINE_SOURCE_PATH") or "hdfs:///user/data/legacy/"
+DEFAULT_DEST_SUBPATH = os.getenv("OZONE_EXAMPLE_PIPELINE_DEST_SUBPATH") or "migrated/"
 
 with DAG(
     "example_ozone_data_pipeline",
     start_date=timezone.datetime(2025, 1, 1),
     schedule=None,
+    catchup=False,
     tags=["ozone", "example"],
+    params={
+        "om_host": Param(DEFAULT_OM_HOST, type="string", title="OM host / Ozone authority"),
+        "pipeline_conn_id": Param(DEFAULT_CONN_ID, type="string", title="Ozone connection ID"),
+        "hdfs_conn_id": Param(DEFAULT_HDFS_CONN_ID, type="string", title="HDFS connection ID"),
+        "volume": Param(DEFAULT_VOLUME, type="string", title="Destination volume"),
+        "bucket": Param(DEFAULT_BUCKET, type="string", title="Destination bucket"),
+        "trigger_file": Param(DEFAULT_TRIGGER_FILE, type="string", title="Trigger file name"),
+        "quota": Param(DEFAULT_QUOTA, type="string", title="Destination quota"),
+        "source_path": Param(DEFAULT_SOURCE_PATH, type="string", title="HDFS source path"),
+        "dest_subpath": Param(DEFAULT_DEST_SUBPATH, type="string", title="Destination subpath in bucket"),
+    },
 ) as dag:
     PIPELINE_TRIGGER_PATH = (
-        f"ofs://{OM_HOST}/{PurePosixPath(PIPELINE_VOLUME, PIPELINE_BUCKET, PIPELINE_TRIGGER_FILE)}"
+        f"ofs://{{{{ params.om_host }}}}/"
+        f"{PurePosixPath('{{ params.volume }}', '{{ params.bucket }}', '{{ params.trigger_file }}')}"
     )
     PIPELINE_DEST_PATH = (
-        f"ofs://{OM_HOST}/{PurePosixPath(PIPELINE_VOLUME, PIPELINE_BUCKET, PIPELINE_DEST_SUBPATH)}"
+        f"ofs://{{{{ params.om_host }}}}/"
+        f"{PurePosixPath('{{ params.volume }}', '{{ params.bucket }}', '{{ params.dest_subpath }}')}"
     )
 
     check_trigger = OzoneKeySensor(
         task_id="wait_for_landing_file",
         path=PIPELINE_TRIGGER_PATH,
-        ozone_conn_id=PIPELINE_CONN_ID,
+        ozone_conn_id="{{ params.pipeline_conn_id }}",
         mode="reschedule",
         execution_timeout=timedelta(minutes=1),
     )
 
     set_storage = OzoneSetQuotaOperator(
         task_id="prepare_quota",
-        volume=PIPELINE_VOLUME,
-        quota=PIPELINE_QUOTA,
-        ozone_conn_id=PIPELINE_CONN_ID,
+        volume="{{ params.volume }}",
+        quota="{{ params.quota }}",
+        ozone_conn_id="{{ params.pipeline_conn_id }}",
         execution_timeout=timedelta(minutes=1),
     )
 
     migrate_data = HdfsToOzoneOperator(
         task_id="migrate_legacy_data",
-        source_path=PIPELINE_SOURCE_PATH,
+        source_path="{{ params.source_path }}",
         dest_path=PIPELINE_DEST_PATH,
-        hdfs_conn_id=PIPELINE_HDFS_CONN_ID,
+        hdfs_conn_id="{{ params.hdfs_conn_id }}",
         execution_timeout=timedelta(minutes=5),
     )
 

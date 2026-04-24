@@ -45,7 +45,7 @@ Behavior notes
 * retryable CLI errors are treated as "not yet ready" and do not fail the task
   immediately;
 * non-retryable CLI errors are raised to Airflow as task failures.
-* the provider-level ``timeout`` parameter controls the timeout of each CLI
+* the provider-level ``cli_timeout`` parameter controls the timeout of each CLI
   check, not the overall waiting horizon of the sensor.
 
 Example:

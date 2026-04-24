@@ -25,6 +25,7 @@ from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.hooks.ozone import OzoneFsHook
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCopyOperator,
+    OzoneCreateBucketOperator,
     OzoneCreatePathOperator,
     OzoneCreateVolumeOperator,
     OzoneDeleteBucketOperator,
@@ -42,6 +43,18 @@ from airflow.providers.arenadata.ozone.operators.ozone import (
 
 
 class TestOzoneAdminOperators:
+    def test_admin_operator_template_fields_cover_runtime_params(self):
+        assert OzoneCreateVolumeOperator.template_fields == ("volume_name", "quota", "ozone_conn_id")
+        assert OzoneCreateBucketOperator.template_fields == (
+            "volume_name",
+            "bucket_name",
+            "quota",
+            "ozone_conn_id",
+        )
+        assert OzoneSetQuotaOperator.template_fields == ("volume", "quota", "bucket", "ozone_conn_id")
+        assert OzoneDeleteVolumeOperator.template_fields == ("volume_name", "ozone_conn_id")
+        assert OzoneDeleteBucketOperator.template_fields == ("volume_name", "bucket_name", "ozone_conn_id")
+
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneAdminHook")
     def test_admin_operators_execute_core_flows(self, mock_admin_hook: MagicMock):
         hook = mock_admin_hook.return_value
@@ -157,6 +170,19 @@ def test_fs_operators_delegate_to_hook(
         assert result == hook_return
     else:
         assert result is None
+
+
+def test_fs_operator_template_fields_cover_runtime_params():
+    assert OzoneCreatePathOperator.template_fields == ("path", "ozone_conn_id")
+    assert OzoneDeleteKeyOperator.template_fields == ("path", "ozone_conn_id")
+    assert OzoneDeletePathOperator.template_fields == ("path", "ozone_conn_id")
+    assert OzonePathExistsOperator.template_fields == ("path", "ozone_conn_id")
+    assert OzoneListOperator.template_fields == ("path", "ozone_conn_id")
+    assert OzoneUploadContentOperator.template_fields == ("content", "remote_path", "ozone_conn_id")
+    assert OzoneUploadFileOperator.template_fields == ("local_path", "remote_path", "ozone_conn_id")
+    assert OzoneMoveOperator.template_fields == ("source_path", "dest_path", "ozone_conn_id")
+    assert OzoneCopyOperator.template_fields == ("source_path", "dest_path", "ozone_conn_id")
+    assert OzoneDownloadFileOperator.template_fields == ("remote_path", "local_path", "ozone_conn_id")
 
 
 class TestOzoneFileOperators:
