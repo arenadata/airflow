@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-DBT_PROJECT_DIR = Path(__file__).parents[3] / "dbt_projects" / "demo"
+DBT_PROJECT_DIR = Path(__file__).parent / "demo"
 
 
 def pytest_configure(config):

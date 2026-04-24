@@ -9,8 +9,8 @@ Requirements:
     pip install dbt-af dbt-postgres
 
 Key dbt-af features demonstrated:
-    - Domain-based DAG separation (staging, intermediate, marts → separate DAGs)
-    - Cross-schedule dependencies (daily → hourly → daily via ExternalTaskSensor)
+    - Domain-based DAG separation (staging, intermediate, marts - separate DAGs)
+    - Cross-schedule dependencies (daily - hourly - daily via ExternalTaskSensor)
     - Singular test tasks (not_null checks as inline tasks)
     - Snapshot support (customers_snapshot_ts)
     - Backfill DAGs (auto-generated alongside scheduled DAGs)
@@ -26,9 +26,7 @@ IMPORTANT — dbt-af project structure constraints:
     - Every model config MUST have: sql_cluster, py_cluster, daily_sql_cluster, bf_cluster
 
 Running tests:
-    breeze
     pip install dbt-af dbt-postgres
-    dbt compile --project-dir /opt/airflow/dbt_projects/demo --profiles-dir /opt/airflow/dbt_projects/demo
     pytest tests/integration/dbt/test_dbt_af_integration.py -v
 """
 
