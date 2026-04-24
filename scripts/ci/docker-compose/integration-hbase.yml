@@ -1,0 +1,38 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+---
+services:
+  hbase:
+    image: arenadata/hbase-thrift2:2.6.3
+    container_name: hbase
+    labels:
+      breeze.description: "Integration required for HBase hooks."
+    ports:
+      - "${HBASE_THRIFT_HOST_PORT}:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "echo status | /opt/hbase-2.6.3/bin/hbase shell -n 2>/dev/null | grep -q 'active'"]
+      interval: 10s
+      timeout: 30s
+      retries: 30
+    restart: "on-failure"
+
+  airflow:
+    environment:
+      - INTEGRATION_HBASE=true
+    depends_on:
+      hbase:
+        condition: service_healthy
