@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -171,7 +170,7 @@ class KerberosConfig:
         snapshot: OzoneConnSnapshot,
         conn_id: str | None,
     ) -> None | tuple[str, str]:
-        """Get HDFS (principal, keytab_path) from snapshot when both fields are present."""
+        """Return HDFS principal and resolved keytab from snapshot when configured."""
         principal_value = snapshot.hdfs_kerberos_principal
         keytab_value = snapshot.hdfs_kerberos_keytab
         if principal_value is None or keytab_value is None:
@@ -179,6 +178,21 @@ class KerberosConfig:
         return (
             str(principal_value),
             str(SecretResolver.get_secret_value(str(keytab_value), conn_id=conn_id)),
+        )
+
+    @staticmethod
+    def _hdfs_principal_password_from_snapshot(
+        snapshot: OzoneConnSnapshot,
+        conn_id: str | None,
+    ) -> None | tuple[str, str]:
+        """Return HDFS principal and resolved password from snapshot when configured."""
+        principal_value = snapshot.hdfs_kerberos_principal
+        password_value = snapshot.hdfs_kerberos_password
+        if principal_value is None or password_value is None:
+            return None
+        return (
+            str(principal_value),
+            str(SecretResolver.get_secret_value(str(password_value), conn_id=conn_id)),
         )
 
     @classmethod
@@ -200,13 +214,16 @@ class KerberosConfig:
 
     @classmethod
     def _get_hdfs_env(cls, snapshot: OzoneConnSnapshot, conn_id: str | None) -> dict[str, str]:
-        """Kerberos env for HDFS clients."""
+        """Build HDFS Kerberos subprocess env without exporting passwords."""
         env_vars: dict[str, str] = {}
 
         if snapshot.hdfs_kerberos_enabled:
-            pair = cls._hdfs_principal_keytab_from_snapshot(snapshot, conn_id)
-            if pair:
-                env_vars["HDFS_KERBEROS_PRINCIPAL"], env_vars["HDFS_KERBEROS_KEYTAB"] = pair
+            if snapshot.hdfs_kerberos_principal:
+                env_vars["HDFS_KERBEROS_PRINCIPAL"] = str(snapshot.hdfs_kerberos_principal)
+            if snapshot.hdfs_kerberos_keytab:
+                env_vars["HDFS_KERBEROS_KEYTAB"] = str(
+                    SecretResolver.get_secret_value(str(snapshot.hdfs_kerberos_keytab), conn_id=conn_id)
+                )
 
         return env_vars
 
@@ -266,40 +283,96 @@ class KerberosConfig:
         return False
 
     @classmethod
-    def kinit_from_env_vars(
+    def kinit_with_password(
         cls,
-        env_vars: dict[str, str],
-        existing_env: dict[str, str] | None = None,
+        principal: str,
+        password: str,
+        krb5_conf: str | None = None,
         *,
         snapshot: OzoneConnSnapshot,
     ) -> bool:
-        """Run kinit when principal and keytab are available."""
-        if not env_vars:
+        """
+        Perform Kerberos authentication using a password.
+
+        Runs system ``kinit principal`` and supplies the password through stdin.
+        """
+        if not principal or not password:
+            log.warning("Kerberos principal or password not provided, skipping kinit")
             return False
 
-        principal = env_vars.get("KERBEROS_PRINCIPAL")
-        keytab = env_vars.get("KERBEROS_KEYTAB")
-        if not principal or not keytab:
+        mask_secret(password)
+        env_overrides: dict[str, str] = {}
+        if krb5_conf:
+            if not FileHelper.is_readable_file(krb5_conf):
+                log.error("KRB5 config file is missing or not readable: %s", krb5_conf)
+                return False
+            env_overrides["KRB5_CONFIG"] = krb5_conf
+
+        if KerberosCliRunner.run_kerberos(
+            ["kinit", principal],
+            env_overrides=env_overrides or None,
+            timeout=snapshot.kinit_timeout_seconds,
+            input_text=f"{password}\n",
+        ):
+            log.info("Successfully authenticated with Kerberos: %s", principal)
+            return True
+        return False
+
+    @classmethod
+    def kinit_from_snapshot(
+        cls,
+        *,
+        snapshot: OzoneConnSnapshot,
+        conn_id: str | None = None,
+    ) -> bool:
+        """Run kinit using credentials defined in the connection snapshot."""
+        principal = snapshot.kerberos_principal
+        if not principal:
             return False
 
-        base_env = (existing_env if existing_env is not None else os.environ).copy()
-        krb5_conf = env_vars.get("KRB5_CONFIG") or base_env.get("KRB5_CONFIG")
-        return cls.kinit_with_keytab(principal, keytab, krb5_conf, snapshot=snapshot)
+        krb5_conf = snapshot.krb5_conf
+        if snapshot.kerberos_keytab:
+            keytab = SecretResolver.get_secret_value(str(snapshot.kerberos_keytab), conn_id=conn_id)
+            return cls.kinit_with_keytab(principal, str(keytab), krb5_conf, snapshot=snapshot)
+
+        if snapshot.kerberos_password:
+            password = SecretResolver.get_secret_value(str(snapshot.kerberos_password), conn_id=conn_id)
+            return cls.kinit_with_password(principal, str(password), krb5_conf, snapshot=snapshot)
+
+        return False
+
+    @classmethod
+    def kinit_hdfs_from_snapshot(
+        cls,
+        *,
+        snapshot: OzoneConnSnapshot,
+        conn_id: str | None = None,
+    ) -> bool:
+        """Run HDFS kinit using keytab or password credentials from snapshot."""
+        if not snapshot.hdfs_kerberos_enabled:
+            return False
+
+        pair = cls._hdfs_principal_keytab_from_snapshot(snapshot, conn_id)
+        if pair:
+            principal, keytab = pair
+            return cls.kinit_with_keytab(principal, keytab, snapshot.krb5_conf, snapshot=snapshot)
+
+        password_pair = cls._hdfs_principal_password_from_snapshot(snapshot, conn_id)
+        if password_pair:
+            principal, password = password_pair
+            return cls.kinit_with_password(principal, password, snapshot.krb5_conf, snapshot=snapshot)
+
+        return False
 
     @staticmethod
     def apply_env_vars(
         env_vars: dict[str, str], existing_env: dict[str, str] | None = None
     ) -> dict[str, str]:
         """Build Kerberos-related environment overrides for a subprocess."""
-        base_env = (existing_env if existing_env is not None else os.environ).copy()
+        base_env = (existing_env if existing_env is not None else {}).copy()
         overrides: dict[str, str] = env_vars.copy()
 
-        enabled = (
-            overrides.get(
-                "HADOOP_SECURITY_AUTHENTICATION", base_env.get("HADOOP_SECURITY_AUTHENTICATION", "")
-            ).lower()
-            == "kerberos"
-        )
+        enabled = overrides.get("HADOOP_SECURITY_AUTHENTICATION", "").lower() == "kerberos"
         if not enabled:
             return overrides
 
@@ -322,12 +395,6 @@ class KerberosConfig:
         ozone_conf_dir = overrides.get("OZONE_CONF_DIR")
         if ozone_conf_dir:
             overrides["HADOOP_CONF_DIR"] = ozone_conf_dir
-        else:
-            # Process-level fallback is intentionally limited to OZONE_CONF_DIR only.
-            base_ozone_conf_dir = base_env.get("OZONE_CONF_DIR")
-            if base_ozone_conf_dir:
-                overrides["OZONE_CONF_DIR"] = base_ozone_conf_dir
-                overrides["HADOOP_CONF_DIR"] = base_ozone_conf_dir
         return overrides
 
     @classmethod
@@ -363,7 +430,7 @@ class KerberosConfig:
         snapshot: OzoneConnSnapshot,
         conn_id: str,
     ) -> dict[str, str] | None:
-        """Build Kerberos env for HDFS clients with unified logging and errors."""
+        """Build HDFS Kerberos subprocess env with unified logging and errors."""
         try:
             kerberos_env_vars = cls.get_env_vars(snapshot, scope="hdfs", conn_id=conn_id)
             if kerberos_env_vars:
@@ -398,14 +465,37 @@ class KerberosConfig:
                 "Cached Kerberos ticket flag is set but no valid ticket found; re-initializing for connection '%s'",
                 conn_id,
             )
-
-        kerberos_env_vars = cls.get_env_vars(snapshot, scope="ozone", conn_id=conn_id)
-        principal = kerberos_env_vars.get("KERBEROS_PRINCIPAL")
-        keytab = kerberos_env_vars.get("KERBEROS_KEYTAB")
-        if not principal or not keytab:
+        if not snapshot.kerberos_enabled:
             return False
 
-        if not cls.kinit_from_env_vars(kerberos_env_vars, snapshot=snapshot):
+        principal = snapshot.kerberos_principal
+        keytab_configured = bool(snapshot.kerberos_keytab)
+        password_configured = bool(snapshot.kerberos_password)
+        if not principal:
+            if snapshot.kerberos_enabled:
+                raise AirflowException(
+                    f"Kerberos authentication is enabled for connection '{conn_id}' "
+                    "but 'kerberos_principal' is missing."
+                )
+            return False
+        if not keytab_configured and not password_configured:
+            if snapshot.kerberos_enabled:
+                raise AirflowException(
+                    f"Kerberos authentication is enabled for connection '{conn_id}' "
+                    "but neither 'kerberos_keytab' nor 'kerberos_password' is configured."
+                )
+            return False
+
+        try:
+            authenticated = cls.kinit_from_snapshot(
+                snapshot=snapshot,
+                conn_id=conn_id,
+            )
+        except ValueError as err:
+            raise AirflowException(
+                f"Invalid Kerberos configuration in connection '{conn_id}': {err}"
+            ) from err
+        if not authenticated:
             raise AirflowException(
                 f"Kerberos authentication failed for connection '{conn_id}' using principal '{principal}'."
             )
@@ -420,20 +510,6 @@ class KerberosConfig:
             timeout=snapshot.kinit_timeout_seconds,
             log_output=False,
         )
-
-    @staticmethod
-    def is_enabled(kerberos_env: dict[str, str] | None) -> bool:
-        """Return True if Kerberos is effectively enabled."""
-        if not kerberos_env:
-            return False
-        return str(kerberos_env.get("HADOOP_SECURITY_AUTHENTICATION", "")).lower() == "kerberos"
-
-    @staticmethod
-    def resolve_config_dir(kerberos_env: dict[str, str] | None) -> str | None:
-        """Return effective config dir for Kerberos-enabled Ozone CLI."""
-        if not kerberos_env:
-            return None
-        return kerberos_env.get("OZONE_CONF_DIR")
 
     @staticmethod
     def check_config_files_exist(

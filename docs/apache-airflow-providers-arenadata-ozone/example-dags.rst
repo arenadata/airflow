@@ -154,7 +154,8 @@ To switch mode for this single usage DAG, point
 
 For Kerberos mode, required connection-extra keys include
 ``hadoop_security_authentication=kerberos``, ``kerberos_principal``,
-``kerberos_keytab``, ``krb5_conf``, and ``ozone_conf_dir``.
+either ``kerberos_keytab`` or ``kerberos_password``, optional ``krb5_conf``,
+and ``ozone_conf_dir``.
 
 Example trigger config:
 

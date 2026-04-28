@@ -112,7 +112,9 @@ class TestHdfsToOzoneOperator:
         "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which",
         return_value="/usr/bin/hadoop",
     )
-    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.KerberosConfig.kinit_with_keytab")
+    @patch(
+        "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.KerberosConfig.kinit_hdfs_from_snapshot"
+    )
     @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.BaseHook.get_connection")
     @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.CliRunner.run_process")
     def test_execute_wires_hdfs_kerberos_env(
@@ -143,10 +145,8 @@ class TestHdfsToOzoneOperator:
         operator.execute(context={})
 
         mock_kinit.assert_called_once_with(
-            "hdfs@EXAMPLE.COM",
-            "/etc/security/keytabs/hdfs.keytab",
-            "/etc/krb5.conf",
             snapshot=operator._hdfs_connection_snapshot,
+            conn_id="hdfs_default",
         )
         env_overrides = mock_run_process.call_args.kwargs["env_overrides"]
         assert env_overrides["HADOOP_SECURITY_AUTHENTICATION"] == "kerberos"
@@ -159,7 +159,54 @@ class TestHdfsToOzoneOperator:
         "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which",
         return_value="/usr/bin/hadoop",
     )
-    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.KerberosConfig.kinit_with_keytab")
+    @patch(
+        "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.KerberosConfig.kinit_hdfs_from_snapshot"
+    )
+    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.BaseHook.get_connection")
+    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.CliRunner.run_process")
+    def test_execute_wires_hdfs_kerberos_password_without_exporting_secret(
+        self,
+        mock_run_process: MagicMock,
+        mock_get_connection: MagicMock,
+        mock_kinit: MagicMock,
+        _mock_which: MagicMock,
+    ):
+        mock_kinit.return_value = True
+        conn = MagicMock()
+        conn.extra_dejson = {
+            "hdfs_kerberos_enabled": "true",
+            "hdfs_kerberos_principal": "hdfs@EXAMPLE.COM",
+            "hdfs_kerberos_password": "secret_password",
+            "krb5_conf": "/etc/krb5.conf",
+        }
+        mock_get_connection.return_value = conn
+
+        operator = HdfsToOzoneOperator(
+            task_id="hdfs_to_ozone_kerberos_password",
+            source_path="hdfs://nn:8020/user/data",
+            dest_path="ofs://om:9862/vol1/bucket1/data",
+            hdfs_conn_id="hdfs_default",
+        )
+        operator.execute(context={})
+
+        mock_kinit.assert_called_once_with(
+            snapshot=operator._hdfs_connection_snapshot,
+            conn_id="hdfs_default",
+        )
+        env_overrides = mock_run_process.call_args.kwargs["env_overrides"]
+        assert env_overrides["HADOOP_SECURITY_AUTHENTICATION"] == "kerberos"
+        assert env_overrides["HDFS_KERBEROS_PRINCIPAL"] == "hdfs@EXAMPLE.COM"
+        assert env_overrides["KRB5_CONFIG"] == "/etc/krb5.conf"
+        assert "HDFS_KERBEROS_PASSWORD" not in env_overrides
+        assert "HDFS_KERBEROS_KEYTAB" not in env_overrides
+
+    @patch(
+        "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which",
+        return_value="/usr/bin/hadoop",
+    )
+    @patch(
+        "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.KerberosConfig.kinit_hdfs_from_snapshot"
+    )
     @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.BaseHook.get_connection")
     @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.CliRunner.run_process")
     def test_execute_fails_when_hdfs_kerberos_kinit_fails(

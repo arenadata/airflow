@@ -72,7 +72,6 @@ def _cleanup_volume(hook: OzoneAdminHook) -> None:
 
 @pytest.mark.integration("ozone")
 class TestOzoneAdminHookIntegration:
-
     def setup_method(self):
         self.hook = OzoneAdminHook(ozone_conn_id=CONN_ID, retry_attempts=1)
         _cleanup_volume(self.hook)
@@ -126,7 +125,6 @@ class TestOzoneAdminHookIntegration:
 
 @pytest.mark.integration("ozone")
 class TestOzoneFsHookIntegration:
-
     def setup_method(self):
         self.admin = OzoneAdminHook(ozone_conn_id=CONN_ID, retry_attempts=1)
         self.hook = OzoneFsHook(ozone_conn_id=CONN_ID, retry_attempts=1)

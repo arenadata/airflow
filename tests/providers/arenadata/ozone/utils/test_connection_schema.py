@@ -67,8 +67,12 @@ def test_from_connection_parses_security_contract_and_runtime_overrides() -> Non
                 "hadoop_security_authentication": "kerberos",
                 "kerberos_principal": "user@REALM",
                 "kerberos_keytab": "/tmp/user.keytab",
+                "kerberos_password": "secret://vault/ozone/kerberos_password",
                 "krb5_conf": "/tmp/krb5.conf",
                 "ozone_conf_dir": "/opt/airflow/ozone-conf",
+                "hdfs_kerberos_principal": "hdfs@REALM",
+                "hdfs_kerberos_keytab": "/tmp/hdfs.keytab",
+                "hdfs_kerberos_password": "secret://vault/hdfs/kerberos_password",
                 "kinit_timeout_seconds": "42",
                 "core_site_xml": "core-custom.xml",
                 "ozone_site_xml": "ozone-custom.xml",
@@ -83,8 +87,12 @@ def test_from_connection_parses_security_contract_and_runtime_overrides() -> Non
     assert snapshot.hadoop_security_authentication == "kerberos"
     assert snapshot.kerberos_principal == "user@REALM"
     assert snapshot.kerberos_keytab == "/tmp/user.keytab"
+    assert snapshot.kerberos_password == "secret://vault/ozone/kerberos_password"
     assert snapshot.krb5_conf == "/tmp/krb5.conf"
     assert snapshot.ozone_conf_dir == "/opt/airflow/ozone-conf"
+    assert snapshot.hdfs_kerberos_principal == "hdfs@REALM"
+    assert snapshot.hdfs_kerberos_keytab == "/tmp/hdfs.keytab"
+    assert snapshot.hdfs_kerberos_password == "secret://vault/hdfs/kerberos_password"
     assert snapshot.kinit_timeout_seconds == 42
     assert snapshot.core_site_xml == "core-custom.xml"
     assert snapshot.ozone_site_xml == "ozone-custom.xml"

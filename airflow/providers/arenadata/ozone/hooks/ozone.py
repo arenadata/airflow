@@ -114,11 +114,7 @@ class OzoneCliHook(BaseHook):
     @cached_property
     def _cached_effective_config_dir(self) -> str | None:
         """Config dir used for CLI --config and subprocess environment."""
-        # Prefer explicit connection-level config dir for all modes (plain/SSL/Kerberos).
-        extra_config_dir = self.connection_snapshot.ozone_conf_dir
-        if extra_config_dir:
-            return extra_config_dir
-        return KerberosConfig.resolve_config_dir(self._cached_kerberos_env)
+        return self.connection_snapshot.ozone_conf_dir
 
     def _prepared_cli_env(self) -> dict[str, str]:
         """Build subprocess environment for Ozone CLI calls."""
@@ -165,7 +161,7 @@ class OzoneCliHook(BaseHook):
 
     def _prepare_cli_command(self, cmd: list[str]) -> list[str]:
         """Add --config for Kerberos-enabled commands when available."""
-        if not KerberosConfig.is_enabled(self._cached_kerberos_env):
+        if not self.connection_snapshot.kerberos_enabled:
             return cmd
 
         if "--config" in cmd:

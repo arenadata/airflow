@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.utils.connection_schema import OzoneConnSnapshot
 from airflow.providers.arenadata.ozone.utils.security import (
     KerberosConfig,
@@ -85,6 +86,19 @@ class TestGetKerberosEnvVars:
         assert result["KERBEROS_PRINCIPAL"] == "user@REALM"
         assert result["KERBEROS_KEYTAB"] == "/etc/keytab/user.keytab"
 
+    def test_ozone_kerberos_password_is_not_exported_to_env(self):
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            hadoop_security_authentication="kerberos",
+            kerberos_principal="user@REALM",
+            kerberos_password="secret_password",
+        )
+        result = KerberosConfig.get_env_vars(snapshot, scope="ozone")
+        assert result["HADOOP_SECURITY_AUTHENTICATION"] == "kerberos"
+        assert result["KERBEROS_PRINCIPAL"] == "user@REALM"
+        assert "KERBEROS_PASSWORD" not in result
+
     def test_ozone_scope_does_not_include_hdfs_kerberos_env(self):
         snapshot = OzoneConnSnapshot(
             host="om",
@@ -116,6 +130,18 @@ class TestGetKerberosEnvVars:
         assert "KERBEROS_PRINCIPAL" not in result
         assert result["HDFS_KERBEROS_PRINCIPAL"] == "hdfs@REALM"
         assert result["HDFS_KERBEROS_KEYTAB"] == "/etc/keytab/hdfs.keytab"
+
+    def test_hdfs_kerberos_password_is_not_exported_to_env(self):
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            hdfs_kerberos_enabled=True,
+            hdfs_kerberos_principal="hdfs@REALM",
+            hdfs_kerberos_password="secret_password",
+        )
+        result = KerberosConfig.get_env_vars(snapshot, scope="hdfs")
+        assert result["HDFS_KERBEROS_PRINCIPAL"] == "hdfs@REALM"
+        assert "HDFS_KERBEROS_PASSWORD" not in result
 
 
 class TestApplySslEnvVars:
@@ -165,16 +191,25 @@ class TestApplyKerberosEnvVars:
         assert "-Dhadoop.security.authentication=kerberos" in result.get("HADOOP_OPTS", "")
         assert "-Dhadoop.security.authentication=kerberos" in result.get("OZONE_OPTS", "")
 
-    def test_reuses_existing_ozone_conf_dir_when_kerberos_enabled(self):
+    def test_reuses_existing_jvm_opts_when_kerberos_enabled(self):
         env_vars = {"HADOOP_SECURITY_AUTHENTICATION": "kerberos"}
-        existing = {"OZONE_CONF_DIR": "/opt/airflow/ozone-conf"}
+        existing = {
+            "HADOOP_OPTS": "-Dexisting.hadoop=true",
+            "OZONE_OPTS": "-Dexisting.ozone=true",
+        }
         result = KerberosConfig.apply_env_vars(env_vars, existing)
-        assert result["HADOOP_CONF_DIR"] == "/opt/airflow/ozone-conf"
-        assert result["OZONE_CONF_DIR"] == "/opt/airflow/ozone-conf"
+        assert "-Dexisting.hadoop=true" in result["HADOOP_OPTS"]
+        assert "-Dhadoop.security.authentication=kerberos" in result["HADOOP_OPTS"]
+        assert "-Dexisting.ozone=true" in result["OZONE_OPTS"]
+        assert "-Dhadoop.security.authentication=kerberos" in result["OZONE_OPTS"]
+        assert "-Dozone.security.enabled=true" in result["OZONE_OPTS"]
 
-    def test_does_not_inject_default_conf_dir(self):
+    def test_does_not_use_process_env_as_config_source(self):
         env_vars = {"HADOOP_SECURITY_AUTHENTICATION": "kerberos"}
-        result = KerberosConfig.apply_env_vars(env_vars, existing_env={})
+        result = KerberosConfig.apply_env_vars(
+            env_vars,
+            existing_env={"OZONE_CONF_DIR": "/opt/airflow/ozone-conf"},
+        )
         assert "HADOOP_CONF_DIR" not in result
         assert "OZONE_CONF_DIR" not in result
 
@@ -196,6 +231,187 @@ class TestSnapshotDrivenKerberosRuntime:
             snapshot=snapshot,
         )
         assert mock_run_kerberos.call_args.kwargs["timeout"] == 42
+
+    @patch("airflow.providers.arenadata.ozone.utils.security.FileHelper.is_readable_file", return_value=True)
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosCliRunner.run_kerberos")
+    def test_kinit_with_password_uses_stdin(self, mock_run_kerberos, _mock_readable):
+        mock_run_kerberos.return_value = True
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            kinit_timeout_seconds=42,
+        )
+        assert KerberosConfig.kinit_with_password(
+            "user@REALM",
+            "secret_password",
+            "/tmp/krb5.conf",
+            snapshot=snapshot,
+        )
+        mock_run_kerberos.assert_called_once_with(
+            ["kinit", "user@REALM"],
+            env_overrides={"KRB5_CONFIG": "/tmp/krb5.conf"},
+            timeout=42,
+            input_text="secret_password\n",
+        )
+
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_with_password")
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_with_keytab")
+    def test_kinit_from_snapshot_prefers_keytab_when_both_are_configured(
+        self,
+        mock_kinit_with_keytab: MagicMock,
+        mock_kinit_with_password: MagicMock,
+    ):
+        mock_kinit_with_keytab.return_value = True
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            kerberos_principal="user@REALM",
+            kerberos_keytab="/tmp/user.keytab",
+            kerberos_password="secret_password",
+        )
+        assert KerberosConfig.kinit_from_snapshot(
+            snapshot=snapshot,
+        )
+        mock_kinit_with_keytab.assert_called_once_with(
+            "user@REALM",
+            "/tmp/user.keytab",
+            None,
+            snapshot=snapshot,
+        )
+        mock_kinit_with_password.assert_not_called()
+
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_with_password")
+    def test_kinit_from_snapshot_uses_password_without_keytab(
+        self,
+        mock_kinit_with_password: MagicMock,
+    ):
+        mock_kinit_with_password.return_value = True
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            kerberos_principal="user@REALM",
+            kerberos_password="secret_password",
+        )
+        assert KerberosConfig.kinit_from_snapshot(
+            snapshot=snapshot,
+        )
+        mock_kinit_with_password.assert_called_once_with(
+            "user@REALM",
+            "secret_password",
+            None,
+            snapshot=snapshot,
+        )
+
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_with_keytab")
+    def test_kinit_from_snapshot_uses_snapshot_keytab_and_krb5_conf(
+        self,
+        mock_kinit_with_keytab: MagicMock,
+    ):
+        mock_kinit_with_keytab.return_value = True
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            kerberos_principal="user@REALM",
+            kerberos_keytab="/tmp/user.keytab",
+            krb5_conf="/tmp/krb5.conf",
+        )
+        assert KerberosConfig.kinit_from_snapshot(snapshot=snapshot)
+        mock_kinit_with_keytab.assert_called_once_with(
+            "user@REALM",
+            "/tmp/user.keytab",
+            "/tmp/krb5.conf",
+            snapshot=snapshot,
+        )
+
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_with_keytab")
+    def test_kinit_hdfs_from_snapshot_uses_hdfs_snapshot_credentials(
+        self,
+        mock_kinit_with_keytab: MagicMock,
+    ):
+        mock_kinit_with_keytab.return_value = True
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            hdfs_kerberos_enabled=True,
+            hdfs_kerberos_principal="hdfs@REALM",
+            hdfs_kerberos_keytab="/tmp/hdfs.keytab",
+            krb5_conf="/tmp/krb5.conf",
+        )
+        assert KerberosConfig.kinit_hdfs_from_snapshot(snapshot=snapshot, conn_id="hdfs_default")
+        mock_kinit_with_keytab.assert_called_once_with(
+            "hdfs@REALM",
+            "/tmp/hdfs.keytab",
+            "/tmp/krb5.conf",
+            snapshot=snapshot,
+        )
+
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_with_password")
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_with_keytab")
+    def test_kinit_hdfs_from_snapshot_prefers_keytab_when_both_are_configured(
+        self,
+        mock_kinit_with_keytab: MagicMock,
+        mock_kinit_with_password: MagicMock,
+    ):
+        mock_kinit_with_keytab.return_value = True
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            hdfs_kerberos_enabled=True,
+            hdfs_kerberos_principal="hdfs@REALM",
+            hdfs_kerberos_keytab="/tmp/hdfs.keytab",
+            hdfs_kerberos_password="secret_password",
+        )
+        assert KerberosConfig.kinit_hdfs_from_snapshot(snapshot=snapshot, conn_id="hdfs_default")
+        mock_kinit_with_keytab.assert_called_once_with(
+            "hdfs@REALM",
+            "/tmp/hdfs.keytab",
+            None,
+            snapshot=snapshot,
+        )
+        mock_kinit_with_password.assert_not_called()
+
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_with_password")
+    def test_kinit_hdfs_from_snapshot_uses_password_without_keytab(
+        self,
+        mock_kinit_with_password: MagicMock,
+    ):
+        mock_kinit_with_password.return_value = True
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            hdfs_kerberos_enabled=True,
+            hdfs_kerberos_principal="hdfs@REALM",
+            hdfs_kerberos_password="secret_password",
+            krb5_conf="/tmp/krb5.conf",
+        )
+        assert KerberosConfig.kinit_hdfs_from_snapshot(snapshot=snapshot, conn_id="hdfs_default")
+        mock_kinit_with_password.assert_called_once_with(
+            "hdfs@REALM",
+            "secret_password",
+            "/tmp/krb5.conf",
+            snapshot=snapshot,
+        )
+
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_with_password")
+    def test_kinit_from_snapshot_uses_snapshot_password_and_krb5_conf(
+        self,
+        mock_kinit_with_password: MagicMock,
+    ):
+        mock_kinit_with_password.return_value = True
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            kerberos_principal="user@REALM",
+            kerberos_password="secret_password",
+            krb5_conf="/tmp/krb5.conf",
+        )
+        assert KerberosConfig.kinit_from_snapshot(snapshot=snapshot)
+        mock_kinit_with_password.assert_called_once_with(
+            "user@REALM",
+            "secret_password",
+            "/tmp/krb5.conf",
+            snapshot=snapshot,
+        )
 
     def test_check_config_files_exist_uses_snapshot_names(self, tmp_path: Path):
         (tmp_path / "custom-core.xml").write_text("", encoding="utf-8")
@@ -219,22 +435,22 @@ class TestSnapshotDrivenKerberosRuntime:
             log_output=False,
         )
 
-    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_from_env_vars")
     @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.has_valid_ticket")
-    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.get_env_vars")
+    @patch("airflow.providers.arenadata.ozone.utils.security.KerberosConfig.kinit_from_snapshot")
     def test_ensure_ticket_rechecks_lifetime_when_cached(
         self,
-        mock_get_env_vars: MagicMock,
+        mock_kinit_from_snapshot: MagicMock,
         mock_has_valid_ticket: MagicMock,
-        mock_kinit_from_env_vars: MagicMock,
     ):
-        snapshot = OzoneConnSnapshot(host="om", port=9862)
-        mock_get_env_vars.return_value = {
-            "KERBEROS_PRINCIPAL": "user@REALM",
-            "KERBEROS_KEYTAB": "/tmp/user.keytab",
-        }
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            hadoop_security_authentication="kerberos",
+            kerberos_principal="user@REALM",
+            kerberos_keytab="/tmp/user.keytab",
+        )
         mock_has_valid_ticket.return_value = False
-        mock_kinit_from_env_vars.return_value = True
+        mock_kinit_from_snapshot.return_value = True
 
         assert KerberosConfig.ensure_ticket(
             snapshot=snapshot,
@@ -242,4 +458,18 @@ class TestSnapshotDrivenKerberosRuntime:
             kerberos_ticket_ready=True,
         )
         mock_has_valid_ticket.assert_called_once_with(snapshot=snapshot)
-        mock_kinit_from_env_vars.assert_called_once()
+        mock_kinit_from_snapshot.assert_called_once_with(snapshot=snapshot, conn_id="ozone_default")
+
+    def test_ensure_ticket_fails_fast_when_kerberos_credentials_missing(self):
+        snapshot = OzoneConnSnapshot(
+            host="om",
+            port=9862,
+            hadoop_security_authentication="kerberos",
+            kerberos_principal="user@REALM",
+        )
+        with pytest.raises(AirflowException, match="neither 'kerberos_keytab' nor 'kerberos_password'"):
+            KerberosConfig.ensure_ticket(
+                snapshot=snapshot,
+                conn_id="ozone_default",
+                kerberos_ticket_ready=False,
+            )
