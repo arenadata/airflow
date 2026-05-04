@@ -186,6 +186,20 @@ class TestOzoneAdminHook:
         mock_run_with_retry.assert_called_once()
 
     @patch(MOCK_RUN_RETRY_PATH)
+    def test_create_volume_already_exists_can_fail_fast(
+        self, mock_run_with_retry: MagicMock, admin_hook: OzoneAdminHook
+    ):
+        mock_run_with_retry.return_value = subprocess.CompletedProcess(
+            args=["ozone", "sh", "volume", "create", "/test_vol"],
+            returncode=255,
+            stdout="",
+            stderr="VOLUME_ALREADY_EXISTS Volume already exists",
+        )
+        with pytest.raises(AirflowException, match="Volume already exists"):
+            admin_hook.create_volume(volume_name="test_vol", if_exists="error")
+        mock_run_with_retry.assert_called_once()
+
+    @patch(MOCK_RUN_RETRY_PATH)
     def test_create_bucket_raises_on_non_idempotent_failure(
         self, mock_run_with_retry: MagicMock, admin_hook: OzoneAdminHook
     ):
@@ -302,6 +316,114 @@ class TestOzoneFsHook:
         with pytest.raises(AirflowException):
             ozone_fs_hook.upload_key(str(missing_path), "ofs://vol1/bucket1/file.txt")
         mock_run_cli.assert_not_called()
+
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_upload_key_uses_plain_put_for_new_target(
+        self, mock_run_cli: MagicMock, ozone_fs_hook: OzoneFsHook, tmp_path
+    ):
+        local_path = tmp_path / "payload.txt"
+        local_path.write_text("payload", encoding="utf-8")
+        mock_run_cli.side_effect = [
+            subprocess.CompletedProcess(
+                args=["ozone", "fs", "-test", "-e", "ofs://vol1/bucket1/file.txt"],
+                returncode=1,
+                stdout="",
+                stderr="not found",
+            ),
+            subprocess.CompletedProcess(
+                args=["ozone", "fs", "-put", str(local_path), "ofs://vol1/bucket1/file.txt"],
+                returncode=0,
+                stdout="",
+                stderr="",
+            ),
+        ]
+
+        ozone_fs_hook.upload_key(str(local_path), "ofs://vol1/bucket1/file.txt")
+
+        assert mock_run_cli.call_count == 2
+        assert mock_run_cli.call_args_list[1].args[0] == [
+            "ozone",
+            "fs",
+            "-put",
+            str(local_path),
+            "ofs://vol1/bucket1/file.txt",
+        ]
+
+    @pytest.mark.parametrize("if_exists", ["error", "ignore", "overwrite"])
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_upload_key_existing_target_policy(
+        self,
+        mock_run_cli: MagicMock,
+        ozone_fs_hook: OzoneFsHook,
+        tmp_path,
+        if_exists: str,
+    ):
+        local_path = tmp_path / "payload.txt"
+        local_path.write_text("payload", encoding="utf-8")
+        exists_result = subprocess.CompletedProcess(
+            args=["ozone", "fs", "-test", "-e", "ofs://vol1/bucket1/file.txt"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+        put_result = subprocess.CompletedProcess(
+            args=["ozone", "fs", "-put", "-f", str(local_path), "ofs://vol1/bucket1/file.txt"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+        mock_run_cli.side_effect = [exists_result, put_result]
+
+        if if_exists == "error":
+            with pytest.raises(AirflowException, match="Remote path already exists"):
+                ozone_fs_hook.upload_key(
+                    str(local_path),
+                    "ofs://vol1/bucket1/file.txt",
+                    if_exists=if_exists,
+                )
+            assert mock_run_cli.call_count == 1
+            return
+
+        ozone_fs_hook.upload_key(
+            str(local_path),
+            "ofs://vol1/bucket1/file.txt",
+            if_exists=if_exists,
+        )
+        expected_calls = 1 if if_exists == "ignore" else 2
+        assert mock_run_cli.call_count == expected_calls
+        if if_exists == "overwrite":
+            assert mock_run_cli.call_args_list[1].args[0] == [
+                "ozone",
+                "fs",
+                "-put",
+                "-f",
+                str(local_path),
+                "ofs://vol1/bucket1/file.txt",
+            ]
+
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_copy_path_existing_destination_fails_fast(
+        self, mock_run_cli: MagicMock, ozone_fs_hook: OzoneFsHook
+    ):
+        mock_run_cli.side_effect = [
+            subprocess.CompletedProcess(
+                args=["ozone", "fs", "-test", "-e", "ofs://vol1/bucket1"],
+                returncode=0,
+                stdout="",
+                stderr="",
+            ),
+            subprocess.CompletedProcess(
+                args=["ozone", "fs", "-test", "-e", "ofs://vol1/bucket1/dst.txt"],
+                returncode=0,
+                stdout="",
+                stderr="",
+            ),
+        ]
+
+        with pytest.raises(AirflowException, match="Destination path already exists"):
+            ozone_fs_hook.copy_path("ofs://vol1/bucket1/src.txt", "ofs://vol1/bucket1/dst.txt")
+
+        assert mock_run_cli.call_count == 2
 
     @patch(MOCK_RUN_RETRY_PATH)
     def test_test_connection_failure(self, mock_run_cli_check: MagicMock, ozone_fs_hook: OzoneFsHook):

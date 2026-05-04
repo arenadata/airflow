@@ -69,7 +69,7 @@ class TestOzoneAdminOperators:
         OzoneSetQuotaOperator(task_id="set_quota", volume="test_vol", quota="1TB").execute(context={})
 
         assert mock_admin_hook.call_count == 3
-        hook.create_volume.assert_called_once_with("test_vol", None, timeout=3600)
+        hook.create_volume.assert_called_once_with("test_vol", None, timeout=3600, if_exists="ignore")
         hook.delete_volume.assert_called_once_with("test_vol", True, True, timeout=3600)
         hook.set_quota.assert_called_once_with(volume="test_vol", quota="1TB", bucket=None, timeout=300)
 
@@ -109,7 +109,7 @@ class TestOzoneAdminOperators:
             OzoneCreatePathOperator(task_id="create_path", path="ofs://vol1/b1/dir"),
             "create_path",
             ("ofs://vol1/b1/dir",),
-            {"timeout": 300},
+            {"timeout": 300, "if_exists": "ignore"},
             None,
         ),
         (
@@ -134,7 +134,7 @@ class TestOzoneAdminOperators:
             ),
             "copy_path",
             ("ofs://vol1/b1/src.txt", "ofs://vol1/b1/dst.txt"),
-            {"timeout": 3600},
+            {"timeout": 3600, "if_exists": "error"},
             None,
         ),
         (
@@ -145,7 +145,7 @@ class TestOzoneAdminOperators:
             ),
             "move",
             ("ofs://vol1/b1/src.txt", "ofs://vol1/b1/dst.txt"),
-            {"timeout": 3600},
+            {"timeout": 3600, "if_exists": "error"},
             None,
         ),
     ],
@@ -207,15 +207,15 @@ class TestOzoneFileOperators:
         )
         valid.execute(context={})
         hook.upload_key.assert_called_once()
+        assert hook.upload_key.call_args.kwargs["if_exists"] == "error"
 
     @pytest.mark.parametrize(
-        "is_readable,file_size,remote_exists,overwrite,expected_error",
+        "is_readable,file_size,expected_error",
         [
-            (False, 1, False, False, "Local file not found or is not readable"),
-            (True, -1, False, False, "size is unavailable or non-positive"),
-            (True, 0, False, False, "size is unavailable or non-positive"),
-            (True, 1025, False, False, "exceeds configured limit"),
-            (True, 100, True, False, "already exists and overwrite is False"),
+            (False, 1, "Local file not found or is not readable"),
+            (True, -1, "size is unavailable or non-positive"),
+            (True, 0, "size is unavailable or non-positive"),
+            (True, 1025, "exceeds configured limit"),
         ],
     )
     @patch("airflow.providers.arenadata.ozone.operators.ozone.OzoneFsHook")
@@ -228,13 +228,10 @@ class TestOzoneFileOperators:
         mock_ozone_fs_hook: MagicMock,
         is_readable: bool,
         file_size: int,
-        remote_exists: bool,
-        overwrite: bool,
         expected_error: str,
     ):
         hook = mock_ozone_fs_hook.return_value
         hook.connection_snapshot.max_content_size_bytes = 1024
-        hook.exists.return_value = remote_exists
         mock_is_readable_file.return_value = is_readable
         mock_get_file_size_bytes.return_value = file_size
 
@@ -242,7 +239,6 @@ class TestOzoneFileOperators:
             task_id="upload_file_guard",
             local_path="/tmp/src.txt",
             remote_path="ofs://vol1/b1/src.txt",
-            overwrite=overwrite,
         )
         with pytest.raises(AirflowException, match=expected_error):
             operator.execute(context={})
@@ -259,7 +255,6 @@ class TestOzoneFileOperators:
     ):
         hook = mock_ozone_fs_hook.return_value
         hook.connection_snapshot.max_content_size_bytes = 2048
-        hook.exists.return_value = False
         mock_is_readable_file.return_value = True
         mock_get_file_size_bytes.return_value = 1024
 
@@ -270,7 +265,12 @@ class TestOzoneFileOperators:
         )
         operator.execute(context={})
 
-        hook.upload_key.assert_called_once_with("/tmp/src.txt", "ofs://vol1/b1/src.txt", timeout=3600)
+        hook.upload_key.assert_called_once_with(
+            "/tmp/src.txt",
+            "ofs://vol1/b1/src.txt",
+            timeout=3600,
+            if_exists="error",
+        )
 
     @pytest.mark.parametrize(
         "data_size,expected_error",

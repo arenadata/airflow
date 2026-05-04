@@ -61,7 +61,7 @@ Example:
         task_id="migrate_to_ozone",
         source_path="hdfs:///warehouse/source_table",
         dest_path="ofs://om-service/analytics/landing/source_table",
-        hdfs_conn_id="hdfs_default",
+        hdfs_conn_id="hdfs_admin_default",
     )
 
 OzoneBackupOperator

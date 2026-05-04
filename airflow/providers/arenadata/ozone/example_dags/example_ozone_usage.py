@@ -38,7 +38,10 @@ from datetime import timedelta
 from pathlib import PurePosixPath
 
 from airflow import DAG
+from airflow.exceptions import AirflowException
 from airflow.models.param import Param
+from airflow.operators.python import PythonOperator
+from airflow.providers.arenadata.ozone.hooks.ozone import OzoneAdminHook
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
     OzoneCreatePathOperator,
@@ -56,6 +59,15 @@ DEFAULT_FILE = os.getenv("OZONE_EXAMPLE_USAGE_FILE") or "file.txt"
 DEFAULT_CONN_ID = os.getenv("OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID") or "ozone_admin_default"
 DEFAULT_VOLUME_QUOTA = os.getenv("OZONE_EXAMPLE_USAGE_VOLUME_QUOTA") or "10GB"
 DEFAULT_BUCKET_QUOTA = os.getenv("OZONE_EXAMPLE_USAGE_BUCKET_QUOTA") or "10GB"
+
+
+def _check_ozone_auth(**context) -> None:
+    conn_id = context["params"]["admin_conn_id"]
+    hook = OzoneAdminHook(ozone_conn_id=conn_id)
+    ok, message = hook.test_connection()
+    if not ok:
+        raise AirflowException(message)
+
 
 default_args = {
     "owner": "airflow",
@@ -100,6 +112,12 @@ with DAG(
         f"{PurePosixPath('{{ params.volume }}', '{{ params.bucket }}', '{{ params.directory }}', '{{ params.file_name }}')}"
     )
 
+    check_ozone_auth = PythonOperator(
+        task_id="check_ozone_auth",
+        python_callable=_check_ozone_auth,
+        execution_timeout=timedelta(seconds=30),
+    )
+
     create_vol = OzoneCreateVolumeOperator(
         task_id="create_volume",
         volume_name="{{ params.volume }}",
@@ -140,4 +158,4 @@ with DAG(
         cli_timeout=60,
     )
 
-    create_vol >> create_bucket_native >> fs_mkdir >> fs_put >> wait_fs_file
+    check_ozone_auth >> create_vol >> create_bucket_native >> fs_mkdir >> fs_put >> wait_fs_file

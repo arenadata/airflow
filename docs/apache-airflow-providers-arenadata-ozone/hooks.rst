@@ -52,6 +52,12 @@ Typical API areas:
 * move and copy data inside Ozone;
 * inspect key metadata and selected key properties.
 
+Write helpers use an explicit ``if_exists`` policy for already existing targets:
+
+* ``error``: fail fast with a clear Airflow exception;
+* ``ignore``: treat the existing target as success;
+* ``overwrite``: only for file uploads, where it maps to ``ozone fs -put -f``.
+
 This is the main hook behind filesystem operators and sensors.
 
 OzoneAdminHook
@@ -67,6 +73,10 @@ Typical API areas:
 * inspect volume and bucket metadata;
 * set and clear quotas;
 * list volumes and buckets.
+
+Volume and bucket creation defaults to idempotent ``if_exists="ignore"`` and
+can be switched to ``if_exists="error"`` when a DAG should fail if the resource
+already exists.
 
 This hook uses ``ozone_admin_default`` by default.
 

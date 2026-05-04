@@ -45,7 +45,7 @@ def test_from_connection_requires_host_and_port_in_strict_mode(
 def test_from_connection_relaxed_mode_defaults_and_non_dict_extra() -> None:
     snapshot = OzoneConnSnapshot.from_connection(
         _conn(None, None, "not-a-dict"),
-        conn_id="hdfs_default",
+        conn_id="hdfs_admin_default",
         require_host_port=False,
     )
     assert snapshot.host == ""

@@ -42,6 +42,9 @@ Most operators accept:
   operations.
 * ``retry_attempts``: number of CLI retries for transient failures.
 * ``timeout``: timeout in seconds for the underlying CLI command.
+* ``if_exists`` on create/upload/copy/move operators: explicit policy for an
+  already existing destination. Supported values are ``error`` and ``ignore``;
+  upload operators also support ``overwrite``.
 
 Administrative operators
 ------------------------
@@ -99,6 +102,16 @@ Path and object creation:
   and upload it to Ozone.
 * ``OzoneUploadFileOperator``: upload a local file to Ozone.
 
+Existing-target behavior is intentionally explicit:
+
+* ``if_exists="error"`` fails before running a potentially expensive CLI write
+  when the destination already exists.
+* ``if_exists="ignore"`` treats an existing destination as success, which is
+  useful for idempotent marker files and setup paths.
+* ``if_exists="overwrite"`` is available for uploads only and maps to
+  ``ozone fs -put -f``. Directory creation, copy, and move operations do not
+  support overwrite to avoid accidental data loss.
+
 Path and object removal:
 
 * ``OzoneDeleteKeyOperator``: delete one key or a wildcard-selected key set.
@@ -130,6 +143,7 @@ Example:
         task_id="create_path",
         path="ofs://om-service/analytics/landing/incoming",
         ozone_conn_id="ozone_default",
+        if_exists="ignore",
     )
 
     upload_marker = OzoneUploadContentOperator(
@@ -137,6 +151,7 @@ Example:
         content="ready",
         remote_path="ofs://om-service/analytics/landing/incoming/_SUCCESS",
         ozone_conn_id="ozone_default",
+        if_exists="error",
     )
 
     list_files = OzoneListOperator(

@@ -22,6 +22,7 @@ import subprocess
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
+from typing import Literal
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
@@ -52,6 +53,8 @@ from airflow.utils.log.secrets_masker import redact
 RETRY_ATTEMPTS = 3
 FAST_TIMEOUT_SECONDS = 5 * 60
 SLOW_TIMEOUT_SECONDS = 60 * 60
+
+ExistingTargetPolicy = Literal["error", "ignore", "overwrite"]
 
 
 class OzoneCliHook(BaseHook):
@@ -257,11 +260,41 @@ class OzoneFsHook(OzoneCliHook):
 
     hook_name = "Ozone FS"
 
+    @staticmethod
+    def _validate_if_exists(
+        value: ExistingTargetPolicy,
+        *,
+        allow_overwrite: bool = True,
+    ) -> ExistingTargetPolicy:
+        """Validate existing-target policy used by create/copy/upload helpers."""
+        allowed: set[str] = {"error", "ignore"}
+        if allow_overwrite:
+            allowed.add("overwrite")
+        if value not in allowed:
+            expected = ", ".join(sorted(allowed))
+            raise ValueError(f"if_exists must be one of: {expected}. Got: {value!r}")
+        return value
+
     # ==============================
     # Key operations
     # ==============================
-    def create_key(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> None:
+    def create_key(
+        self,
+        path: str,
+        *,
+        timeout: int = FAST_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "error",
+    ) -> None:
         """Create an empty key in Ozone FS."""
+        policy = self._validate_if_exists(if_exists)
+        if self.exists(path, timeout=timeout):
+            if policy == "ignore":
+                self.log.info("Ozone key %s already exists, treating as success.", path)
+                return
+            if policy == "overwrite":
+                self.delete_key(path, timeout=timeout)
+            else:
+                raise AirflowException(f"Ozone key already exists: {path}")
         self.run_cli(self._fs_cmd("-touchz", path), timeout=timeout)
 
     def key_exists(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> bool:
@@ -367,13 +400,17 @@ class OzoneFsHook(OzoneCliHook):
         *,
         timeout: int = FAST_TIMEOUT_SECONDS,
         recursive: bool = True,
-        fail_if_exists: bool = False,
+        if_exists: ExistingTargetPolicy = "ignore",
     ) -> None:
         """Create a directory tree in Ozone FS."""
+        policy = self._validate_if_exists(if_exists, allow_overwrite=False)
         target_path = path.rstrip("/")
         if not target_path:
             return
-        if fail_if_exists and self.exists(target_path, timeout=timeout):
+        if self.exists(target_path, timeout=timeout):
+            if policy == "ignore":
+                self.log.info("Ozone path %s already exists, treating as success.", target_path)
+                return
             raise AirflowException(f"Destination path already exists: {target_path}")
 
         cmd = self._fs_cmd("-mkdir")
@@ -463,16 +500,26 @@ class OzoneFsHook(OzoneCliHook):
         remote_path: str,
         *,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "error",
     ) -> None:
         """Upload a local file to an Ozone URI."""
+        policy = self._validate_if_exists(if_exists)
         local_file = Path(local_path)
         if not FileHelper.is_readable_file(local_file):
             raise AirflowException(f"Local file does not exist or is not readable: {local_path}")
 
-        self.run_cli(
-            self._fs_cmd("-put", "-f", str(local_file), remote_path),
-            timeout=timeout,
-        )
+        if self.exists(remote_path, timeout=timeout):
+            if policy == "ignore":
+                self.log.info("Remote path %s already exists, treating as success.", remote_path)
+                return
+            if policy == "error":
+                raise AirflowException(f"Remote path already exists: {remote_path}")
+
+        cmd = self._fs_cmd("-put")
+        if policy == "overwrite":
+            cmd.append("-f")
+        cmd.extend([str(local_file), remote_path])
+        self.run_cli(cmd, timeout=timeout)
 
     def download_key(
         self,
@@ -504,6 +551,7 @@ class OzoneFsHook(OzoneCliHook):
         dest_path: str,
         *,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "error",
     ) -> None:
         """Move or rename one key or wildcard-selected keys within Ozone FS."""
         self._transfer_path(
@@ -512,6 +560,7 @@ class OzoneFsHook(OzoneCliHook):
             dest_path,
             timeout=timeout,
             fallback_action="direct move",
+            if_exists=if_exists,
         )
 
     def copy_path(
@@ -520,6 +569,7 @@ class OzoneFsHook(OzoneCliHook):
         dest_path: str,
         *,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "error",
     ) -> None:
         """Copy one key or wildcard-selected keys within Ozone FS."""
         self._transfer_path(
@@ -528,6 +578,7 @@ class OzoneFsHook(OzoneCliHook):
             dest_path,
             timeout=timeout,
             fallback_action="direct copy",
+            if_exists=if_exists,
         )
 
     # ==============================
@@ -598,8 +649,10 @@ class OzoneFsHook(OzoneCliHook):
         *,
         timeout: int,
         fallback_action: str,
+        if_exists: ExistingTargetPolicy = "error",
     ) -> None:
         """Shared move and copy implementation with wildcard handling."""
+        policy = self._validate_if_exists(if_exists, allow_overwrite=False)
         if URIHelper.contains_wildcards(source_path):
             matched = self.list_wildcard_matches(
                 source_path, timeout=timeout, fallback_action=fallback_action
@@ -617,12 +670,22 @@ class OzoneFsHook(OzoneCliHook):
             for matched_path in matched:
                 _, filename = URIHelper.split_ozone_path(matched_path)
                 dest_file_path = URIHelper.join_ozone_path(dest_dir, filename)
+                if self.exists(dest_file_path, timeout=timeout):
+                    if policy == "ignore":
+                        self.log.info("Destination path %s already exists, skipping.", dest_file_path)
+                        continue
+                    raise AirflowException(f"Destination path already exists: {dest_file_path}")
                 self.run_cli(self._fs_cmd(action, matched_path, dest_file_path), timeout=timeout)
             return
 
         parent_path, _ = URIHelper.split_ozone_path(dest_path)
         if parent_path:
             self.create_path(parent_path, timeout=timeout)
+        if self.exists(dest_path, timeout=timeout):
+            if policy == "ignore":
+                self.log.info("Destination path %s already exists, treating as success.", dest_path)
+                return
+            raise AirflowException(f"Destination path already exists: {dest_path}")
         if self.exists(source_path, timeout=timeout):
             self.run_cli(self._fs_cmd(action, source_path, dest_path), timeout=timeout)
 
@@ -652,6 +715,7 @@ class OzoneAdminHook(OzoneCliHook):
         namespace_quota: str | int | None = None,
         owner: str | None = None,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "ignore",
     ) -> None:
         """Create a volume with optional quotas and owner."""
         self._create_resource(
@@ -662,6 +726,7 @@ class OzoneAdminHook(OzoneCliHook):
             namespace_quota=namespace_quota,
             owner=owner,
             timeout=timeout,
+            if_exists=if_exists,
         )
 
     def list_volumes(self, *, timeout: int = FAST_TIMEOUT_SECONDS) -> list[JsonDict]:
@@ -733,6 +798,7 @@ class OzoneAdminHook(OzoneCliHook):
         replication: str | None = None,
         encryption_key: str | None = None,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "ignore",
     ) -> None:
         """Create a bucket with optional owner, layout, quotas, replication and encryption key."""
         extra_args: list[str] = []
@@ -755,6 +821,7 @@ class OzoneAdminHook(OzoneCliHook):
             namespace_quota=namespace_quota,
             extra_args=extra_args,
             timeout=timeout,
+            if_exists=if_exists,
         )
 
     def list_buckets(self, volume_name: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> list[JsonDict]:
@@ -1035,8 +1102,10 @@ class OzoneAdminHook(OzoneCliHook):
         owner: str | None = None,
         extra_args: list[str] | None = None,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "ignore",
     ) -> None:
         """Create a volume or bucket and treat already-exists errors as success."""
+        policy = OzoneFsHook._validate_if_exists(if_exists, allow_overwrite=False)
         spec = ADMIN_RESOURCE_SPECS[resource.value]
         cmd = self._admin_cmd(
             resource,
@@ -1067,6 +1136,8 @@ class OzoneAdminHook(OzoneCliHook):
         output = ProcessOutputAnalysis.from_completed_process(result)
         error_message = output.preferred_output or "No error message provided"
         if spec.already_exists_marker.lower() in error_message.lower():
+            if policy == "error":
+                raise AirflowException(f"{resource.value.capitalize()} already exists: {resource_path}")
             self.log.info(
                 "%s %s already exists, treating as success.", resource.value.capitalize(), resource_path
             )

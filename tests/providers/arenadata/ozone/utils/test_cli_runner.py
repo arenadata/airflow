@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 
 import pytest
 
@@ -83,6 +84,16 @@ def test_clirunner_run_process_retries_and_returns_result(monkeypatch: pytest.Mo
     assert result.returncode == 0
     assert result.stdout == "ok"
     assert attempts["count"] == 2
+
+
+def test_clirunner_run_passes_input_text_to_stdin() -> None:
+    result = CliRunner.run(
+        [sys.executable, "-c", "import sys; sys.stdout.write(sys.stdin.read())"],
+        input_text="secret\n",
+        check=True,
+    )
+
+    assert result.stdout == "secret\n"
 
 
 def test_ozoneclirunner_run_ozone_retries_retryable_and_not_non_retryable(

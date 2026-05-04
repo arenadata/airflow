@@ -38,10 +38,9 @@ Where example DAGs are located
 Main examples:
 
 * ``example_ozone_usage.py``
-* ``example_ozone_data_pipeline.py``
+* ``example_ozone_copy_from_hdfs.py``
 * ``example_ozone_data_lifecycle.py``
 * ``example_ozone_multi_tenant_management.py``
-* ``example_ozone_edge_cases.py``
 
 What each example DAG does
 --------------------------
@@ -57,10 +56,11 @@ What each example DAG does
   ``Connection Extra``.
 * Best for first smoke-check of provider installation and CLI connectivity.
 
-``example_ozone_data_pipeline.py`` (trigger + migration):
+``example_ozone_copy_from_hdfs.py`` (HDFS -> Ozone copy):
 
 * Waits for a trigger marker file in Ozone landing zone.
-* Applies storage quota to target volume.
+* Creates the trigger marker file after a short delay for standalone demos.
+* Applies storage quota to the target bucket.
 * Migrates data from HDFS to Ozone with ``HdfsToOzoneOperator`` (DistCp).
 * Useful as a template for ingestion pipelines where Ozone is destination storage.
 
@@ -80,12 +80,6 @@ What each example DAG does
 * Creates standard landing/processed buckets with bucket quotas.
 * Creates standard ``data`` directories in each bucket.
 * Useful for platform teams that provision isolated tenant/project storage.
-
-``example_ozone_edge_cases.py`` (edge-case checks):
-
-* Intended for manual verification of provider behavior in non-standard or edge-case scenarios.
-* Useful as a lightweight diagnostic DAG when validating recent fixes around missing resources
-  and idempotent behavior.
 
 How configuration is applied
 ----------------------------
@@ -172,18 +166,25 @@ Example trigger config:
     "bucket_quota": "10GB"
   }
 
-Data pipeline (``example_ozone_data_pipeline.py``):
+Ozone copy from HDFS (``example_ozone_copy_from_hdfs.py``):
+
+This DAG models an HDFS -> Ozone copy flow. It waits for ``trigger_file`` with
+``OzoneKeySensor`` and, for standalone demos, starts a parallel helper branch
+that waits 10 seconds and creates the same trigger file with
+``OzoneUploadContentOperator`` using ``if_exists="ignore"``. In a real pipeline
+this helper branch can be removed and the trigger file can be produced by an
+upstream ingestion job.
 
 Environment defaults:
 
-* ``OZONE_EXAMPLE_PIPELINE_CONN_ID``
-* ``OZONE_EXAMPLE_PIPELINE_HDFS_CONN_ID``
-* ``OZONE_EXAMPLE_PIPELINE_VOLUME``
-* ``OZONE_EXAMPLE_PIPELINE_BUCKET``
-* ``OZONE_EXAMPLE_PIPELINE_TRIGGER_FILE``
-* ``OZONE_EXAMPLE_PIPELINE_QUOTA``
-* ``OZONE_EXAMPLE_PIPELINE_SOURCE_PATH``
-* ``OZONE_EXAMPLE_PIPELINE_DEST_SUBPATH``
+* ``OZONE_EXAMPLE_COPY_FROM_HDFS_CONN_ID``
+* ``OZONE_EXAMPLE_COPY_FROM_HDFS_HDFS_CONN_ID``
+* ``OZONE_EXAMPLE_COPY_FROM_HDFS_VOLUME``
+* ``OZONE_EXAMPLE_COPY_FROM_HDFS_BUCKET``
+* ``OZONE_EXAMPLE_COPY_FROM_HDFS_TRIGGER_FILE``
+* ``OZONE_EXAMPLE_COPY_FROM_HDFS_QUOTA``
+* ``OZONE_EXAMPLE_COPY_FROM_HDFS_SOURCE_PATH``
+* ``OZONE_EXAMPLE_COPY_FROM_HDFS_DEST_SUBPATH``
 
 Trigger/UI params:
 
@@ -203,11 +204,11 @@ Example trigger config:
   {
     "om_host": "adho",
     "pipeline_conn_id": "ozone_admin_default",
-    "hdfs_conn_id": "hdfs_default",
+    "hdfs_conn_id": "hdfs_admin_default",
     "volume": "vol1",
     "bucket": "bucket1",
     "trigger_file": "trigger.lck",
-    "quota": "500GB",
+    "quota": "5GB",
     "source_path": "hdfs:///user/data/legacy/",
     "dest_subpath": "migrated/"
   }
@@ -278,40 +279,6 @@ Example trigger config:
     "landing_bucket": "landing",
     "processed_bucket": "processed",
     "bucket_quota": "1GB"
-  }
-
-Edge cases (``example_ozone_edge_cases.py``):
-
-Environment defaults:
-
-* ``OZONE_EXAMPLE_TEST_CONN_ID``
-* ``OZONE_EXAMPLE_TEST_VOLUME``
-* ``OZONE_EXAMPLE_TEST_BUCKET``
-* ``OZONE_EXAMPLE_TEST_MISSING_BUCKET``
-* ``OZONE_EXAMPLE_TEST_MISSING_VOLUME``
-* ``OZONE_EXAMPLE_TEST_MISSING_KEY``
-
-Trigger/UI params:
-
-* ``test_conn_id``
-* ``test_volume``
-* ``test_bucket``
-* ``missing_bucket``
-* ``missing_volume``
-* ``missing_key``
-
-Example trigger config:
-
-.. code-block:: json
-
-  {
-    "om_host": "adho",
-    "test_conn_id": "ozone_admin_default",
-    "test_volume": "provider-test-volume",
-    "test_bucket": "provider-test-bucket",
-    "missing_bucket": "provider-test-missing-bucket",
-    "missing_volume": "provider-test-missing-volume",
-    "missing_key": "missing/to_delete.txt"
   }
 
 DAG developer notes

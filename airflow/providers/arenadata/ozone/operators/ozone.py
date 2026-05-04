@@ -26,6 +26,7 @@ from airflow.providers.arenadata.ozone.hooks.ozone import (
     FAST_TIMEOUT_SECONDS,
     RETRY_ATTEMPTS,
     SLOW_TIMEOUT_SECONDS,
+    ExistingTargetPolicy,
     OzoneAdminHook,
     OzoneFsHook,
 )
@@ -45,6 +46,7 @@ class OzoneCreateVolumeOperator(BaseOperator):
         ozone_conn_id: str = OzoneAdminHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "ignore",
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -55,6 +57,7 @@ class OzoneCreateVolumeOperator(BaseOperator):
         self.ozone_conn_id = ozone_conn_id
         self.retry_attempts = retry_attempts
         self.timeout = timeout
+        self.if_exists = if_exists
 
     def execute(self, context: Context) -> None:
         """Create the target volume if it does not exist."""
@@ -62,7 +65,7 @@ class OzoneCreateVolumeOperator(BaseOperator):
             ozone_conn_id=self.ozone_conn_id,
             retry_attempts=self.retry_attempts,
         )
-        hook.create_volume(self.volume_name, self.quota, timeout=self.timeout)
+        hook.create_volume(self.volume_name, self.quota, timeout=self.timeout, if_exists=self.if_exists)
 
 
 class OzoneCreateBucketOperator(BaseOperator):
@@ -78,6 +81,7 @@ class OzoneCreateBucketOperator(BaseOperator):
         ozone_conn_id: str = OzoneAdminHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "ignore",
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -89,6 +93,7 @@ class OzoneCreateBucketOperator(BaseOperator):
         self.ozone_conn_id = ozone_conn_id
         self.retry_attempts = retry_attempts
         self.timeout = timeout
+        self.if_exists = if_exists
 
     def execute(self, context: Context) -> None:
         """Create the target bucket if it does not exist."""
@@ -101,6 +106,7 @@ class OzoneCreateBucketOperator(BaseOperator):
             self.bucket_name,
             self.quota,
             timeout=self.timeout,
+            if_exists=self.if_exists,
         )
 
 
@@ -235,6 +241,7 @@ class OzoneCreatePathOperator(BaseOperator):
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = FAST_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "ignore",
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -242,6 +249,7 @@ class OzoneCreatePathOperator(BaseOperator):
         self.ozone_conn_id = ozone_conn_id
         self.retry_attempts = retry_attempts
         self.timeout = timeout
+        self.if_exists = if_exists
 
     def execute(self, context: Context) -> None:
         """Create a directory path in Ozone FS."""
@@ -249,7 +257,7 @@ class OzoneCreatePathOperator(BaseOperator):
             ozone_conn_id=self.ozone_conn_id,
             retry_attempts=self.retry_attempts,
         )
-        hook.create_path(self.path, timeout=self.timeout)
+        hook.create_path(self.path, timeout=self.timeout, if_exists=self.if_exists)
 
 
 class OzoneUploadContentOperator(BaseOperator):
@@ -265,6 +273,7 @@ class OzoneUploadContentOperator(BaseOperator):
         max_content_size_bytes: int | None = None,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "error",
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -277,6 +286,7 @@ class OzoneUploadContentOperator(BaseOperator):
         )
         self.retry_attempts = retry_attempts
         self.timeout = timeout
+        self.if_exists = if_exists
 
     def execute(self, context: Context) -> None:
         """Write string content to a temporary file and upload it."""
@@ -303,6 +313,7 @@ class OzoneUploadContentOperator(BaseOperator):
                 str(tmp_path),
                 self.remote_path,
                 timeout=self.timeout,
+                if_exists=self.if_exists,
             )
 
 
@@ -471,13 +482,11 @@ class OzoneUploadFileOperator(BaseOperator):
                 f"({size_limit_bytes} bytes) for Ozone upload: {self.local_path}"
             )
 
-        if hook.exists(self.remote_path, timeout=self.timeout) and not self.overwrite:
-            raise AirflowException(f"Remote path {self.remote_path} already exists and overwrite is False")
-
         hook.upload_key(
             str(local_path_obj),
             self.remote_path,
             timeout=self.timeout,
+            if_exists="overwrite" if self.overwrite else "error",
         )
 
 
@@ -494,6 +503,7 @@ class OzoneMoveOperator(BaseOperator):
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "error",
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -502,6 +512,7 @@ class OzoneMoveOperator(BaseOperator):
         self.ozone_conn_id = ozone_conn_id
         self.retry_attempts = retry_attempts
         self.timeout = timeout
+        self.if_exists = if_exists
 
     def execute(self, context: Context) -> None:
         """Move one key or a wildcard-selected batch within Ozone."""
@@ -509,7 +520,7 @@ class OzoneMoveOperator(BaseOperator):
             ozone_conn_id=self.ozone_conn_id,
             retry_attempts=self.retry_attempts,
         )
-        hook.move(self.source_path, self.dest_path, timeout=self.timeout)
+        hook.move(self.source_path, self.dest_path, timeout=self.timeout, if_exists=self.if_exists)
 
 
 class OzoneCopyOperator(BaseOperator):
@@ -525,6 +536,7 @@ class OzoneCopyOperator(BaseOperator):
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
+        if_exists: ExistingTargetPolicy = "error",
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -533,6 +545,7 @@ class OzoneCopyOperator(BaseOperator):
         self.ozone_conn_id = ozone_conn_id
         self.retry_attempts = retry_attempts
         self.timeout = timeout
+        self.if_exists = if_exists
 
     def execute(self, context: Context) -> None:
         """Copy one key or a wildcard-selected batch within Ozone."""
@@ -540,7 +553,7 @@ class OzoneCopyOperator(BaseOperator):
             ozone_conn_id=self.ozone_conn_id,
             retry_attempts=self.retry_attempts,
         )
-        hook.copy_path(self.source_path, self.dest_path, timeout=self.timeout)
+        hook.copy_path(self.source_path, self.dest_path, timeout=self.timeout, if_exists=self.if_exists)
 
 
 class OzoneDownloadFileOperator(BaseOperator):

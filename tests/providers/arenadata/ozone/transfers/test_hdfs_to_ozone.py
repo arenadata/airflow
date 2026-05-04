@@ -140,13 +140,13 @@ class TestHdfsToOzoneOperator:
             task_id="hdfs_to_ozone_kerberos",
             source_path="hdfs://nn:8020/user/data",
             dest_path="ofs://om:9862/vol1/bucket1/data",
-            hdfs_conn_id="hdfs_default",
+            hdfs_conn_id="hdfs_admin_default",
         )
         operator.execute(context={})
 
         mock_kinit.assert_called_once_with(
             snapshot=operator._hdfs_connection_snapshot,
-            conn_id="hdfs_default",
+            conn_id="hdfs_admin_default",
         )
         env_overrides = mock_run_process.call_args.kwargs["env_overrides"]
         assert env_overrides["HADOOP_SECURITY_AUTHENTICATION"] == "kerberos"
@@ -185,13 +185,13 @@ class TestHdfsToOzoneOperator:
             task_id="hdfs_to_ozone_kerberos_password",
             source_path="hdfs://nn:8020/user/data",
             dest_path="ofs://om:9862/vol1/bucket1/data",
-            hdfs_conn_id="hdfs_default",
+            hdfs_conn_id="hdfs_admin_default",
         )
         operator.execute(context={})
 
         mock_kinit.assert_called_once_with(
             snapshot=operator._hdfs_connection_snapshot,
-            conn_id="hdfs_default",
+            conn_id="hdfs_admin_default",
         )
         env_overrides = mock_run_process.call_args.kwargs["env_overrides"]
         assert env_overrides["HADOOP_SECURITY_AUTHENTICATION"] == "kerberos"
@@ -229,7 +229,7 @@ class TestHdfsToOzoneOperator:
             task_id="hdfs_to_ozone_kerberos_fail",
             source_path="hdfs://nn:8020/user/data",
             dest_path="ofs://om:9862/vol1/bucket1/data",
-            hdfs_conn_id="hdfs_default",
+            hdfs_conn_id="hdfs_admin_default",
         )
         with pytest.raises(AirflowException, match="HDFS Kerberos authentication failed"):
             operator.execute(context={})

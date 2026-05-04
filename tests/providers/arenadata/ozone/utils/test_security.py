@@ -337,7 +337,7 @@ class TestSnapshotDrivenKerberosRuntime:
             hdfs_kerberos_keytab="/tmp/hdfs.keytab",
             krb5_conf="/tmp/krb5.conf",
         )
-        assert KerberosConfig.kinit_hdfs_from_snapshot(snapshot=snapshot, conn_id="hdfs_default")
+        assert KerberosConfig.kinit_hdfs_from_snapshot(snapshot=snapshot, conn_id="hdfs_admin_default")
         mock_kinit_with_keytab.assert_called_once_with(
             "hdfs@REALM",
             "/tmp/hdfs.keytab",
@@ -361,7 +361,7 @@ class TestSnapshotDrivenKerberosRuntime:
             hdfs_kerberos_keytab="/tmp/hdfs.keytab",
             hdfs_kerberos_password="secret_password",
         )
-        assert KerberosConfig.kinit_hdfs_from_snapshot(snapshot=snapshot, conn_id="hdfs_default")
+        assert KerberosConfig.kinit_hdfs_from_snapshot(snapshot=snapshot, conn_id="hdfs_admin_default")
         mock_kinit_with_keytab.assert_called_once_with(
             "hdfs@REALM",
             "/tmp/hdfs.keytab",
@@ -384,7 +384,7 @@ class TestSnapshotDrivenKerberosRuntime:
             hdfs_kerberos_password="secret_password",
             krb5_conf="/tmp/krb5.conf",
         )
-        assert KerberosConfig.kinit_hdfs_from_snapshot(snapshot=snapshot, conn_id="hdfs_default")
+        assert KerberosConfig.kinit_hdfs_from_snapshot(snapshot=snapshot, conn_id="hdfs_admin_default")
         mock_kinit_with_password.assert_called_once_with(
             "hdfs@REALM",
             "secret_password",
