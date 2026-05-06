@@ -80,7 +80,9 @@ class TestDmpAfDagGeneration:
     def test_manual_run_dag_has_no_schedule(self, generated_dags):
         """Manual run DAG must have no schedule, it's triggered manually from UI"""
         dag = generated_dags["dbt_af_demo_dbt_run_model"]
-        assert dag.schedule_interval is None
+        # Airflow 3 removed schedule_interval in favor of schedule
+        schedule = getattr(dag, 'schedule_interval', None) if hasattr(dag, 'schedule_interval') else dag.schedule
+        assert schedule is None
 
 
 class TestDmpAfDomainSeparation:
@@ -171,7 +173,9 @@ class TestDmpAfDryRun:
         """dry_run=True skips actual dbt execution and disables catchup
         so Airflow won't try to backfill missed runs on first deploy"""
         for name, dag in generated_dags.items():
-            if dag.schedule_interval is not None:
+            # Airflow 3 removed schedule_interval in favor of schedule
+            schedule = getattr(dag, 'schedule_interval', None) if hasattr(dag, 'schedule_interval') else dag.schedule
+            if schedule is not None:
                 assert dag.catchup is False, (
                     f"DAG '{name}' should have catchup=False in dry_run mode"
                 )
