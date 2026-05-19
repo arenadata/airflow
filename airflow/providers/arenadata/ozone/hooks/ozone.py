@@ -43,7 +43,10 @@ from airflow.providers.arenadata.ozone.utils.helpers import (
     URIHelper,
 )
 from airflow.providers.arenadata.ozone.utils.security import KerberosConfig, SSLConfig
-from airflow.utils.log.secrets_masker import redact
+try:
+    from airflow.sdk.execution_time.secrets_masker import redact
+except ImportError:
+    from airflow.utils.log.secrets_masker import redact
 
 RETRY_ATTEMPTS = 3
 FAST_TIMEOUT_SECONDS = 5 * 60

@@ -28,7 +28,10 @@ from urllib.parse import urlsplit, urlunsplit
 from typing_extensions import TypeAlias
 
 from airflow.exceptions import AirflowException
-from airflow.utils.log.secrets_masker import redact
+try:
+    from airflow.sdk.execution_time.secrets_masker import redact
+except ImportError:
+    from airflow.utils.log.secrets_masker import redact
 
 JsonScalar: TypeAlias = "str | int | float | bool | None"
 JsonValue: TypeAlias = "JsonScalar | list[JsonValue] | dict[str, JsonValue]"

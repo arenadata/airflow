@@ -39,7 +39,10 @@ from tenacity import (
 from typing_extensions import ParamSpec, TypeAlias
 
 from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError, OzoneCliErrors
-from airflow.utils.log.secrets_masker import redact
+try:
+    from airflow.sdk.execution_time.secrets_masker import redact
+except ImportError:
+    from airflow.utils.log.secrets_masker import redact
 
 log = logging.getLogger(__name__)
 P = ParamSpec("P")
