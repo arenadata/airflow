@@ -204,14 +204,40 @@ class TestApplyKerberosEnvVars:
         assert "-Dhadoop.security.authentication=kerberos" in result["OZONE_OPTS"]
         assert "-Dozone.security.enabled=true" in result["OZONE_OPTS"]
 
-    def test_does_not_use_process_env_as_config_source(self):
+    def test_reuses_explicit_existing_ozone_conf_dir_when_kerberos_enabled(self):
         env_vars = {"HADOOP_SECURITY_AUTHENTICATION": "kerberos"}
         result = KerberosConfig.apply_env_vars(
             env_vars,
             existing_env={"OZONE_CONF_DIR": "/opt/airflow/ozone-conf"},
         )
-        assert "HADOOP_CONF_DIR" not in result
-        assert "OZONE_CONF_DIR" not in result
+        assert result["OZONE_CONF_DIR"] == "/opt/airflow/ozone-conf"
+        assert result["HADOOP_CONF_DIR"] == "/opt/airflow/ozone-conf"
+
+    def test_reuses_process_env_when_existing_env_is_not_provided(self, monkeypatch):
+        env_vars = {"HADOOP_SECURITY_AUTHENTICATION": "kerberos"}
+        monkeypatch.setenv("OZONE_CONF_DIR", "/env/ozone-conf")
+        monkeypatch.setenv("HADOOP_OPTS", "-Dexisting.hadoop=true")
+        monkeypatch.setenv("OZONE_OPTS", "-Dexisting.ozone=true")
+
+        result = KerberosConfig.apply_env_vars(env_vars)
+
+        assert result["OZONE_CONF_DIR"] == "/env/ozone-conf"
+        assert result["HADOOP_CONF_DIR"] == "/env/ozone-conf"
+        assert "-Dexisting.hadoop=true" in result["HADOOP_OPTS"]
+        assert "-Dhadoop.security.authentication=kerberos" in result["HADOOP_OPTS"]
+        assert "-Dexisting.ozone=true" in result["OZONE_OPTS"]
+        assert "-Dhadoop.security.authentication=kerberos" in result["OZONE_OPTS"]
+
+    def test_kerberos_helpers_detect_enabled_state_and_config_dir(self):
+        kerberos_env = {
+            "HADOOP_SECURITY_AUTHENTICATION": "kerberos",
+            "OZONE_CONF_DIR": "/opt/airflow/ozone-conf",
+        }
+
+        assert KerberosConfig.is_enabled(kerberos_env)
+        assert KerberosConfig.resolve_config_dir(kerberos_env) == "/opt/airflow/ozone-conf"
+        assert not KerberosConfig.is_enabled(None)
+        assert KerberosConfig.resolve_config_dir(None) is None
 
 
 class TestSnapshotDrivenKerberosRuntime:

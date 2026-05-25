@@ -107,7 +107,7 @@ class TestOzoneAdminOperators:
         ),
         (
             OzoneCreatePathOperator(task_id="create_path", path="ofs://vol1/b1/dir"),
-            "create_path",
+            "make_path",
             ("ofs://vol1/b1/dir",),
             {"timeout": 300, "if_exists": "ignore"},
             None,

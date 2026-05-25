@@ -112,6 +112,45 @@ class TestHdfsToOzoneOperator:
         "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which",
         return_value="/usr/bin/hadoop",
     )
+    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.BaseHook.get_connection")
+    @patch("airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.CliRunner.run_process")
+    def test_execute_wires_distcp_mapreduce_options(
+        self,
+        mock_run_process: MagicMock,
+        mock_get_connection: MagicMock,
+        _mock_which: MagicMock,
+    ):
+        conn = MagicMock()
+        conn.extra_dejson = {
+            "hdfs_distcp_mapreduce_local": "true",
+            "hdfs_distcp_renewer_principal": "slyubarsky@AD.RANGER-TEST",
+        }
+        mock_get_connection.return_value = conn
+
+        operator = HdfsToOzoneOperator(
+            task_id="hdfs_to_ozone_distcp_options",
+            source_path="hdfs://nn:8020/user/data",
+            dest_path="ofs://om:9862/vol1/bucket1/data",
+            hdfs_conn_id="hdfs_admin_default",
+        )
+        operator.execute(context={})
+
+        assert mock_run_process.call_args.args[0] == [
+            "hadoop",
+            "distcp",
+            "-Dmapreduce.framework.name=local",
+            "-Dyarn.resourcemanager.principal=slyubarsky@AD.RANGER-TEST",
+            "-Dmapreduce.jobtracker.kerberos.principal=slyubarsky@AD.RANGER-TEST",
+            "-update",
+            "-skipcrccheck",
+            "hdfs://nn:8020/user/data",
+            "ofs://om:9862/vol1/bucket1/data",
+        ]
+
+    @patch(
+        "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which",
+        return_value="/usr/bin/hadoop",
+    )
     @patch(
         "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.KerberosConfig.kinit_hdfs_from_snapshot"
     )

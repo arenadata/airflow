@@ -42,7 +42,11 @@ from airflow.providers.arenadata.ozone.utils.security import (
 from airflow.utils.context import Context  # noqa: TCH001
 
 log = logging.getLogger(__name__)
-DISTCP_BASE_COMMAND = ["hadoop", "distcp", "-update", "-skipcrccheck"]
+DISTCP_BASE_COMMAND = ["hadoop", "distcp"]
+DISTCP_COPY_OPTIONS = ["-update", "-skipcrccheck"]
+DISTCP_MAPREDUCE_LOCAL_OPTION = "-Dmapreduce.framework.name=local"
+DISTCP_YARN_RENEWER_PRINCIPAL_OPTION = "-Dyarn.resourcemanager.principal={principal}"
+DISTCP_JOBTRACKER_RENEWER_PRINCIPAL_OPTION = "-Dmapreduce.jobtracker.kerberos.principal={principal}"
 
 
 class HdfsToOzoneOperator(BaseOperator):
@@ -159,7 +163,20 @@ class HdfsToOzoneOperator(BaseOperator):
 
     def _build_distcp_command(self) -> list[str]:
         """Build the DistCp command for the current transfer."""
-        return [*DISTCP_BASE_COMMAND, self.source_path, self.dest_path]
+        options: list[str] = []
+        snapshot = self._hdfs_connection_snapshot
+        if snapshot:
+            if snapshot.hdfs_distcp_mapreduce_local:
+                options.append(DISTCP_MAPREDUCE_LOCAL_OPTION)
+            if snapshot.hdfs_distcp_renewer_principal:
+                principal = snapshot.hdfs_distcp_renewer_principal
+                options.extend(
+                    [
+                        DISTCP_YARN_RENEWER_PRINCIPAL_OPTION.format(principal=principal),
+                        DISTCP_JOBTRACKER_RENEWER_PRINCIPAL_OPTION.format(principal=principal),
+                    ]
+                )
+        return [*DISTCP_BASE_COMMAND, *options, *DISTCP_COPY_OPTIONS, self.source_path, self.dest_path]
 
     def _validate_runtime_inputs(self) -> None:
         """Validate operator inputs right before DistCp execution."""

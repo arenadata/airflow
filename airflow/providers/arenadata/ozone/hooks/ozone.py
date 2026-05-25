@@ -17,12 +17,12 @@
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
-from typing import Literal
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
@@ -54,7 +54,11 @@ RETRY_ATTEMPTS = 3
 FAST_TIMEOUT_SECONDS = 5 * 60
 SLOW_TIMEOUT_SECONDS = 60 * 60
 
-ExistingTargetPolicy = Literal["error", "ignore", "overwrite"]
+
+class ExistingTargetPolicy(str, Enum):
+    ERROR = "error"
+    IGNORE = "ignore"
+    OVERWRITE = "overwrite"
 
 
 class OzoneCliHook(BaseHook):
@@ -117,7 +121,25 @@ class OzoneCliHook(BaseHook):
     @cached_property
     def _cached_effective_config_dir(self) -> str | None:
         """Config dir used for CLI --config and subprocess environment."""
-        return self.connection_snapshot.ozone_conf_dir
+        if self.connection_snapshot.ozone_conf_dir:
+            self.log.info(
+                "Using ozone_conf_dir from connection extra: %s", self.connection_snapshot.ozone_conf_dir
+            )
+            return self.connection_snapshot.ozone_conf_dir
+
+        for env_name in ("OZONE_CONF_DIR", "HADOOP_CONF_DIR"):
+            env_value = os.environ.get(env_name)
+            if env_value:
+                self.log.info("Using ozone_conf_dir from %s environment variable: %s", env_name, env_value)
+                return env_value
+
+        if self.connection_snapshot.kerberos_enabled:
+            raise AirflowException(
+                "Kerberos is enabled but ozone_conf_dir is not configured. "
+                "Set ozone_conf_dir in the connection extra, or provide OZONE_CONF_DIR/HADOOP_CONF_DIR "
+                "in the worker environment."
+            )
+        return None
 
     def _prepared_cli_env(self) -> dict[str, str]:
         """Build subprocess environment for Ozone CLI calls."""
@@ -171,13 +193,6 @@ class OzoneCliHook(BaseHook):
             return cmd
 
         config_dir = self._cached_effective_config_dir
-        if not config_dir:
-            self.log.warning(
-                "Kerberos enabled but OZONE_CONF_DIR not set. "
-                "Ozone CLI may not find security configuration files."
-            )
-            return cmd
-
         config_files_exist = KerberosConfig.check_config_files_exist(
             config_dir,
             snapshot=self.connection_snapshot,
@@ -262,18 +277,23 @@ class OzoneFsHook(OzoneCliHook):
 
     @staticmethod
     def _validate_if_exists(
-        value: ExistingTargetPolicy,
+        value: ExistingTargetPolicy | str,
         *,
         allow_overwrite: bool = True,
     ) -> ExistingTargetPolicy:
         """Validate existing-target policy used by create/copy/upload helpers."""
-        allowed: set[str] = {"error", "ignore"}
+        allowed: set[ExistingTargetPolicy] = {ExistingTargetPolicy.ERROR, ExistingTargetPolicy.IGNORE}
         if allow_overwrite:
-            allowed.add("overwrite")
-        if value not in allowed:
+            allowed.add(ExistingTargetPolicy.OVERWRITE)
+        try:
+            policy = ExistingTargetPolicy(value)
+        except ValueError:
             expected = ", ".join(sorted(allowed))
             raise ValueError(f"if_exists must be one of: {expected}. Got: {value!r}")
-        return value
+        if policy not in allowed:
+            expected = ", ".join(sorted(allowed))
+            raise ValueError(f"if_exists must be one of: {expected}. Got: {value!r}")
+        return policy
 
     # ==============================
     # Key operations
@@ -283,15 +303,15 @@ class OzoneFsHook(OzoneCliHook):
         path: str,
         *,
         timeout: int = FAST_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "error",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.ERROR,
     ) -> None:
         """Create an empty key in Ozone FS."""
         policy = self._validate_if_exists(if_exists)
         if self.exists(path, timeout=timeout):
-            if policy == "ignore":
+            if policy == ExistingTargetPolicy.IGNORE:
                 self.log.info("Ozone key %s already exists, treating as success.", path)
                 return
-            if policy == "overwrite":
+            if policy == ExistingTargetPolicy.OVERWRITE:
                 self.delete_key(path, timeout=timeout)
             else:
                 raise AirflowException(f"Ozone key already exists: {path}")
@@ -317,7 +337,7 @@ class OzoneFsHook(OzoneCliHook):
     def get_key_info(self, path: str, *, timeout: int = FAST_TIMEOUT_SECONDS) -> JsonDict:
         """Return full metadata for a key using ozone sh key info."""
         parsed = self.run_cli(
-            ["ozone", "sh", "key", "info", path],
+            ["ozone", "sh", "key", "info", URIHelper.to_key_uri(path)],
             timeout=timeout,
             return_json_result=True,
         )
@@ -400,7 +420,27 @@ class OzoneFsHook(OzoneCliHook):
         *,
         timeout: int = FAST_TIMEOUT_SECONDS,
         recursive: bool = True,
-        if_exists: ExistingTargetPolicy = "ignore",
+        fail_if_exists: bool = False,
+    ) -> None:
+        """
+        Create a directory tree in Ozone FS.
+
+        Deprecated. Use `make_path(..., if_exists=...)` instead.
+        """
+        self.log.warning(
+            "OzoneFsHook.create_path(..., fail_if_exists=...) is deprecated and will be removed "
+            "in a future version. Use make_path(..., if_exists=...) instead."
+        )
+        policy = ExistingTargetPolicy.ERROR if fail_if_exists else ExistingTargetPolicy.IGNORE
+        self.make_path(path, timeout=timeout, recursive=recursive, if_exists=policy)
+
+    def make_path(
+        self,
+        path: str,
+        *,
+        timeout: int = FAST_TIMEOUT_SECONDS,
+        recursive: bool = True,
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.IGNORE,
     ) -> None:
         """Create a directory tree in Ozone FS."""
         policy = self._validate_if_exists(if_exists, allow_overwrite=False)
@@ -408,7 +448,7 @@ class OzoneFsHook(OzoneCliHook):
         if not target_path:
             return
         if self.exists(target_path, timeout=timeout):
-            if policy == "ignore":
+            if policy == ExistingTargetPolicy.IGNORE:
                 self.log.info("Ozone path %s already exists, treating as success.", target_path)
                 return
             raise AirflowException(f"Destination path already exists: {target_path}")
@@ -500,7 +540,7 @@ class OzoneFsHook(OzoneCliHook):
         remote_path: str,
         *,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "error",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.ERROR,
     ) -> None:
         """Upload a local file to an Ozone URI."""
         policy = self._validate_if_exists(if_exists)
@@ -509,16 +549,15 @@ class OzoneFsHook(OzoneCliHook):
             raise AirflowException(f"Local file does not exist or is not readable: {local_path}")
 
         if self.exists(remote_path, timeout=timeout):
-            if policy == "ignore":
+            if policy == ExistingTargetPolicy.IGNORE:
                 self.log.info("Remote path %s already exists, treating as success.", remote_path)
                 return
-            if policy == "error":
+            if policy == ExistingTargetPolicy.ERROR:
                 raise AirflowException(f"Remote path already exists: {remote_path}")
+            self.log.info("Remote path %s already exists, deleting it before upload.", remote_path)
+            self.delete_key(remote_path, timeout=timeout)
 
-        cmd = self._fs_cmd("-put")
-        if policy == "overwrite":
-            cmd.append("-f")
-        cmd.extend([str(local_file), remote_path])
+        cmd = ["ozone", "sh", "key", "put", URIHelper.to_key_uri(remote_path), str(local_file)]
         self.run_cli(cmd, timeout=timeout)
 
     def download_key(
@@ -551,7 +590,7 @@ class OzoneFsHook(OzoneCliHook):
         dest_path: str,
         *,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "error",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.ERROR,
     ) -> None:
         """Move or rename one key or wildcard-selected keys within Ozone FS."""
         self._transfer_path(
@@ -569,7 +608,7 @@ class OzoneFsHook(OzoneCliHook):
         dest_path: str,
         *,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "error",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.ERROR,
     ) -> None:
         """Copy one key or wildcard-selected keys within Ozone FS."""
         self._transfer_path(
@@ -649,7 +688,7 @@ class OzoneFsHook(OzoneCliHook):
         *,
         timeout: int,
         fallback_action: str,
-        if_exists: ExistingTargetPolicy = "error",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.ERROR,
     ) -> None:
         """Shared move and copy implementation with wildcard handling."""
         policy = self._validate_if_exists(if_exists, allow_overwrite=False)
@@ -658,20 +697,20 @@ class OzoneFsHook(OzoneCliHook):
                 source_path, timeout=timeout, fallback_action=fallback_action
             )
             if matched is None:
-                self.create_path(dest_path, timeout=timeout)
+                self.make_path(dest_path, timeout=timeout)
                 self.run_cli(self._fs_cmd(action, source_path, dest_path), timeout=timeout)
                 return
 
             if not matched:
                 return
 
-            self.create_path(dest_path, timeout=timeout)
+            self.make_path(dest_path, timeout=timeout)
             dest_dir = dest_path.rstrip("/")
             for matched_path in matched:
                 _, filename = URIHelper.split_ozone_path(matched_path)
                 dest_file_path = URIHelper.join_ozone_path(dest_dir, filename)
                 if self.exists(dest_file_path, timeout=timeout):
-                    if policy == "ignore":
+                    if policy == ExistingTargetPolicy.IGNORE:
                         self.log.info("Destination path %s already exists, skipping.", dest_file_path)
                         continue
                     raise AirflowException(f"Destination path already exists: {dest_file_path}")
@@ -680,9 +719,9 @@ class OzoneFsHook(OzoneCliHook):
 
         parent_path, _ = URIHelper.split_ozone_path(dest_path)
         if parent_path:
-            self.create_path(parent_path, timeout=timeout)
+            self.make_path(parent_path, timeout=timeout)
         if self.exists(dest_path, timeout=timeout):
-            if policy == "ignore":
+            if policy == ExistingTargetPolicy.IGNORE:
                 self.log.info("Destination path %s already exists, treating as success.", dest_path)
                 return
             raise AirflowException(f"Destination path already exists: {dest_path}")
@@ -715,7 +754,7 @@ class OzoneAdminHook(OzoneCliHook):
         namespace_quota: str | int | None = None,
         owner: str | None = None,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "ignore",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.IGNORE,
     ) -> None:
         """Create a volume with optional quotas and owner."""
         self._create_resource(
@@ -798,7 +837,7 @@ class OzoneAdminHook(OzoneCliHook):
         replication: str | None = None,
         encryption_key: str | None = None,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "ignore",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.IGNORE,
     ) -> None:
         """Create a bucket with optional owner, layout, quotas, replication and encryption key."""
         extra_args: list[str] = []
@@ -1102,7 +1141,7 @@ class OzoneAdminHook(OzoneCliHook):
         owner: str | None = None,
         extra_args: list[str] | None = None,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "ignore",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.IGNORE,
     ) -> None:
         """Create a volume or bucket and treat already-exists errors as success."""
         policy = OzoneFsHook._validate_if_exists(if_exists, allow_overwrite=False)
@@ -1136,7 +1175,7 @@ class OzoneAdminHook(OzoneCliHook):
         output = ProcessOutputAnalysis.from_completed_process(result)
         error_message = output.preferred_output or "No error message provided"
         if spec.already_exists_marker.lower() in error_message.lower():
-            if policy == "error":
+            if policy == ExistingTargetPolicy.ERROR:
                 raise AirflowException(f"{resource.value.capitalize()} already exists: {resource_path}")
             self.log.info(
                 "%s %s already exists, treating as success.", resource.value.capitalize(), resource_path

@@ -67,6 +67,16 @@ class URIHelper:
         return urlunsplit((scheme, netloc, path, "", ""))
 
     @classmethod
+    def to_key_uri(cls, value: str) -> str:
+        """Return an object-store key URI accepted by `ozone sh key` commands."""
+        scheme, netloc, path_or_raw = cls.parse_ozone_uri(value)
+        if scheme in {"ofs", "o3fs", "o3"}:
+            return cls.build_ozone_uri("o3", netloc, path_or_raw)
+        if scheme:
+            return value
+        return path_or_raw.lstrip("/")
+
+    @classmethod
     def split_ozone_path(cls, value: str) -> tuple[str, str]:
         """
         Split Ozone path into parent directory and basename.

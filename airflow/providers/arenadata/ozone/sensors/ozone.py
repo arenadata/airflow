@@ -42,14 +42,15 @@ class OzoneKeySensor(BaseSensorOperator):
         path: str,
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
-        cli_timeout: int = FAST_TIMEOUT_SECONDS,  # Timeout for object existence check operation in Ozone CLI
+        timeout: int = FAST_TIMEOUT_SECONDS,  # Timeout for object existence check operation in Ozone CLI
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.path = path
         self.ozone_conn_id = ozone_conn_id
         self.retry_attempts = retry_attempts
-        self.cli_timeout = cli_timeout
+        # Keep the Ozone CLI timeout separate from BaseSensorOperator.timeout.
+        self.cli_timeout = timeout
         self.log.debug("OzoneKeySensor initialized (path=%s, conn_id=%s)", self.path, self.ozone_conn_id)
 
     def poke(self, context: Context) -> bool:

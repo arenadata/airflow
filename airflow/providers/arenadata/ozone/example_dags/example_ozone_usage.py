@@ -147,6 +147,7 @@ with DAG(
         content="Hello from FS Layer",
         remote_path=FS_FILE_PATH,
         ozone_conn_id="{{ params.admin_conn_id }}",
+        if_exists="overwrite",
         execution_timeout=timedelta(minutes=5),
     )
 
@@ -155,7 +156,7 @@ with DAG(
         path=FS_FILE_PATH,
         ozone_conn_id="{{ params.admin_conn_id }}",
         mode="reschedule",
-        cli_timeout=60,
+        timeout=60,
     )
 
     check_ozone_auth >> create_vol >> create_bucket_native >> fs_mkdir >> fs_put >> wait_fs_file

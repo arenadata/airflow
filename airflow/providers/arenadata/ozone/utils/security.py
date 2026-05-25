@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -369,10 +370,15 @@ class KerberosConfig:
         env_vars: dict[str, str], existing_env: dict[str, str] | None = None
     ) -> dict[str, str]:
         """Build Kerberos-related environment overrides for a subprocess."""
-        base_env = (existing_env if existing_env is not None else {}).copy()
+        base_env = (existing_env if existing_env is not None else os.environ).copy()
         overrides: dict[str, str] = env_vars.copy()
 
-        enabled = overrides.get("HADOOP_SECURITY_AUTHENTICATION", "").lower() == "kerberos"
+        enabled = (
+            overrides.get(
+                "HADOOP_SECURITY_AUTHENTICATION", base_env.get("HADOOP_SECURITY_AUTHENTICATION", "")
+            ).lower()
+            == "kerberos"
+        )
         if not enabled:
             return overrides
 
@@ -395,6 +401,11 @@ class KerberosConfig:
         ozone_conf_dir = overrides.get("OZONE_CONF_DIR")
         if ozone_conf_dir:
             overrides["HADOOP_CONF_DIR"] = ozone_conf_dir
+        else:
+            base_ozone_conf_dir = base_env.get("OZONE_CONF_DIR")
+            if base_ozone_conf_dir:
+                overrides["OZONE_CONF_DIR"] = base_ozone_conf_dir
+                overrides["HADOOP_CONF_DIR"] = base_ozone_conf_dir
         return overrides
 
     @classmethod
@@ -501,6 +512,20 @@ class KerberosConfig:
             )
         log.debug("Kerberos ticket is ready for connection '%s'", conn_id)
         return True
+
+    @staticmethod
+    def is_enabled(kerberos_env: dict[str, str] | None) -> bool:
+        """Return True if Kerberos is effectively enabled."""
+        if not kerberos_env:
+            return False
+        return str(kerberos_env.get("HADOOP_SECURITY_AUTHENTICATION", "")).lower() == "kerberos"
+
+    @staticmethod
+    def resolve_config_dir(kerberos_env: dict[str, str] | None) -> str | None:
+        """Return effective config dir for Kerberos-enabled Ozone CLI."""
+        if not kerberos_env:
+            return None
+        return kerberos_env.get("OZONE_CONF_DIR")
 
     @classmethod
     def has_valid_ticket(cls, *, snapshot: OzoneConnSnapshot) -> bool:

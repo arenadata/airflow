@@ -46,7 +46,7 @@ class OzoneCreateVolumeOperator(BaseOperator):
         ozone_conn_id: str = OzoneAdminHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "ignore",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.IGNORE,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -81,7 +81,7 @@ class OzoneCreateBucketOperator(BaseOperator):
         ozone_conn_id: str = OzoneAdminHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "ignore",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.IGNORE,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -241,7 +241,7 @@ class OzoneCreatePathOperator(BaseOperator):
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = FAST_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "ignore",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.IGNORE,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -257,7 +257,7 @@ class OzoneCreatePathOperator(BaseOperator):
             ozone_conn_id=self.ozone_conn_id,
             retry_attempts=self.retry_attempts,
         )
-        hook.create_path(self.path, timeout=self.timeout, if_exists=self.if_exists)
+        hook.make_path(self.path, timeout=self.timeout, if_exists=self.if_exists)
 
 
 class OzoneUploadContentOperator(BaseOperator):
@@ -273,7 +273,7 @@ class OzoneUploadContentOperator(BaseOperator):
         max_content_size_bytes: int | None = None,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "error",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.ERROR,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -503,7 +503,7 @@ class OzoneMoveOperator(BaseOperator):
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "error",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.ERROR,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -536,7 +536,7 @@ class OzoneCopyOperator(BaseOperator):
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
         timeout: int = SLOW_TIMEOUT_SECONDS,
-        if_exists: ExistingTargetPolicy = "error",
+        if_exists: ExistingTargetPolicy | str = ExistingTargetPolicy.ERROR,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)

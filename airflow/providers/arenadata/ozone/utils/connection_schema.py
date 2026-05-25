@@ -90,6 +90,8 @@ class OzoneConnSnapshot:
     HDFS_KERBEROS_PRINCIPAL_KEY = "hdfs_kerberos_principal"
     HDFS_KERBEROS_KEYTAB_KEY = "hdfs_kerberos_keytab"
     HDFS_KERBEROS_PASSWORD_KEY = "hdfs_kerberos_password"
+    HDFS_DISTCP_MAPREDUCE_LOCAL_KEY = "hdfs_distcp_mapreduce_local"
+    HDFS_DISTCP_RENEWER_PRINCIPAL_KEY = "hdfs_distcp_renewer_principal"
     KINIT_TIMEOUT_SECONDS_KEY = "kinit_timeout_seconds"
     CORE_SITE_XML_KEY = "core_site_xml"
     OZONE_SITE_XML_KEY = "ozone_site_xml"
@@ -146,6 +148,8 @@ class OzoneConnSnapshot:
     hdfs_kerberos_principal: str | None = None
     hdfs_kerberos_keytab: str | None = None
     hdfs_kerberos_password: str | None = None
+    hdfs_distcp_mapreduce_local: bool = False
+    hdfs_distcp_renewer_principal: str | None = None
     kinit_timeout_seconds: int = KINIT_TIMEOUT_SECONDS
     core_site_xml: str = CORE_SITE_XML
     ozone_site_xml: str = OZONE_SITE_XML
@@ -238,6 +242,13 @@ class OzoneConnSnapshot:
             hdfs_kerberos_principal=normalize_optional_str(extra.get(cls.HDFS_KERBEROS_PRINCIPAL_KEY)),
             hdfs_kerberos_keytab=normalize_optional_str(extra.get(cls.HDFS_KERBEROS_KEYTAB_KEY)),
             hdfs_kerberos_password=normalize_optional_str(extra.get(cls.HDFS_KERBEROS_PASSWORD_KEY)),
+            hdfs_distcp_mapreduce_local=normalize_flag_bool(
+                extra.get(cls.HDFS_DISTCP_MAPREDUCE_LOCAL_KEY),
+                default=False,
+            ),
+            hdfs_distcp_renewer_principal=normalize_optional_str(
+                extra.get(cls.HDFS_DISTCP_RENEWER_PRINCIPAL_KEY)
+            ),
             kinit_timeout_seconds=parse_positive_int(
                 extra.get(cls.KINIT_TIMEOUT_SECONDS_KEY),
                 KINIT_TIMEOUT_SECONDS,

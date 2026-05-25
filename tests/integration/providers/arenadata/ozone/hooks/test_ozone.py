@@ -31,6 +31,7 @@ from airflow.utils import db
 CONN_ID = "ozone_test"
 OZONE_HOST = os.environ.get("OZONE_HOST", "om")
 OZONE_PORT = int(os.environ.get("OZONE_PORT", "9862"))
+OZONE_FS_AUTHORITY = os.environ.get("OZONE_FS_AUTHORITY", "om")
 VOLUME = "inttest-volume"
 BUCKET = "inttest-bucket"
 EDGE_VOLUME = "inttest-edge-volume"
@@ -70,7 +71,14 @@ def _cleanup_named_volume(hook: OzoneAdminHook, volume: str, bucket: str) -> Non
     if hook.bucket_exists(volume, bucket):
         try:
             hook.run_cli(
-                ["ozone", "fs", "-rm", "-r", "-skipTrash", f"ofs://om/{volume}/{bucket}/*"],
+                [
+                    "ozone",
+                    "fs",
+                    "-rm",
+                    "-r",
+                    "-skipTrash",
+                    f"ofs://{OZONE_FS_AUTHORITY}/{volume}/{bucket}/*",
+                ],
                 check=False,
                 log_output=False,
                 retry_attempts=0,
@@ -88,7 +96,7 @@ def _cleanup_named_volume(hook: OzoneAdminHook, volume: str, bucket: str) -> Non
 
 
 def _edge_key_path(key: str) -> str:
-    return f"ofs://om/{PurePosixPath(EDGE_VOLUME, EDGE_BUCKET, key)}"
+    return f"ofs://{OZONE_FS_AUTHORITY}/{PurePosixPath(EDGE_VOLUME, EDGE_BUCKET, key)}"
 
 
 @pytest.mark.integration("ozone")
@@ -160,24 +168,24 @@ class TestOzoneFsHookIntegration:
         _cleanup_volume(self.admin)
         self.admin.create_volume(VOLUME)
         self.admin.create_bucket(VOLUME, BUCKET, replication_type="RATIS", replication="ONE")
-        self.base_path = f"ofs://om/{VOLUME}/{BUCKET}"
+        self.base_path = f"ofs://{OZONE_FS_AUTHORITY}/{VOLUME}/{BUCKET}"
 
     def teardown_method(self):
         _cleanup_volume(self.admin)
 
     def test_create_and_check_path(self):
         path = f"{self.base_path}/test_dir"
-        self.hook.create_path(path)
+        self.hook.make_path(path)
         assert self.hook.path_exists(path)
 
     def test_create_path_existing_target_policy(self):
         path = f"{self.base_path}/existing_dir"
-        self.hook.create_path(path)
+        self.hook.make_path(path)
 
-        self.hook.create_path(path, if_exists="ignore")
+        self.hook.make_path(path, if_exists="ignore")
 
         with pytest.raises(AirflowException, match="already exists"):
-            self.hook.create_path(path, if_exists="error")
+            self.hook.make_path(path, if_exists="error")
 
     def test_upload_and_read_key(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:

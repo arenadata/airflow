@@ -27,6 +27,23 @@
 Changelog
 ---------
 
+1.0.1
+.....
+
+Ozone provider improvements:
+
+* Replaced module-level environment-derived constants in Ozone example DAGs with DAG ``params`` /
+  ``Param(...)`` definitions.
+* Split ``OzoneKeySensor`` CLI timeout handling from the parent sensor timeout. The public
+  ``timeout`` parameter now controls one Ozone CLI existence check and is stored internally as
+  ``cli_timeout``.
+* Added ``if_exists`` support for selected Ozone FS operations.
+* Added ``ExistingTargetPolicy`` enum for existing-target behavior.
+* Added ``OzoneFsHook.make_path`` as the preferred path creation API. ``OzoneFsHook.create_path``
+  is kept as a deprecated compatibility wrapper; its ``fail_if_exists`` parameter is deprecated in
+  favor of ``if_exists``.
+* Added Kerberos authentication via principal and password.
+
 1.0.0
 .....
 

@@ -42,9 +42,10 @@ Most operators accept:
   operations.
 * ``retry_attempts``: number of CLI retries for transient failures.
 * ``timeout``: timeout in seconds for the underlying CLI command.
-* ``if_exists`` on create/upload/copy/move operators: explicit policy for an
-  already existing destination. Supported values are ``error`` and ``ignore``;
-  upload operators also support ``overwrite``.
+* ``if_exists`` on create/upload/copy/move operators: explicit
+  ``ExistingTargetPolicy`` for an already existing destination. DAG code may pass
+  the enum values or their string forms. Supported values are ``error`` and
+  ``ignore``; upload operators also support ``overwrite``.
 
 Administrative operators
 ------------------------
@@ -108,9 +109,16 @@ Existing-target behavior is intentionally explicit:
   when the destination already exists.
 * ``if_exists="ignore"`` treats an existing destination as success, which is
   useful for idempotent marker files and setup paths.
-* ``if_exists="overwrite"`` is available for uploads only and maps to
-  ``ozone fs -put -f``. Directory creation, copy, and move operations do not
-  support overwrite to avoid accidental data loss.
+* ``if_exists="overwrite"`` is available for uploads only. The provider deletes
+  the existing key first and then writes through ``ozone sh key put``. Directory
+  creation, copy, and move operations do not support overwrite to avoid
+  accidental data loss.
+
+For hook-level path creation, new code should use
+``OzoneFsHook.make_path(..., if_exists=...)``. The older
+``OzoneFsHook.create_path(..., fail_if_exists=...)`` API is kept for backwards
+compatibility only and logs a deprecation warning before delegating to
+``make_path``.
 
 Path and object removal:
 

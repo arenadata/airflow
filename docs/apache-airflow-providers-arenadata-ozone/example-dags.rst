@@ -51,6 +51,8 @@ What each example DAG does
 * Creates an ``ofs://`` directory path in Ozone FS.
 * Uploads inline text content to a file in that directory.
 * Waits for the file with ``OzoneKeySensor``.
+* Overwrites the demo upload target, so the same DAG can be triggered
+  repeatedly without manually deleting the previous file.
 * Works in all Ozone security modes; pick mode via
   ``admin_conn_id`` / ``OZONE_EXAMPLE_USAGE_ADMIN_CONN_ID`` and corresponding
   ``Connection Extra``.
@@ -300,5 +302,8 @@ Retry/timeout behavior is configured in provider code and per-task arguments:
 
 * Hook defaults: ``RETRY_ATTEMPTS``, ``FAST_TIMEOUT_SECONDS``, ``SLOW_TIMEOUT_SECONDS``
   (see ``airflow/providers/arenadata/ozone/hooks/ozone.py``).
-* Operators/transfers/sensors can override ``retry_attempts`` and ``timeout``
-  per task where needed.
+* Operators/transfers can override ``retry_attempts`` and ``timeout`` per task
+  where needed.
+* ``OzoneKeySensor.timeout`` configures one Ozone CLI existence check and is
+  stored internally as ``cli_timeout``. It is not forwarded to
+  ``BaseSensorOperator.timeout``.

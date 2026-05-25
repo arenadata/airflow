@@ -42,11 +42,16 @@ Behavior notes
 --------------
 
 * ``path`` is templated, so Jinja expressions can be used in DAGs.
+* ``timeout`` is the timeout in seconds for a single Ozone CLI existence check.
+  The sensor stores this value internally as ``cli_timeout`` before calling
+  ``OzoneFsHook.key_exists(...)``.
+* ``timeout`` is intentionally not forwarded to ``BaseSensorOperator`` and does
+  not control the overall waiting horizon of the sensor. Use standard Airflow
+  sensor arguments, such as ``poke_interval`` and other ``BaseSensorOperator``
+  options, for sensor scheduling behavior.
 * retryable CLI errors are treated as "not yet ready" and do not fail the task
   immediately;
 * non-retryable CLI errors are raised to Airflow as task failures.
-* the provider-level ``cli_timeout`` parameter controls the timeout of each CLI
-  check, not the overall waiting horizon of the sensor.
 
 Example:
 
@@ -58,5 +63,6 @@ Example:
         task_id="wait_for_marker",
         path="ofs://om-service/analytics/landing/{{ ds_nodash }}/_SUCCESS",
         ozone_conn_id="ozone_default",
+        timeout=60,
         poke_interval=30,
     )

@@ -32,13 +32,15 @@ class TestOzoneKeySensor:
     def test_poke_key_exists(self, mock_ozone_hook: MagicMock):
         mock_hook_instance = mock_ozone_hook.return_value
         mock_hook_instance.key_exists = MagicMock(return_value=True)
-        sensor = OzoneKeySensor(task_id="test_sensor", path="ofs://vol1/bucket1/key1")
+        sensor = OzoneKeySensor(task_id="test_sensor", path="ofs://vol1/bucket1/key1", timeout=42)
         result = sensor.poke(context={})
         assert result is True
         mock_ozone_hook.assert_called_once()
         assert mock_ozone_hook.call_args.kwargs["ozone_conn_id"] == OzoneFsHook.default_conn_name
-        mock_hook_instance.key_exists.assert_called_once()
+        mock_hook_instance.key_exists.assert_called_once_with("ofs://vol1/bucket1/key1", timeout=42)
         assert mock_hook_instance.key_exists.call_args.args[0] == "ofs://vol1/bucket1/key1"
+        assert sensor.cli_timeout == 42
+        assert sensor.timeout != 42
 
     @patch("airflow.providers.arenadata.ozone.sensors.ozone.OzoneFsHook")
     def test_poke_retryable_error_returns_false(self, mock_ozone_hook: MagicMock):

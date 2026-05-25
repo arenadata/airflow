@@ -30,6 +30,7 @@ from airflow.utils import db
 CONN_ID = "ozone_sensor_test"
 OZONE_HOST = os.environ.get("OZONE_HOST", "om")
 OZONE_PORT = int(os.environ.get("OZONE_PORT", "9862"))
+OZONE_FS_AUTHORITY = os.environ.get("OZONE_FS_AUTHORITY", "om")
 VOLUME = "inttest-sensor-volume"
 BUCKET = "inttest-sensor-bucket"
 
@@ -53,7 +54,14 @@ def _cleanup_volume(hook: OzoneAdminHook) -> None:
     if hook.bucket_exists(VOLUME, BUCKET):
         try:
             hook.run_cli(
-                ["ozone", "fs", "-rm", "-r", "-skipTrash", f"ofs://om/{VOLUME}/{BUCKET}/*"],
+                [
+                    "ozone",
+                    "fs",
+                    "-rm",
+                    "-r",
+                    "-skipTrash",
+                    f"ofs://{OZONE_FS_AUTHORITY}/{VOLUME}/{BUCKET}/*",
+                ],
                 check=False,
                 log_output=False,
                 retry_attempts=0,
@@ -78,7 +86,7 @@ class TestOzoneKeySensorIntegration:
         _cleanup_volume(self.admin)
         self.admin.create_volume(VOLUME)
         self.admin.create_bucket(VOLUME, BUCKET, replication_type="RATIS", replication="ONE")
-        self.base_path = f"ofs://om/{VOLUME}/{BUCKET}"
+        self.base_path = f"ofs://{OZONE_FS_AUTHORITY}/{VOLUME}/{BUCKET}"
 
     def teardown_method(self):
         _cleanup_volume(self.admin)
@@ -101,13 +109,12 @@ class TestOzoneKeySensorIntegration:
             path=remote_path,
             ozone_conn_id=CONN_ID,
             retry_attempts=1,
-            cli_timeout=30,
-            timeout=120,
+            timeout=30,
         )
 
         assert sensor.poke({}) is True
         assert sensor.cli_timeout == 30
-        assert sensor.timeout == 120
+        assert sensor.timeout != 30
 
     def test_poke_returns_false_for_missing_key(self):
         sensor = OzoneKeySensor(
@@ -115,10 +122,9 @@ class TestOzoneKeySensorIntegration:
             path=f"{self.base_path}/missing.txt",
             ozone_conn_id=CONN_ID,
             retry_attempts=1,
-            cli_timeout=30,
-            timeout=120,
+            timeout=30,
         )
 
         assert sensor.poke({}) is False
         assert sensor.cli_timeout == 30
-        assert sensor.timeout == 120
+        assert sensor.timeout != 30

@@ -42,6 +42,7 @@ from airflow.utils import db
 CONN_ID = "ozone_operator_test"
 OZONE_HOST = os.environ.get("OZONE_HOST", "om")
 OZONE_PORT = int(os.environ.get("OZONE_PORT", "9862"))
+OZONE_FS_AUTHORITY = os.environ.get("OZONE_FS_AUTHORITY", "om")
 VOLUME = "inttest-operator-volume"
 BUCKET = "inttest-operator-bucket"
 
@@ -65,7 +66,14 @@ def _cleanup_volume(hook: OzoneAdminHook) -> None:
     if hook.bucket_exists(VOLUME, BUCKET):
         try:
             hook.run_cli(
-                ["ozone", "fs", "-rm", "-r", "-skipTrash", f"ofs://om/{VOLUME}/{BUCKET}/*"],
+                [
+                    "ozone",
+                    "fs",
+                    "-rm",
+                    "-r",
+                    "-skipTrash",
+                    f"ofs://{OZONE_FS_AUTHORITY}/{VOLUME}/{BUCKET}/*",
+                ],
                 check=False,
                 log_output=False,
                 retry_attempts=0,
@@ -93,7 +101,7 @@ class TestOzoneOperatorIntegration:
         _cleanup_volume(self.admin)
 
     def test_admin_and_filesystem_operator_smoke_flow(self):
-        base_path = f"ofs://om/{VOLUME}/{BUCKET}"
+        base_path = f"ofs://{OZONE_FS_AUTHORITY}/{VOLUME}/{BUCKET}"
         directory = f"{base_path}/incoming"
         remote_file = f"{directory}/payload.txt"
 
@@ -170,6 +178,8 @@ class TestOzoneOperatorIntegration:
             task_id="delete_bucket",
             volume_name=VOLUME,
             bucket_name=BUCKET,
+            recursive=True,
+            force=True,
             ozone_conn_id=CONN_ID,
             retry_attempts=1,
         ).execute({})

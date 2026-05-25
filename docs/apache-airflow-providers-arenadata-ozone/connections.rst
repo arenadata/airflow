@@ -255,6 +255,10 @@ HDFS Kerberos keys:
 * ``hdfs_kerberos_keytab`` (supports ``secret://...``)
 * ``hdfs_kerberos_password`` (supports ``secret://...``)
 * optional ``krb5_conf`` for explicit Kerberos config path
+* optional ``hdfs_distcp_mapreduce_local`` to run DistCp through local MapReduce
+  when no YARN/MapReduce cluster config is available on the worker
+* optional ``hdfs_distcp_renewer_principal`` to pass a Kerberos renewer principal
+  to DistCp delegation token setup
 
 For HDFS DistCp Kerberos, provide ``hdfs_kerberos_principal`` plus either
 ``hdfs_kerberos_keytab`` or ``hdfs_kerberos_password``. When both credentials
@@ -270,6 +274,8 @@ Example HDFS Kerberos extra for ``HdfsToOzoneOperator`` using password:
     "hdfs_kerberos_enabled": "true",
     "hdfs_kerberos_principal": "hdfs@EXAMPLE.COM",
     "hdfs_kerberos_password": "secret://vault/hdfs/kerberos_password",
+    "hdfs_distcp_mapreduce_local": "true",
+    "hdfs_distcp_renewer_principal": "hdfs@EXAMPLE.COM",
     "krb5_conf": "/opt/airflow/kerberos-config/krb5.conf"
   }
 

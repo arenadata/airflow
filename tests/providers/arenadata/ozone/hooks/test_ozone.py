@@ -24,6 +24,7 @@ import pytest
 
 from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.hooks.ozone import (
+    ExistingTargetPolicy,
     OzoneAdminExtraHook,
     OzoneAdminHook,
     OzoneCliHook,
@@ -102,6 +103,37 @@ class TestOzoneCliHookConnectionSnapshot:
         assert env["OZONE_CONF_DIR"] == "/opt/airflow/ozone-conf"
         assert env["HADOOP_CONF_DIR"] == "/opt/airflow/ozone-conf"
 
+    def test_prepared_cli_env_uses_ozone_conf_dir_from_environment(self, monkeypatch, caplog):
+        conn = MagicMock()
+        conn.host = "om-host"
+        conn.port = 9862
+        conn.extra_dejson = {}
+        hook = OzoneCliHook(ozone_conn_id="ozone_default")
+        hook.get_connection = lambda _: conn
+        monkeypatch.setenv("OZONE_CONF_DIR", "/env/ozone-conf")
+
+        with caplog.at_level("INFO"):
+            env = hook._prepared_cli_env()
+
+        assert env["OZONE_CONF_DIR"] == "/env/ozone-conf"
+        assert env["HADOOP_CONF_DIR"] == "/env/ozone-conf"
+        assert "Using ozone_conf_dir from OZONE_CONF_DIR environment variable" in caplog.text
+
+    def test_prepared_cli_env_raises_when_kerberos_conf_dir_missing(self, monkeypatch):
+        conn = MagicMock()
+        conn.host = "om-host"
+        conn.port = 9862
+        conn.extra_dejson = {"hadoop_security_authentication": "kerberos"}
+        hook = OzoneCliHook(ozone_conn_id="ozone_default")
+        hook.get_connection = lambda _: conn
+        monkeypatch.delenv("OZONE_CONF_DIR", raising=False)
+        monkeypatch.delenv("HADOOP_CONF_DIR", raising=False)
+
+        with pytest.raises(
+            AirflowException, match="Kerberos is enabled but ozone_conf_dir is not configured"
+        ):
+            hook._prepared_cli_env()
+
     @pytest.mark.parametrize(
         ("extra", "expected_mode"),
         [
@@ -113,6 +145,7 @@ class TestOzoneCliHookConnectionSnapshot:
                     "kerberos_principal": "airflow@EXAMPLE.COM",
                     "kerberos_keytab": "/tmp/airflow.keytab",
                     "krb5_conf": "/etc/krb5.conf",
+                    "ozone_conf_dir": "/opt/airflow/ozone-conf",
                 },
                 "kerberos",
             ),
@@ -123,6 +156,7 @@ class TestOzoneCliHookConnectionSnapshot:
                     "kerberos_principal": "airflow@EXAMPLE.COM",
                     "kerberos_keytab": "/tmp/airflow.keytab",
                     "krb5_conf": "/etc/krb5.conf",
+                    "ozone_conf_dir": "/opt/airflow/ozone-conf",
                 },
                 "ssl+kerberos",
             ),
@@ -331,7 +365,7 @@ class TestOzoneFsHook:
                 stderr="not found",
             ),
             subprocess.CompletedProcess(
-                args=["ozone", "fs", "-put", str(local_path), "ofs://vol1/bucket1/file.txt"],
+                args=["ozone", "sh", "key", "put", "o3://vol1/bucket1/file.txt", str(local_path)],
                 returncode=0,
                 stdout="",
                 stderr="",
@@ -343,20 +377,86 @@ class TestOzoneFsHook:
         assert mock_run_cli.call_count == 2
         assert mock_run_cli.call_args_list[1].args[0] == [
             "ozone",
-            "fs",
-            "-put",
+            "sh",
+            "key",
+            "put",
+            "o3://vol1/bucket1/file.txt",
             str(local_path),
-            "ofs://vol1/bucket1/file.txt",
         ]
 
-    @pytest.mark.parametrize("if_exists", ["error", "ignore", "overwrite"])
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_make_path_existing_target_policy_error(
+        self, mock_run_cli: MagicMock, ozone_fs_hook: OzoneFsHook
+    ):
+        mock_run_cli.return_value = subprocess.CompletedProcess(
+            args=["ozone", "fs", "-test", "-e", "ofs://vol1/bucket1/dir"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        with pytest.raises(AirflowException, match="Destination path already exists"):
+            ozone_fs_hook.make_path("ofs://vol1/bucket1/dir", if_exists=ExistingTargetPolicy.ERROR)
+
+        mock_run_cli.assert_called_once()
+
+    @patch(MOCK_RUN_RETRY_PATH)
+    def test_make_path_existing_target_policy_ignore(
+        self, mock_run_cli: MagicMock, ozone_fs_hook: OzoneFsHook
+    ):
+        mock_run_cli.return_value = subprocess.CompletedProcess(
+            args=["ozone", "fs", "-test", "-e", "ofs://vol1/bucket1/dir"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        ozone_fs_hook.make_path("ofs://vol1/bucket1/dir", if_exists=ExistingTargetPolicy.IGNORE)
+
+        mock_run_cli.assert_called_once()
+
+    @pytest.mark.parametrize(
+        ("fail_if_exists", "expected_if_exists"),
+        [
+            (True, ExistingTargetPolicy.ERROR),
+            (False, ExistingTargetPolicy.IGNORE),
+        ],
+    )
+    def test_create_path_deprecated_wrapper_warns(
+        self,
+        ozone_fs_hook: OzoneFsHook,
+        caplog,
+        fail_if_exists: bool,
+        expected_if_exists: ExistingTargetPolicy,
+    ):
+        with patch.object(ozone_fs_hook, "make_path") as mock_make_path:
+            with caplog.at_level("WARNING"):
+                ozone_fs_hook.create_path(
+                    "ofs://vol1/bucket1/dir",
+                    timeout=123,
+                    recursive=False,
+                    fail_if_exists=fail_if_exists,
+                )
+
+        assert "OzoneFsHook.create_path(..., fail_if_exists=...) is deprecated" in caplog.text
+        mock_make_path.assert_called_once_with(
+            "ofs://vol1/bucket1/dir",
+            timeout=123,
+            recursive=False,
+            if_exists=expected_if_exists,
+        )
+
+    @pytest.mark.parametrize(
+        "if_exists",
+        [ExistingTargetPolicy.ERROR, "ignore", ExistingTargetPolicy.OVERWRITE],
+    )
     @patch(MOCK_RUN_RETRY_PATH)
     def test_upload_key_existing_target_policy(
         self,
         mock_run_cli: MagicMock,
         ozone_fs_hook: OzoneFsHook,
         tmp_path,
-        if_exists: str,
+        if_exists: ExistingTargetPolicy | str,
     ):
         local_path = tmp_path / "payload.txt"
         local_path.write_text("payload", encoding="utf-8")
@@ -367,7 +467,7 @@ class TestOzoneFsHook:
             stderr="",
         )
         put_result = subprocess.CompletedProcess(
-            args=["ozone", "fs", "-put", "-f", str(local_path), "ofs://vol1/bucket1/file.txt"],
+            args=["ozone", "sh", "key", "put", "o3://vol1/bucket1/file.txt", str(local_path)],
             returncode=0,
             stdout="",
             stderr="",
@@ -384,21 +484,25 @@ class TestOzoneFsHook:
             assert mock_run_cli.call_count == 1
             return
 
-        ozone_fs_hook.upload_key(
-            str(local_path),
-            "ofs://vol1/bucket1/file.txt",
-            if_exists=if_exists,
-        )
-        expected_calls = 1 if if_exists == "ignore" else 2
-        assert mock_run_cli.call_count == expected_calls
-        if if_exists == "overwrite":
-            assert mock_run_cli.call_args_list[1].args[0] == [
-                "ozone",
-                "fs",
-                "-put",
-                "-f",
+        with patch.object(ozone_fs_hook, "delete_key") as mock_delete_key:
+            ozone_fs_hook.upload_key(
                 str(local_path),
                 "ofs://vol1/bucket1/file.txt",
+                if_exists=if_exists,
+            )
+        expected_calls = 1 if if_exists == "ignore" else 3
+        expected_delete_calls = 0 if if_exists == "ignore" else 1
+        assert mock_run_cli.call_count == expected_calls - expected_delete_calls
+        assert mock_delete_key.call_count == expected_delete_calls
+        if if_exists == "overwrite":
+            mock_delete_key.assert_called_once_with("ofs://vol1/bucket1/file.txt", timeout=3600)
+            assert mock_run_cli.call_args_list[1].args[0] == [
+                "ozone",
+                "sh",
+                "key",
+                "put",
+                "o3://vol1/bucket1/file.txt",
+                str(local_path),
             ]
 
     @patch(MOCK_RUN_RETRY_PATH)
@@ -438,6 +542,16 @@ class TestOzoneFsHook:
         ok, message = ozone_fs_hook.test_connection()
         assert ok is False
         assert "connection test failed" in message
+
+    def test_get_key_info_converts_ofs_uri_for_key_cli(self, ozone_fs_hook: OzoneFsHook):
+        with patch.object(ozone_fs_hook, "run_cli", return_value={"name": "src.txt"}) as mock_run_cli:
+            assert ozone_fs_hook.get_key_info("ofs://vol1/b1/src.txt") == {"name": "src.txt"}
+
+        mock_run_cli.assert_called_once_with(
+            ["ozone", "sh", "key", "info", "o3://vol1/b1/src.txt"],
+            timeout=300,
+            return_json_result=True,
+        )
 
     def test_get_key_property_warns_when_replication_config_missing(self, ozone_fs_hook: OzoneFsHook, caplog):
         with patch.object(
