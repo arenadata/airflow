@@ -34,7 +34,7 @@ from airflow.utils.context import Context  # noqa: TCH001
 class OzoneBackupOperator(BaseOperator):
     """Creates a snapshot of a bucket for backup and disaster recovery."""
 
-    template_fields = ("volume", "bucket", "snapshot_name")
+    template_fields = ("volume", "bucket", "snapshot_name", "ozone_conn_id")
 
     def __init__(
         self,

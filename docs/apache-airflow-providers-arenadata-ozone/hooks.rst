@@ -52,6 +52,22 @@ Typical API areas:
 * move and copy data inside Ozone;
 * inspect key metadata and selected key properties.
 
+Write helpers use the ``ExistingTargetPolicy`` enum for already existing targets.
+DAG code may still pass the string values directly:
+
+* ``ExistingTargetPolicy.ERROR`` / ``"error"``: fail fast with a clear Airflow
+  exception;
+* ``ExistingTargetPolicy.IGNORE`` / ``"ignore"``: treat the existing target as
+  success;
+* ``ExistingTargetPolicy.OVERWRITE`` / ``"overwrite"``: only for file uploads,
+  where the provider deletes the existing key first and then writes through
+  ``ozone sh key put``.
+
+Use ``make_path(..., if_exists=...)`` for new path creation code. The older
+``create_path(..., fail_if_exists=...)`` method remains available only for
+backwards compatibility, logs a deprecation warning, and delegates to
+``make_path`` internally.
+
 This is the main hook behind filesystem operators and sensors.
 
 OzoneAdminHook
@@ -67,6 +83,10 @@ Typical API areas:
 * inspect volume and bucket metadata;
 * set and clear quotas;
 * list volumes and buckets.
+
+Volume and bucket creation defaults to idempotent ``if_exists="ignore"`` and
+can be switched to ``if_exists="error"`` when a DAG should fail if the resource
+already exists.
 
 This hook uses ``ozone_admin_default`` by default.
 

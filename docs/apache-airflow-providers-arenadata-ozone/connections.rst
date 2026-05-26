@@ -76,6 +76,7 @@ Ozone Kerberos scope:
 * ``hadoop_security_authentication`` (set ``kerberos`` to enable)
 * ``kerberos_principal``
 * ``kerberos_keytab`` (supports ``secret://...``)
+* ``kerberos_password`` (supports ``secret://...``)
 * ``krb5_conf`` (optional)
 * ``ozone_conf_dir`` (recommended for all modes)
 
@@ -110,8 +111,8 @@ Use one of the following templates depending on your runtime mode.
     "ozone_conf_dir": "/opt/airflow/ozone-conf"
   }
 
-3) Ozone with SSL/TLS and Kerberos
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3) Ozone with SSL/TLS and Kerberos using keytab
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: json
 
@@ -127,6 +128,27 @@ Use one of the following templates depending on your runtime mode.
     "hadoop_security_authentication": "kerberos",
     "kerberos_principal": "testuser@EXAMPLE.COM",
     "kerberos_keytab": "/opt/airflow/keytabs/testuser.keytab",
+    "krb5_conf": "/opt/airflow/kerberos-config/krb5.conf",
+    "ozone_conf_dir": "/opt/airflow/ozone-conf"
+  }
+
+4) Ozone with SSL/TLS and Kerberos using password
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: json
+
+  {
+    "ozone_security_enabled": "true",
+    "ozone_om_https_port": "9879",
+    "ozone_ssl_keystore_location": "/opt/airflow/ssl/ozone-keystore.jks",
+    "ozone_ssl_keystore_password": "secret://vault/ozone/keystore_password",
+    "ozone_ssl_keystore_type": "JKS",
+    "ozone_ssl_truststore_location": "/opt/airflow/ssl/ozone-truststore.jks",
+    "ozone_ssl_truststore_password": "secret://vault/ozone/truststore_password",
+    "ozone_ssl_truststore_type": "JKS",
+    "hadoop_security_authentication": "kerberos",
+    "kerberos_principal": "testuser@EXAMPLE.COM",
+    "kerberos_password": "secret://vault/ozone/kerberos_password",
     "krb5_conf": "/opt/airflow/kerberos-config/krb5.conf",
     "ozone_conf_dir": "/opt/airflow/ozone-conf"
   }
@@ -163,7 +185,15 @@ Field-by-field explanation for SSL + Kerberos extra
 
 ``kerberos_keytab``
     Absolute path to a keytab file inside the Airflow worker runtime.
-    The file must exist and be readable by the task process.
+    The file must exist and be readable by the task process. When both
+    ``kerberos_keytab`` and ``kerberos_password`` are provided, the provider
+    keeps the existing keytab-based flow.
+
+``kerberos_password``
+    Password for ``kerberos_principal``. Prefer ``secret://...`` values so the
+    password is resolved from Airflow secrets backend. The provider uses the
+    password only for ``kinit`` stdin and does not export it to Ozone CLI
+    subprocess environment.
 
 ``krb5_conf``
     Optional explicit path to ``krb5.conf``. Recommended in containerized runs
@@ -182,8 +212,10 @@ Common validation checklist for DAG developers
 ----------------------------------------------
 
 * Paths in extra must be valid inside the worker runtime, not on your laptop.
-* SSL store files and keytab must be mounted/readable for Airflow task user.
-* Kerberos principal/keytab pair must be valid for your KDC realm.
+* SSL store files and keytab files, when configured, must be mounted/readable
+  for Airflow task user.
+* Kerberos requires ``kerberos_principal`` plus either ``kerberos_keytab`` or
+  ``kerberos_password``.
 * ``ozone_conf_dir`` must contain config files pointing to real OM/SCM endpoints.
 
 Why ``ozone_conf_dir`` is important
@@ -221,7 +253,31 @@ HDFS Kerberos keys:
 * ``hdfs_kerberos_enabled``
 * ``hdfs_kerberos_principal``
 * ``hdfs_kerberos_keytab`` (supports ``secret://...``)
+* ``hdfs_kerberos_password`` (supports ``secret://...``)
 * optional ``krb5_conf`` for explicit Kerberos config path
+* optional ``hdfs_distcp_mapreduce_local`` to run DistCp through local MapReduce
+  when no YARN/MapReduce cluster config is available on the worker
+* optional ``hdfs_distcp_renewer_principal`` to pass a Kerberos renewer principal
+  to DistCp delegation token setup
+
+For HDFS DistCp Kerberos, provide ``hdfs_kerberos_principal`` plus either
+``hdfs_kerberos_keytab`` or ``hdfs_kerberos_password``. When both credentials
+are configured, the provider keeps the existing keytab-based flow. Passwords
+are used only for ``kinit`` stdin and are not exported to the DistCp subprocess
+environment.
+
+Example HDFS Kerberos extra for ``HdfsToOzoneOperator`` using password:
+
+.. code-block:: json
+
+  {
+    "hdfs_kerberos_enabled": "true",
+    "hdfs_kerberos_principal": "hdfs@EXAMPLE.COM",
+    "hdfs_kerberos_password": "secret://vault/hdfs/kerberos_password",
+    "hdfs_distcp_mapreduce_local": "true",
+    "hdfs_distcp_renewer_principal": "hdfs@EXAMPLE.COM",
+    "krb5_conf": "/opt/airflow/kerberos-config/krb5.conf"
+  }
 
 Recommended runtime notes
 -------------------------
@@ -240,6 +296,19 @@ Recommended Kerberos extra (explicit paths):
     "hadoop_security_authentication": "kerberos",
     "kerberos_principal": "testuser@EXAMPLE.COM",
     "kerberos_keytab": "/opt/airflow/keytabs/testuser.keytab",
+    "krb5_conf": "/opt/airflow/kerberos-config/krb5.conf",
+    "ozone_conf_dir": "/opt/airflow/ozone-conf"
+  }
+
+Recommended Kerberos extra (password from secrets backend):
+
+.. code-block:: json
+
+  {
+    "ozone_security_enabled": "true",
+    "hadoop_security_authentication": "kerberos",
+    "kerberos_principal": "testuser@EXAMPLE.COM",
+    "kerberos_password": "secret://vault/ozone/kerberos_password",
     "krb5_conf": "/opt/airflow/kerberos-config/krb5.conf",
     "ozone_conf_dir": "/opt/airflow/ozone-conf"
   }

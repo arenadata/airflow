@@ -45,7 +45,7 @@ def test_from_connection_requires_host_and_port_in_strict_mode(
 def test_from_connection_relaxed_mode_defaults_and_non_dict_extra() -> None:
     snapshot = OzoneConnSnapshot.from_connection(
         _conn(None, None, "not-a-dict"),
-        conn_id="hdfs_default",
+        conn_id="hdfs_admin_default",
         require_host_port=False,
     )
     assert snapshot.host == ""
@@ -67,8 +67,14 @@ def test_from_connection_parses_security_contract_and_runtime_overrides() -> Non
                 "hadoop_security_authentication": "kerberos",
                 "kerberos_principal": "user@REALM",
                 "kerberos_keytab": "/tmp/user.keytab",
+                "kerberos_password": "secret://vault/ozone/kerberos_password",
                 "krb5_conf": "/tmp/krb5.conf",
                 "ozone_conf_dir": "/opt/airflow/ozone-conf",
+                "hdfs_kerberos_principal": "hdfs@REALM",
+                "hdfs_kerberos_keytab": "/tmp/hdfs.keytab",
+                "hdfs_kerberos_password": "secret://vault/hdfs/kerberos_password",
+                "hdfs_distcp_mapreduce_local": "true",
+                "hdfs_distcp_renewer_principal": "yarn-rm/_HOST@REALM",
                 "kinit_timeout_seconds": "42",
                 "core_site_xml": "core-custom.xml",
                 "ozone_site_xml": "ozone-custom.xml",
@@ -83,8 +89,14 @@ def test_from_connection_parses_security_contract_and_runtime_overrides() -> Non
     assert snapshot.hadoop_security_authentication == "kerberos"
     assert snapshot.kerberos_principal == "user@REALM"
     assert snapshot.kerberos_keytab == "/tmp/user.keytab"
+    assert snapshot.kerberos_password == "secret://vault/ozone/kerberos_password"
     assert snapshot.krb5_conf == "/tmp/krb5.conf"
     assert snapshot.ozone_conf_dir == "/opt/airflow/ozone-conf"
+    assert snapshot.hdfs_kerberos_principal == "hdfs@REALM"
+    assert snapshot.hdfs_kerberos_keytab == "/tmp/hdfs.keytab"
+    assert snapshot.hdfs_kerberos_password == "secret://vault/hdfs/kerberos_password"
+    assert snapshot.hdfs_distcp_mapreduce_local is True
+    assert snapshot.hdfs_distcp_renewer_principal == "yarn-rm/_HOST@REALM"
     assert snapshot.kinit_timeout_seconds == 42
     assert snapshot.core_site_xml == "core-custom.xml"
     assert snapshot.ozone_site_xml == "ozone-custom.xml"

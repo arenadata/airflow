@@ -192,6 +192,7 @@ class CliRunner:
         try:
             process = subprocess.Popen(
                 cmd,
+                stdin=subprocess.PIPE if input_text is not None else None,
                 env=cls.merge_env(env_overrides),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

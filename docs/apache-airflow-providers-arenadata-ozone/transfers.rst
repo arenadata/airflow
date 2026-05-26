@@ -43,6 +43,10 @@ Runtime notes:
 * the operator validates runtime dependencies before starting DistCp;
 * HDFS SSL and Kerberos settings are read from ``hdfs_conn_id`` and applied
   only to the DistCp subprocess environment;
+* secure workers without YARN/MapReduce cluster configuration can set
+  ``hdfs_distcp_mapreduce_local`` and ``hdfs_distcp_renewer_principal`` in
+  ``hdfs_conn_id`` extra so DistCp can acquire HDFS/Ozone delegation tokens
+  and run through the local MapReduce runner;
 * if ``hdfs_conn_id`` is omitted, no HDFS-specific Airflow connection settings
   are injected and DistCp relies on the worker's local Hadoop runtime setup;
 * a dedicated ``apache-airflow-providers-apache-hdfs`` package is not required
@@ -61,7 +65,7 @@ Example:
         task_id="migrate_to_ozone",
         source_path="hdfs:///warehouse/source_table",
         dest_path="ofs://om-service/analytics/landing/source_table",
-        hdfs_conn_id="hdfs_default",
+        hdfs_conn_id="hdfs_admin_default",
     )
 
 OzoneBackupOperator

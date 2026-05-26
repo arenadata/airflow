@@ -42,21 +42,22 @@ from airflow.providers.arenadata.ozone.utils.security import (
 from airflow.utils.context import Context  # noqa: TCH001
 
 log = logging.getLogger(__name__)
-DISTCP_BASE_COMMAND = ["hadoop", "distcp", "-update", "-skipcrccheck"]
+DISTCP_BASE_COMMAND = ["hadoop", "distcp"]
+DISTCP_COPY_OPTIONS = ["-update", "-skipcrccheck"]
+DISTCP_MAPREDUCE_LOCAL_OPTION = "-Dmapreduce.framework.name=local"
+DISTCP_YARN_RENEWER_PRINCIPAL_OPTION = "-Dyarn.resourcemanager.principal={principal}"
+DISTCP_JOBTRACKER_RENEWER_PRINCIPAL_OPTION = "-Dmapreduce.jobtracker.kerberos.principal={principal}"
 
 
 class HdfsToOzoneOperator(BaseOperator):
     """
     Migrate data from HDFS to Ozone using DistCp.
 
-    Supports SSL/TLS configuration via HDFS connection Extra:
-    - hdfs_ssl_enabled: canonical flag that enables HDFS SSL/TLS contract.
-    - dfs_encrypt_data_transfer: optional transport encryption parameter (not an SSL enable flag alias).
-    - hdfs_ssl_keystore_location: Path to keystore file
-    - hdfs_ssl_keystore_password: Keystore password
-    - hdfs_ssl_truststore_location: Path to truststore file
-    - hdfs_ssl_truststore_password: Truststore password
+    Optional HDFS SSL/TLS and Kerberos settings are read from the
+    ``hdfs_conn_id`` connection extra.
     """
+
+    template_fields = ("source_path", "dest_path", "hdfs_conn_id")
 
     def __init__(
         self,
@@ -122,7 +123,7 @@ class HdfsToOzoneOperator(BaseOperator):
 
     @cached_property
     def _hdfs_kerberos_env(self) -> dict[str, str] | None:
-        """Load HDFS Kerberos configuration from connection Extra lazily."""
+        """Load HDFS Kerberos subprocess env from the connection snapshot."""
         if not self.hdfs_conn_id:
             return None
         if not self._hdfs_connection_snapshot:
@@ -133,7 +134,7 @@ class HdfsToOzoneOperator(BaseOperator):
         )
 
     def _build_distcp_env(self) -> dict[str, str] | None:
-        """Build DistCp environment from HDFS SSL/Kerberos scopes."""
+        """Build DistCp env and initialize HDFS Kerberos when configured."""
         env: dict[str, str] = {}
         if self._hdfs_ssl_env:
             self.log.debug("Applying SSL environment variables for HDFS DistCp")
@@ -145,30 +146,37 @@ class HdfsToOzoneOperator(BaseOperator):
                 raise AirflowException(
                     "HDFS Kerberos environment exists but HDFS connection snapshot is missing."
                 )
-            principal = self._hdfs_kerberos_env.get("HDFS_KERBEROS_PRINCIPAL")
-            keytab = self._hdfs_kerberos_env.get("HDFS_KERBEROS_KEYTAB")
-            if principal and keytab:
-                if not KerberosConfig.kinit_with_keytab(
-                    principal,
-                    keytab,
-                    snapshot.krb5_conf,
-                    snapshot=snapshot,
-                ):
-                    raise AirflowException(
-                        f"HDFS Kerberos authentication failed for connection '{self.hdfs_conn_id}' "
-                        f"using principal '{principal}'."
-                    )
-                env["HADOOP_SECURITY_AUTHENTICATION"] = "kerberos"
-                env["HDFS_KERBEROS_PRINCIPAL"] = principal
-                env["HDFS_KERBEROS_KEYTAB"] = keytab
-                if snapshot.krb5_conf:
-                    env["KRB5_CONFIG"] = snapshot.krb5_conf
+            if not KerberosConfig.kinit_hdfs_from_snapshot(
+                snapshot=snapshot,
+                conn_id=self.hdfs_conn_id,
+            ):
+                raise AirflowException(
+                    f"HDFS Kerberos authentication failed for connection '{self.hdfs_conn_id}' "
+                    f"using principal '{snapshot.hdfs_kerberos_principal}'."
+                )
+            env.update(self._hdfs_kerberos_env)
+            env["HADOOP_SECURITY_AUTHENTICATION"] = "kerberos"
+            if snapshot.krb5_conf:
+                env["KRB5_CONFIG"] = snapshot.krb5_conf
 
         return env or None
 
     def _build_distcp_command(self) -> list[str]:
         """Build the DistCp command for the current transfer."""
-        return [*DISTCP_BASE_COMMAND, self.source_path, self.dest_path]
+        options: list[str] = []
+        snapshot = self._hdfs_connection_snapshot
+        if snapshot:
+            if snapshot.hdfs_distcp_mapreduce_local:
+                options.append(DISTCP_MAPREDUCE_LOCAL_OPTION)
+            if snapshot.hdfs_distcp_renewer_principal:
+                principal = snapshot.hdfs_distcp_renewer_principal
+                options.extend(
+                    [
+                        DISTCP_YARN_RENEWER_PRINCIPAL_OPTION.format(principal=principal),
+                        DISTCP_JOBTRACKER_RENEWER_PRINCIPAL_OPTION.format(principal=principal),
+                    ]
+                )
+        return [*DISTCP_BASE_COMMAND, *options, *DISTCP_COPY_OPTIONS, self.source_path, self.dest_path]
 
     def _validate_runtime_inputs(self) -> None:
         """Validate operator inputs right before DistCp execution."""

@@ -38,6 +38,7 @@ from datetime import timedelta
 from pathlib import PurePosixPath
 
 from airflow.models.dag import DAG
+from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
@@ -51,21 +52,13 @@ from airflow.providers.arenadata.ozone.transfers.ozone_backup import OzoneBackup
 from airflow.utils import timezone
 from airflow.utils.task_group import TaskGroup
 
-
-def _example_env(name: str, default: str | None = None) -> str | None:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    normalized = value.strip()
-    return normalized if normalized else default
-
-
-OM_HOST = _example_env("OZONE_EXAMPLE_OM_HOST", "om")
-LIFECYCLE_CONN_ID = _example_env("OZONE_EXAMPLE_LIFECYCLE_CONN_ID", "ozone_admin_default")
-LANDING_VOLUME = _example_env("OZONE_EXAMPLE_LIFECYCLE_LANDING_VOLUME", "landing")
-LANDING_BUCKET = _example_env("OZONE_EXAMPLE_LIFECYCLE_LANDING_BUCKET", "raw")
-ARCHIVE_VOLUME = _example_env("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_VOLUME", "archive")
-ARCHIVE_BUCKET = _example_env("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_BUCKET", "processed")
+DEFAULT_OM_HOST = os.getenv("OZONE_EXAMPLE_OM_HOST") or "om"
+DEFAULT_CONN_ID = os.getenv("OZONE_EXAMPLE_LIFECYCLE_CONN_ID") or "ozone_admin_default"
+DEFAULT_LANDING_VOLUME = os.getenv("OZONE_EXAMPLE_LIFECYCLE_LANDING_VOLUME") or "landing"
+DEFAULT_LANDING_BUCKET = os.getenv("OZONE_EXAMPLE_LIFECYCLE_LANDING_BUCKET") or "raw"
+DEFAULT_ARCHIVE_VOLUME = os.getenv("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_VOLUME") or "archive"
+DEFAULT_ARCHIVE_BUCKET = os.getenv("OZONE_EXAMPLE_LIFECYCLE_ARCHIVE_BUCKET") or "processed"
+DEFAULT_SNAPSHOT_PREFIX = os.getenv("OZONE_EXAMPLE_LIFECYCLE_SNAPSHOT_PREFIX") or "snap"
 
 with DAG(
     dag_id="example_ozone_data_lifecycle",
@@ -73,6 +66,20 @@ with DAG(
     catchup=False,
     schedule=None,
     tags=["ozone", "example"],
+    params={
+        "om_host": Param(DEFAULT_OM_HOST, type="string", title="OM host / Ozone authority"),
+        "lifecycle_conn_id": Param(DEFAULT_CONN_ID, type="string", title="Ozone connection ID"),
+        "landing_volume": Param(DEFAULT_LANDING_VOLUME, type="string", title="Landing volume"),
+        "landing_bucket": Param(DEFAULT_LANDING_BUCKET, type="string", title="Landing bucket"),
+        "archive_volume": Param(DEFAULT_ARCHIVE_VOLUME, type="string", title="Archive volume"),
+        "archive_bucket": Param(DEFAULT_ARCHIVE_BUCKET, type="string", title="Archive bucket"),
+        "snapshot_prefix": Param(
+            DEFAULT_SNAPSHOT_PREFIX,
+            type="string",
+            title="Snapshot name prefix",
+            description="Run date suffix is added automatically as ds_nodash.",
+        ),
+    },
     doc_md="""
     ### Data Lifecycle Example (with Hive Registration)
 
@@ -82,37 +89,45 @@ with DAG(
     3. **Archive**: Moves the processed source files to an archive path using `OzoneMoveOperator`.
     4. **Backup**: Creates a disaster-recovery snapshot of the bucket using `OzoneBackupOperator`.
     5. **Cleanup**: Deletes the original files from the landing directory.
+
+    Runtime values can be overridden from the Trigger UI or via `dag_run.conf`.
     """,
 ) as dag:
-    LANDING_PATH = f"ofs://{OM_HOST}/{PurePosixPath(LANDING_VOLUME, LANDING_BUCKET)}"
-    ARCHIVE_BASE_PATH = f"ofs://{OM_HOST}/{PurePosixPath(ARCHIVE_VOLUME, ARCHIVE_BUCKET)}"
+    LANDING_PATH = (
+        f"ofs://{{{{ params.om_host }}}}/"
+        f"{PurePosixPath('{{ params.landing_volume }}', '{{ params.landing_bucket }}')}"
+    )
+    ARCHIVE_BASE_PATH = (
+        f"ofs://{{{{ params.om_host }}}}/"
+        f"{PurePosixPath('{{ params.archive_volume }}', '{{ params.archive_bucket }}')}"
+    )
 
     # 0. Ensure required volumes and buckets exist.
     create_landing_volume = OzoneCreateVolumeOperator(
         task_id="create_landing_volume",
-        volume_name=LANDING_VOLUME,
-        ozone_conn_id=LIFECYCLE_CONN_ID,
+        volume_name="{{ params.landing_volume }}",
+        ozone_conn_id="{{ params.lifecycle_conn_id }}",
         execution_timeout=timedelta(minutes=1),
     )
     create_archive_volume = OzoneCreateVolumeOperator(
         task_id="create_archive_volume",
-        volume_name=ARCHIVE_VOLUME,
-        ozone_conn_id=LIFECYCLE_CONN_ID,
+        volume_name="{{ params.archive_volume }}",
+        ozone_conn_id="{{ params.lifecycle_conn_id }}",
         execution_timeout=timedelta(minutes=1),
     )
 
     create_landing_bucket = OzoneCreateBucketOperator(
         task_id="create_landing_bucket",
-        volume_name=LANDING_VOLUME,
-        bucket_name=LANDING_BUCKET,
-        ozone_conn_id=LIFECYCLE_CONN_ID,
+        volume_name="{{ params.landing_volume }}",
+        bucket_name="{{ params.landing_bucket }}",
+        ozone_conn_id="{{ params.lifecycle_conn_id }}",
         execution_timeout=timedelta(minutes=1),
     )
     create_archive_bucket = OzoneCreateBucketOperator(
         task_id="create_archive_bucket",
-        volume_name=ARCHIVE_VOLUME,
-        bucket_name=ARCHIVE_BUCKET,
-        ozone_conn_id=LIFECYCLE_CONN_ID,
+        volume_name="{{ params.archive_volume }}",
+        bucket_name="{{ params.archive_bucket }}",
+        ozone_conn_id="{{ params.lifecycle_conn_id }}",
         execution_timeout=timedelta(minutes=1),
     )
 
@@ -120,7 +135,7 @@ with DAG(
     list_files_in_landing_zone = OzoneListOperator(
         task_id="list_files_in_landing_zone",
         path=LANDING_PATH,
-        ozone_conn_id=LIFECYCLE_CONN_ID,
+        ozone_conn_id="{{ params.lifecycle_conn_id }}",
         execution_timeout=timedelta(minutes=1),
     )
 
@@ -138,7 +153,7 @@ with DAG(
     create_archive_dir = OzoneCreatePathOperator(
         task_id="create_archive_dir",
         path=ARCHIVE_BASE_PATH + "/ds={{ ds }}",
-        ozone_conn_id=LIFECYCLE_CONN_ID,
+        ozone_conn_id="{{ params.lifecycle_conn_id }}",
         execution_timeout=timedelta(minutes=1),
     )
 
@@ -147,17 +162,17 @@ with DAG(
         task_id="archive_landing_files",
         source_path=f"{LANDING_PATH}/*",  # Move all files
         dest_path=ARCHIVE_BASE_PATH + "/ds={{ ds }}",
-        ozone_conn_id=LIFECYCLE_CONN_ID,
+        ozone_conn_id="{{ params.lifecycle_conn_id }}",
         execution_timeout=timedelta(minutes=5),
     )
 
     # 5. Create a snapshot of the entire archive volume for backup.
     backup_archive = OzoneBackupOperator(
         task_id="backup_archive_via_snapshot",
-        volume=ARCHIVE_VOLUME,
-        bucket=ARCHIVE_BUCKET,
-        snapshot_name="snap-{{ ds_nodash }}",
-        ozone_conn_id=LIFECYCLE_CONN_ID,
+        volume="{{ params.archive_volume }}",
+        bucket="{{ params.archive_bucket }}",
+        snapshot_name="{{ params.snapshot_prefix }}-{{ ds_nodash }}",
+        ozone_conn_id="{{ params.lifecycle_conn_id }}",
         execution_timeout=timedelta(minutes=5),
     )
 
@@ -165,7 +180,7 @@ with DAG(
     cleanup_landing_zone = OzoneDeleteKeyOperator(
         task_id="cleanup_landing_zone",
         path=f"{LANDING_PATH}/*",
-        ozone_conn_id=LIFECYCLE_CONN_ID,
+        ozone_conn_id="{{ params.lifecycle_conn_id }}",
         execution_timeout=timedelta(minutes=1),
     )
 

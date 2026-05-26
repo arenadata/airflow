@@ -24,6 +24,7 @@ import pytest
 from airflow.providers.arenadata.ozone.utils.helpers import (
     FileHelper,
     TypeNormalizationHelper,
+    URIHelper,
 )
 
 
@@ -52,3 +53,18 @@ def test_get_file_size_bytes(tmp_path: Path):
     target = tmp_path / "payload.txt"
     target.write_text("hello", encoding="utf-8")
     assert FileHelper.get_file_size_bytes(target) == 5
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("ofs://adho/vol1/bucket1/dir/file.txt", "o3://adho/vol1/bucket1/dir/file.txt"),
+        ("o3fs://adho/vol1/bucket1/dir/file.txt", "o3://adho/vol1/bucket1/dir/file.txt"),
+        ("o3://adho/vol1/bucket1/dir/file.txt", "o3://adho/vol1/bucket1/dir/file.txt"),
+        ("s3a://bucket/key", "s3a://bucket/key"),
+        ("vol1/bucket1/dir/file.txt", "vol1/bucket1/dir/file.txt"),
+        ("/vol1/bucket1/dir/file.txt", "vol1/bucket1/dir/file.txt"),
+    ],
+)
+def test_to_key_uri_returns_ozone_sh_key_target(value: str, expected: str):
+    assert URIHelper.to_key_uri(value) == expected

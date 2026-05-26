@@ -35,21 +35,22 @@ class OzoneKeySensor(BaseSensorOperator):
     Uses OzoneFsHook; retryable CLI errors are treated as "not yet" and trigger retry.
     """
 
-    template_fields = ("path",)
+    template_fields = ("path", "ozone_conn_id")
 
     def __init__(
         self,
         path: str,
         ozone_conn_id: str = OzoneFsHook.default_conn_name,
         retry_attempts: int = RETRY_ATTEMPTS,
-        timeout: int = FAST_TIMEOUT_SECONDS,
+        timeout: int = FAST_TIMEOUT_SECONDS,  # Timeout for object existence check operation in Ozone CLI
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.path = path
         self.ozone_conn_id = ozone_conn_id
         self.retry_attempts = retry_attempts
-        self.timeout = timeout
+        # Keep the Ozone CLI timeout separate from BaseSensorOperator.timeout.
+        self.cli_timeout = timeout
         self.log.debug("OzoneKeySensor initialized (path=%s, conn_id=%s)", self.path, self.ozone_conn_id)
 
     def poke(self, context: Context) -> bool:
@@ -60,7 +61,7 @@ class OzoneKeySensor(BaseSensorOperator):
             retry_attempts=self.retry_attempts,
         )
         try:
-            if hook.key_exists(self.path, timeout=self.timeout):
+            if hook.key_exists(self.path, timeout=self.cli_timeout):
                 self.log.info("Key found in Ozone: %s", self.path)
                 return True
             return False
