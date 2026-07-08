@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from airflow.exceptions import AirflowException
+from airflow.providers.arenadata.ozone.version_compat import AirflowException
 
 SNAPSHOT_ALREADY_EXISTS_MARKERS = ("FILE_ALREADY_EXISTS", "SNAPSHOT ALREADY EXISTS")
 

@@ -149,10 +149,87 @@ custom DAG-level extensions.
 Requirements
 ------------
 
-* ``apache-airflow`` >= ``3.2.1``
+* ``apache-airflow`` >= ``2.11.0``
 
 Example DAGs
 ------------
 
 Example DAGs are located in:
 ``airflow/providers/arenadata/ozone/src/airflow/providers/arenadata/ozone/example_dags``.
+
+.. THE REMAINDER OF THE FILE IS AUTOMATICALLY GENERATED. IT WILL BE OVERWRITTEN AT RELEASE TIME!
+
+
+.. toctree::
+    :hidden:
+    :maxdepth: 1
+    :caption: Commits
+
+    Detailed list of commits <commits>
+
+
+apache-airflow-providers-arenadata-ozone package
+------------------------------------------------------
+
+`Apache Ozone <https://ozone.apache.org/>`__
+
+Provider package for interacting with Apache Ozone via:
+
+- Native CLI (``ozone``) for ``ofs://`` / ``o3fs://`` paths
+- Native Ozone administration and filesystem workflows
+
+
+Release: 1.1.0
+
+Provider package
+----------------
+
+This package is for the ``arenadata.ozone`` provider.
+All classes for this package are included in the ``airflow.providers.arenadata.ozone`` python package.
+
+Installation
+------------
+
+You can install this package on top of an existing Airflow installation via
+``pip install apache-airflow-providers-arenadata-ozone``.
+For the minimum Airflow version supported, see ``Requirements`` below.
+
+Requirements
+------------
+
+The minimum Apache Airflow version supported by this provider distribution is ``2.11.0``.
+
+==========================================  ==================
+PIP package                                 Version required
+==========================================  ==================
+``apache-airflow``                          ``>=2.11.0``
+``apache-airflow-providers-common-compat``  ``>=1.12.0``
+==========================================  ==================
+
+Cross provider package dependencies
+-----------------------------------
+
+Those are dependencies that might be needed in order to use all the features of the package.
+You need to install the specified provider distributions in order to use them.
+
+You can install such cross-provider dependencies when installing from PyPI. For example:
+
+.. code-block:: bash
+
+    pip install apache-airflow-providers-arenadata-ozone[common.compat]
+
+
+==================================================================================================================  =================
+Dependent package                                                                                                   Extra
+==================================================================================================================  =================
+`apache-airflow-providers-common-compat <https://airflow.apache.org/docs/apache-airflow-providers-common-compat>`_  ``common.compat``
+==================================================================================================================  =================
+
+Downloading official packages
+-----------------------------
+
+You can download officially released packages and verify their checksums and signatures from the
+`Official Apache Download site <https://downloads.apache.org/airflow/providers/>`_
+
+* `The apache-airflow-providers-arenadata-ozone 1.1.0 sdist package <https://downloads.apache.org/airflow/providers/apache_airflow_providers_arenadata_ozone-1.1.0.tar.gz>`_ (`asc <https://downloads.apache.org/airflow/providers/apache_airflow_providers_arenadata_ozone-1.1.0.tar.gz.asc>`__, `sha512 <https://downloads.apache.org/airflow/providers/apache_airflow_providers_arenadata_ozone-1.1.0.tar.gz.sha512>`__)
+* `The apache-airflow-providers-arenadata-ozone 1.1.0 wheel package <https://downloads.apache.org/airflow/providers/apache_airflow_providers_arenadata_ozone-1.1.0-py3-none-any.whl>`_ (`asc <https://downloads.apache.org/airflow/providers/apache_airflow_providers_arenadata_ozone-1.1.0-py3-none-any.whl.asc>`__, `sha512 <https://downloads.apache.org/airflow/providers/apache_airflow_providers_arenadata_ozone-1.1.0-py3-none-any.whl.sha512>`__)

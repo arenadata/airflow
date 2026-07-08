@@ -29,10 +29,10 @@ from airflow.providers.arenadata.ozone.utils.errors import (
     OzoneCliError,
     OzoneProviderError,
 )
-from airflow.sdk import BaseOperator
+from airflow.providers.arenadata.ozone.version_compat import BaseOperator
 
 if TYPE_CHECKING:
-    from airflow.sdk import Context
+    from airflow.providers.arenadata.ozone.version_compat import Context
 
 
 class OzoneBackupOperator(BaseOperator):

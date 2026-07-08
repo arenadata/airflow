@@ -100,7 +100,7 @@ class TestHdfsToOzoneOperator:
         mock_run_process.assert_not_called()
 
     def test_init_invalid_optional_conn_type(self):
-        with pytest.raises(ValueError, match="hdfs_conn_id parameter cannot be an empty string"):
+        with pytest.raises(ValueError, match="hdfs_conn_id must be a string or None"):
             HdfsToOzoneOperator(
                 task_id="hdfs_to_ozone_test_invalid",
                 source_path="hdfs://nn:8020/user/data",

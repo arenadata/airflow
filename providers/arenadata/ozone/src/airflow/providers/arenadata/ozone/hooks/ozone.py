@@ -24,7 +24,6 @@ from enum import Enum
 from functools import cached_property
 from pathlib import Path
 
-from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.utils.cli_runner import (
     CliRunner,
     OzoneCliRunner,
@@ -48,8 +47,7 @@ from airflow.providers.arenadata.ozone.utils.helpers import (
     URIHelper,
 )
 from airflow.providers.arenadata.ozone.utils.security import KerberosConfig, SSLConfig
-from airflow.sdk import BaseHook
-from airflow.sdk._shared.secrets_masker import redact
+from airflow.providers.arenadata.ozone.version_compat import AirflowException, BaseHook, redact
 
 RETRY_ATTEMPTS = 3
 FAST_TIMEOUT_SECONDS = 5 * 60

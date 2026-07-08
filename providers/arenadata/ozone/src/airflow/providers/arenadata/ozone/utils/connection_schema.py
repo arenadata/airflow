@@ -27,7 +27,7 @@ from airflow.providers.arenadata.ozone.utils.helpers import (
 )
 
 if TYPE_CHECKING:
-    from airflow.models.connection import Connection
+    from airflow.providers.arenadata.ozone.version_compat import Connection
 
 # ============================================================================
 # Ozone connection schema and runtime defaults

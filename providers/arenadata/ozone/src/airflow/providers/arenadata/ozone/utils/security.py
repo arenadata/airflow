@@ -23,14 +23,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from airflow.configuration import ensure_secrets_loaded
-from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.utils.cli_runner import KerberosCliRunner
 from airflow.providers.arenadata.ozone.utils.connection_schema import (
     OzoneConnSnapshot,
 )
 from airflow.providers.arenadata.ozone.utils.errors import OzoneProviderError
 from airflow.providers.arenadata.ozone.utils.helpers import FileHelper
-from airflow.sdk._shared.secrets_masker import mask_secret
+from airflow.providers.arenadata.ozone.version_compat import AirflowException, mask_secret
 
 log = logging.getLogger(__name__)
 

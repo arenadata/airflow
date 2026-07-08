@@ -27,7 +27,7 @@ from typing import TypeAlias
 from urllib.parse import urlsplit, urlunsplit
 
 from airflow.providers.arenadata.ozone.utils.errors import OzoneProviderError
-from airflow.sdk._shared.secrets_masker import redact
+from airflow.providers.arenadata.ozone.version_compat import redact
 
 JsonScalar: TypeAlias = "str | int | float | bool | None"
 JsonValue: TypeAlias = "JsonScalar | list[JsonValue] | dict[str, JsonValue]"

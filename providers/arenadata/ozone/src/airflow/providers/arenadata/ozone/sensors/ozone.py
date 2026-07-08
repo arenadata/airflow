@@ -26,10 +26,10 @@ from airflow.providers.arenadata.ozone.hooks.ozone import (
     OzoneFsHook,
 )
 from airflow.providers.arenadata.ozone.utils.errors import OzoneCliError
-from airflow.sdk import BaseSensorOperator
+from airflow.providers.arenadata.ozone.version_compat import BaseSensorOperator
 
 if TYPE_CHECKING:
-    from airflow.sdk import Context
+    from airflow.providers.arenadata.ozone.version_compat import Context
 
 
 class OzoneKeySensor(BaseSensorOperator):

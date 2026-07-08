@@ -37,9 +37,6 @@ import os
 from datetime import timedelta
 from pathlib import PurePosixPath
 
-from airflow.models.dag import DAG
-from airflow.models.param import Param
-from airflow.operators.bash import BashOperator
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
     OzoneCreatePathOperator,
@@ -49,8 +46,18 @@ from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneMoveOperator,
 )
 from airflow.providers.arenadata.ozone.transfers.ozone_backup import OzoneBackupOperator
-from airflow.utils import timezone
-from airflow.utils.task_group import TaskGroup
+from airflow.providers.arenadata.ozone.version_compat import AIRFLOW_V_3_0_PLUS
+
+if AIRFLOW_V_3_0_PLUS:
+    from airflow.providers.standard.operators.bash import BashOperator
+    from airflow.sdk import DAG, TaskGroup, timezone
+    from airflow.sdk.definitions.param import Param
+else:
+    from airflow import DAG
+    from airflow.models.param import Param
+    from airflow.operators.bash import BashOperator
+    from airflow.utils import timezone
+    from airflow.utils.task_group import TaskGroup
 
 DEFAULT_OM_HOST = os.getenv("OZONE_EXAMPLE_OM_HOST") or "om"
 DEFAULT_CONN_ID = os.getenv("OZONE_EXAMPLE_LIFECYCLE_CONN_ID") or "ozone_admin_default"

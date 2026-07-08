@@ -22,7 +22,6 @@ import shutil
 from functools import cached_property
 from typing import TYPE_CHECKING
 
-from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.ozone.hooks.ozone import (
     RETRY_ATTEMPTS,
     SLOW_TIMEOUT_SECONDS,
@@ -36,10 +35,14 @@ from airflow.providers.arenadata.ozone.utils.security import (
     KerberosConfig,
     SSLConfig,
 )
-from airflow.sdk import BaseHook, BaseOperator
+from airflow.providers.arenadata.ozone.version_compat import (
+    AirflowException,
+    BaseHook,
+    BaseOperator,
+)
 
 if TYPE_CHECKING:
-    from airflow.sdk import Context
+    from airflow.providers.arenadata.ozone.version_compat import Context
 
 log = logging.getLogger(__name__)
 DISTCP_BASE_COMMAND = ["hadoop", "distcp"]
@@ -69,6 +72,8 @@ class HdfsToOzoneOperator(BaseOperator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if hdfs_conn_id is not None and not isinstance(hdfs_conn_id, str):
+            raise ValueError(f"hdfs_conn_id must be a string or None, got {type(hdfs_conn_id).__name__}")
         self.source_path = source_path
         self.dest_path = dest_path
         self.hdfs_conn_id = hdfs_conn_id

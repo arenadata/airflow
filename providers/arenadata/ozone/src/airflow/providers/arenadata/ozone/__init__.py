@@ -32,8 +32,8 @@ __all__ = ["__version__"]
 __version__ = "1.1.0"
 
 if packaging.version.parse(packaging.version.parse(airflow_version).base_version) < packaging.version.parse(
-    "3.2.1"
+    "2.11.0"
 ):
     raise RuntimeError(
-        f"The package `apache-airflow-providers-arenadata-ozone:{__version__}` needs Apache Airflow 3.2.1+"
+        f"The package `apache-airflow-providers-arenadata-ozone:{__version__}` needs Apache Airflow 2.11.0+"
     )

@@ -39,15 +39,21 @@ import os
 from datetime import timedelta
 from pathlib import PurePosixPath
 
-from airflow.models.dag import DAG
-from airflow.models.param import Param
 from airflow.providers.arenadata.ozone.operators.ozone import (
     OzoneCreateBucketOperator,
     OzoneCreatePathOperator,
     OzoneCreateVolumeOperator,
     OzoneSetQuotaOperator,
 )
-from airflow.utils import timezone
+from airflow.providers.arenadata.ozone.version_compat import AIRFLOW_V_3_0_PLUS
+
+if AIRFLOW_V_3_0_PLUS:
+    from airflow.sdk import DAG, timezone
+    from airflow.sdk.definitions.param import Param
+else:
+    from airflow import DAG
+    from airflow.models.param import Param
+    from airflow.utils import timezone
 
 DEFAULT_OM_HOST = os.getenv("OZONE_EXAMPLE_OM_HOST") or "om"
 DEFAULT_CONN_ID = os.getenv("OZONE_EXAMPLE_MULTI_TENANT_CONN_ID") or "ozone_admin_default"
