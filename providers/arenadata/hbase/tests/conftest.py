@@ -16,4 +16,13 @@
 # under the License.
 from __future__ import annotations
 
+import sys
+from unittest.mock import MagicMock
+
+# Pre-mock sasl/thrift_sasl before any HBase client import
+if "sasl" not in sys.modules:
+    sys.modules["sasl"] = MagicMock()
+if "thrift_sasl" not in sys.modules:
+    sys.modules["thrift_sasl"] = MagicMock()
+
 pytest_plugins = "tests_common.pytest_plugin"

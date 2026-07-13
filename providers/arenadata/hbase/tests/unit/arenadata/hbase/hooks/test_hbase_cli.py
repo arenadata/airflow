@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import shlex
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -303,10 +304,12 @@ class TestHBaseCLIHook:
         assert "my_set" in call_args
         assert "-t" not in call_args
 
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
-    def test_command_failure(self, mock_run):
+    def test_command_failure(self, mock_run, mock_get_conn):
         """Test command failure raises RuntimeError."""
-        mock_run.side_effect = Exception("Command failed")
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.side_effect = subprocess.CalledProcessError(1, "hbase", stderr="Command failed")
 
         hook = HBaseCLIHook(hbase_conn_id="hbase_default")
 
@@ -435,9 +438,11 @@ class TestHBaseCLIHook:
 
         assert "/backup dir/my backup" in tokens
 
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @pytest.mark.parametrize("command", ["", "   ", []])
-    def test_execute_command_empty_input(self, command):
+    def test_execute_command_empty_input(self, mock_get_conn, command):
         """Test that empty or whitespace-only commands raise ValueError."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
         hook = HBaseCLIHook(hbase_conn_id="hbase_default")
-        with pytest.raises(ValueError, match="Сommand must not be empty"):
+        with pytest.raises(ValueError, match="Command must not be empty"):
             hook.execute_command(command)

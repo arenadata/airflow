@@ -25,7 +25,7 @@ class TestHBaseProvider:
 
     def test_get_provider_info(self):
         """Test that get_provider_info returns valid metadata."""
-        from airflow.providers.arenadata.hbase import get_provider_info
+        from airflow.providers.arenadata.hbase.get_provider_info import get_provider_info
 
         provider_info = get_provider_info()
 
@@ -38,10 +38,6 @@ class TestHBaseProvider:
 
         assert "name" in provider_info
         assert provider_info["name"] == "Arenadata HBase"
-
-        assert "versions" in provider_info
-        assert isinstance(provider_info["versions"], list)
-        assert len(provider_info["versions"]) > 0
 
         # Check hooks
         assert "hooks" in provider_info

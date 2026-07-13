@@ -89,7 +89,7 @@ class HBasePutOperator(BaseOperator):  # pylint: disable=too-few-public-methods
         self.data = data
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> None:  # pylint: disable=unused-argument
+    def execute(self, context: Context | None = None) -> None:  # pylint: disable=unused-argument
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         hook.put_row(self.table_name, self.row_key, self.data)
@@ -123,7 +123,7 @@ class HBaseCreateTableOperator(BaseOperator):  # pylint: disable=too-few-public-
         self.if_exists = if_exists
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> None:  # pylint: disable=unused-argument
+    def execute(self, context: Context | None = None) -> None:  # pylint: disable=unused-argument
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         if not hook.table_exists(self.table_name):
@@ -162,7 +162,7 @@ class HBaseDeleteTableOperator(BaseOperator):  # pylint: disable=too-few-public-
         self.if_not_exists = if_not_exists
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> None:  # pylint: disable=unused-argument
+    def execute(self, context: Context | None = None) -> None:  # pylint: disable=unused-argument
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         if hook.table_exists(self.table_name):
@@ -210,7 +210,7 @@ class HBaseScanOperator(BaseOperator):  # pylint: disable=too-few-public-methods
         self.encoding = encoding
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> list:  # pylint: disable=unused-argument
+    def execute(self, context: Context | None = None) -> list:  # pylint: disable=unused-argument
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         results = hook.scan_table(
@@ -254,7 +254,7 @@ class HBaseBatchPutOperator(BaseOperator):  # pylint: disable=too-few-public-met
         self.max_workers = max_workers
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> None:  # pylint: disable=unused-argument
+    def execute(self, context: Context | None = None) -> None:  # pylint: disable=unused-argument
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         hook.batch_put_rows(self.table_name, self.rows, self.batch_size, self.max_workers)
@@ -291,7 +291,7 @@ class HBaseBatchGetOperator(BaseOperator):  # pylint: disable=too-few-public-met
         self.encoding = encoding
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> list:  # pylint: disable=unused-argument
+    def execute(self, context: Context | None = None) -> list:  # pylint: disable=unused-argument
         """Execute the operator."""
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         results = hook.batch_get_rows(self.table_name, self.row_keys, self.columns)
@@ -324,7 +324,7 @@ class HBaseBackupSetOperator(BaseOperator):  # pylint: disable=too-few-public-me
         self.tables = tables or []
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> str:  # pylint: disable=unused-argument
+    def execute(self, context: Context | None = None) -> str:  # pylint: disable=unused-argument
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
@@ -385,7 +385,7 @@ class HBaseCreateBackupOperator(BaseOperator):  # pylint: disable=too-few-public
         self.ignore_checksum = ignore_checksum
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> str:  # pylint: disable=unused-argument
+    def execute(self, context: Context | None = None) -> str:  # pylint: disable=unused-argument
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
@@ -456,7 +456,7 @@ class HBaseRestoreOperator(BaseOperator):  # pylint: disable=too-few-public-meth
         self.ignore_checksum = ignore_checksum
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> str:  # pylint: disable=unused-argument
+    def execute(self, context: Context | None = None) -> str:  # pylint: disable=unused-argument
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
@@ -492,7 +492,7 @@ class HBaseBackupHistoryOperator(BaseOperator):  # pylint: disable=too-few-publi
         self.backup_path = backup_path
         self.hbase_conn_id = hbase_conn_id
 
-    def execute(self, context: Context) -> str:  # pylint: disable=unused-argument
+    def execute(self, context: Context | None = None) -> str:  # pylint: disable=unused-argument
         """Execute the operator."""
         hook = HBaseCLIHook(hbase_conn_id=self.hbase_conn_id)
 
