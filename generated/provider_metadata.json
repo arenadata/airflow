@@ -679,6 +679,12 @@
             "date_released": "2026-06-18T00:00:00Z"
         }
     },
+    "arenadata.hbase": {
+        "1.1.0": {
+            "associated_airflow_version": "3.2.1",
+            "date_released": "2026-07-14T00:00:00Z"
+        }
+    },
     "apache.beam": {
         "1.0.0": {
             "associated_airflow_version": "2.1.0",
