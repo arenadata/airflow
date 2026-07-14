@@ -673,6 +673,12 @@
             "date_released": "2026-03-13T17:32:34Z"
         }
     },
+    "arenadata.ozone": {
+        "1.1.0": {
+            "associated_airflow_version": "3.2.1",
+            "date_released": "2026-06-18T00:00:00Z"
+        }
+    },
     "apache.beam": {
         "1.0.0": {
             "associated_airflow_version": "2.1.0",
