@@ -64,6 +64,7 @@ from airflow_breeze.global_constants import (
     MYSQL_HOST_PORT,
     OZONE_OM_HOST_PORT,
     OZONE_SCM_HOST_PORT,
+    HBASE_HOST_PORT,
     POSTGRES_BACKEND,
     POSTGRES_HOST_PORT,
     RABBITMQ_HOST_PORT,
@@ -681,6 +682,7 @@ services:
         _set_var(_env, "MYSQL_VERSION", self.mysql_version)
         _set_var(_env, "OZONE_OM_HOST_PORT", None, OZONE_OM_HOST_PORT)
         _set_var(_env, "OZONE_SCM_HOST_PORT", None, OZONE_SCM_HOST_PORT)
+        _set_var(_env, "HBASE_HOST_PORT", None, HBASE_HOST_PORT)
         _set_var(_env, "MOUNT_SOURCES", self.mount_sources)
         _set_var(_env, "MOUNT_UI_DIST", self.mount_ui_dist)
         _set_var(_env, "NUM_RUNS", self.num_runs)
