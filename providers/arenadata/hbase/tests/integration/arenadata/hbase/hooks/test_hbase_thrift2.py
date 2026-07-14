@@ -23,7 +23,6 @@ import pytest
 
 from airflow.models import Connection
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
-from airflow.utils import db
 
 TABLE_NAME = "integration_test_table"
 CONN_ID = "hbase_test"
@@ -34,14 +33,12 @@ HBASE_HOST = os.environ.get("HBASE_HOST", "hbase" if os.environ.get("INTEGRATION
 class TestHBaseThriftHookIntegration:
 
     def setup_method(self):
-        db.merge_conn(
-            Connection(
-                conn_id=CONN_ID,
-                conn_type="hbase",
-                host=HBASE_HOST,
-                port=9090,
-            )
-        )
+        os.environ["AIRFLOW_CONN_HBASE_TEST"] = Connection(
+            conn_id=CONN_ID,
+            conn_type="hbase",
+            host=HBASE_HOST,
+            port=9090,
+        ).as_json()
         self.hook = HBaseThriftHook(hbase_conn_id=CONN_ID)
         # Cleanup before each test
         if self.hook.table_exists(TABLE_NAME):
