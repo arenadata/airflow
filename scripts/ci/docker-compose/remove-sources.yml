@@ -47,8 +47,9 @@ services:
       - ../../../empty:/opt/airflow/providers/apache/tinkerpop/src
       - ../../../empty:/opt/airflow/providers/apprise/src
       - ../../../empty:/opt/airflow/providers/arangodb/src
-      - ../../../empty:/opt/airflow/providers/arenadata/ozone/src
+      - ../../../empty:/opt/airflow/providers/arenadata/duckdb/src
       - ../../../empty:/opt/airflow/providers/arenadata/hbase/src
+      - ../../../empty:/opt/airflow/providers/arenadata/ozone/src
       - ../../../empty:/opt/airflow/providers/asana/src
       - ../../../empty:/opt/airflow/providers/atlassian/jira/src
       - ../../../empty:/opt/airflow/providers/celery/src

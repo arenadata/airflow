@@ -60,8 +60,9 @@ services:
       - ../../../providers/apache/tinkerpop/tests:/opt/airflow/providers/apache/tinkerpop/tests
       - ../../../providers/apprise/tests:/opt/airflow/providers/apprise/tests
       - ../../../providers/arangodb/tests:/opt/airflow/providers/arangodb/tests
-      - ../../../providers/arenadata/ozone/tests:/opt/airflow/providers/arenadata/ozone/tests
+      - ../../../providers/arenadata/duckdb/tests:/opt/airflow/providers/arenadata/duckdb/tests
       - ../../../providers/arenadata/hbase/tests:/opt/airflow/providers/arenadata/hbase/tests
+      - ../../../providers/arenadata/ozone/tests:/opt/airflow/providers/arenadata/ozone/tests
       - ../../../providers/asana/tests:/opt/airflow/providers/asana/tests
       - ../../../providers/atlassian/jira/tests:/opt/airflow/providers/atlassian/jira/tests
       - ../../../providers/celery/tests:/opt/airflow/providers/celery/tests
