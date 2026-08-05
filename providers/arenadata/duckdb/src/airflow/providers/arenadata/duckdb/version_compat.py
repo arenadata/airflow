@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Airflow 3-only SDK imports for the DuckDB provider (``apache-airflow>=3.0.0``)."""
 
 from __future__ import annotations
 
@@ -25,10 +26,12 @@ from airflow.sdk import (
     Context,
     Param,
 )
-from airflow.sdk.exceptions import AirflowException, AirflowSkipException
+from airflow.sdk._shared.secrets_masker import mask_secret, redact
+from airflow.sdk.exceptions import AirflowException, AirflowFailException, AirflowSkipException
 
 __all__ = [
     "AirflowException",
+    "AirflowFailException",
     "AirflowSkipException",
     "BaseHook",
     "BaseOperator",
@@ -36,4 +39,6 @@ __all__ = [
     "Context",
     "DAG",
     "Param",
+    "mask_secret",
+    "redact",
 ]

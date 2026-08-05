@@ -24,10 +24,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from airflow.providers.arenadata.duckdb.sensors.duckdb import DuckDbSqlSensor
-from airflow.providers.arenadata.duckdb.version_compat import (
-    AirflowException,
-    AirflowSkipException,
-)
+from airflow.providers.arenadata.duckdb.utils.errors import DuckDbCliError, DuckDbOutputError
+from airflow.providers.arenadata.duckdb.version_compat import AirflowException, AirflowFailException
 
 MOCK_HOOK = "airflow.providers.arenadata.duckdb.sensors.duckdb.DuckDbHook"
 
@@ -43,6 +41,8 @@ class TestDuckDbSqlSensor:
             "database",
             "duckdb_conn_id",
         )
+        assert "lock_retry_attempts" not in DuckDbSqlSensor.template_fields
+        assert "log_output_limit" not in DuckDbSqlSensor.template_fields
         assert DuckDbSqlSensor.template_ext == (".sql",)
         assert DuckDbSqlSensor.template_fields_renderers == {
             "sql": "sql",
@@ -100,39 +100,57 @@ class TestDuckDbSqlSensor:
         assert sensor.poke({}) is False
 
     @patch(MOCK_HOOK)
-    def test_poke_invalid_json_returns_false(
-        self, mock_hook_cls: MagicMock, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Invalid JSON output is retried after logging a warning."""
-        mock_hook_cls.return_value.run_cli.return_value = "not-json"
-        sensor = DuckDbSqlSensor(task_id="test_sensor", sql="SELECT 1")
-
-        with caplog.at_level("WARNING"):
-            assert sensor.poke({}) is False
-
-        assert "failed to parse JSON output" in caplog.text
-
-    @patch(MOCK_HOOK)
-    def test_poke_non_list_json_returns_false(self, mock_hook_cls: MagicMock) -> None:
-        """Non-list JSON payload is treated as empty result."""
-        mock_hook_cls.return_value.run_cli.return_value = '{"c": 1}'
+    def test_poke_empty_stdout_waits(self, mock_hook_cls: MagicMock) -> None:
+        """Empty CLI stdout is treated as empty set (wait), not OutputError."""
+        mock_hook_cls.return_value.run_cli.return_value = ""
         sensor = DuckDbSqlSensor(task_id="test_sensor", sql="SELECT 1")
 
         assert sensor.poke({}) is False
 
     @patch(MOCK_HOOK)
-    def test_poke_calls_hook_with_json_format(self, mock_hook_cls: MagicMock) -> None:
-        """Sensor always requests JSON output from the hook."""
+    def test_poke_invalid_json_raises_output_error(self, mock_hook_cls: MagicMock) -> None:
+        """Invalid JSON hard-fails with DuckDbOutputError (not wait)."""
+        mock_hook_cls.return_value.run_cli.return_value = "not-json"
+        sensor = DuckDbSqlSensor(task_id="test_sensor", sql="SELECT 1")
+
+        with pytest.raises(DuckDbOutputError, match="Failed to parse JSON"):
+            sensor.poke({})
+
+    @patch(MOCK_HOOK)
+    def test_poke_non_list_json_raises_output_error(self, mock_hook_cls: MagicMock) -> None:
+        """Non-list JSON payload hard-fails with DuckDbOutputError."""
+        mock_hook_cls.return_value.run_cli.return_value = '{"c": 1}'
+        sensor = DuckDbSqlSensor(task_id="test_sensor", sql="SELECT 1")
+
+        with pytest.raises(DuckDbOutputError, match="must be a list"):
+            sensor.poke({})
+
+    @patch(MOCK_HOOK)
+    def test_poke_salvages_json_after_prefix(self, mock_hook_cls: MagicMock) -> None:
+        """JSON array after log noise is salvaged and evaluated."""
+        mock_hook_cls.return_value.run_cli.return_value = 'noise\n[{"c": 1}]'
+        sensor = DuckDbSqlSensor(task_id="test_sensor", sql="SELECT 1")
+
+        assert sensor.poke({}) is True
+
+    @patch(MOCK_HOOK)
+    def test_poke_calls_hook_with_lock_retry_zero(self, mock_hook_cls: MagicMock) -> None:
+        """Sensor always creates the hook with lock_retry_attempts=0."""
         mock_hook_cls.return_value.run_cli.return_value = '[{"c": 1}]'
         sensor = DuckDbSqlSensor(
             task_id="test_sensor",
             sql="SELECT count(*) AS c FROM t",
             duckdb_conn_id="duckdb_test",
+            log_output_limit=500,
         )
 
         sensor.poke({})
 
-        mock_hook_cls.assert_called_once_with(duckdb_conn_id="duckdb_test")
+        mock_hook_cls.assert_called_once_with(
+            duckdb_conn_id="duckdb_test",
+            lock_retry_attempts=0,
+            log_output_limit=500,
+        )
         mock_hook_cls.return_value.run_cli.assert_called_once_with(
             "SELECT count(*) AS c FROM t",
             output_format="json",
@@ -163,27 +181,20 @@ class TestDuckDbSqlSensor:
     @patch(MOCK_HOOK)
     def test_poke_hook_error_propagates(self, mock_hook_cls: MagicMock) -> None:
         """CLI execution errors from the hook fail the sensor poke."""
-        mock_hook_cls.return_value.run_cli.side_effect = AirflowException("CLI failed")
+        mock_hook_cls.return_value.run_cli.side_effect = DuckDbCliError("CLI failed")
         sensor = DuckDbSqlSensor(task_id="test_sensor", sql="SELECT 1")
 
         with pytest.raises(AirflowException, match="CLI failed"):
             sensor.poke({})
 
-    @pytest.mark.parametrize(
-        ("soft_fail", "expected_exception"),
-        [
-            (False, AirflowException),
-            (True, AirflowSkipException),
-        ],
-    )
+    @pytest.mark.parametrize("soft_fail", [False, True])
     @patch(MOCK_HOOK)
-    def test_poke_fail_on_empty_soft_fail(
+    def test_poke_fail_on_empty_raises_fail_exception(
         self,
         mock_hook_cls: MagicMock,
         soft_fail: bool,
-        expected_exception: type[AirflowException],
     ) -> None:
-        """fail_on_empty respects soft_fail (same contract as SqlSensor)."""
+        """fail_on_empty raises AirflowFailException from poke."""
         mock_hook_cls.return_value.run_cli.return_value = "[]"
         sensor = DuckDbSqlSensor(
             task_id="test_sensor",
@@ -192,7 +203,7 @@ class TestDuckDbSqlSensor:
             soft_fail=soft_fail,
         )
 
-        with pytest.raises(expected_exception, match="query returned no rows"):
+        with pytest.raises(AirflowFailException, match="query returned no rows"):
             sensor.poke({})
 
     @patch(MOCK_HOOK)
@@ -213,3 +224,19 @@ class TestDuckDbSqlSensor:
         """Empty SQL is rejected at construction time."""
         with pytest.raises(ValueError, match="sql cannot be empty"):
             DuckDbSqlSensor(task_id="test_sensor", sql="")
+
+    def test_on_kill_safe_when_hook_is_none(self) -> None:
+        """on_kill before poke must not raise."""
+        sensor = DuckDbSqlSensor(task_id="test_sensor", sql="SELECT 1")
+        sensor.on_kill()
+
+    @patch(MOCK_HOOK)
+    def test_on_kill_delegates_to_hook(self, mock_hook_cls: MagicMock) -> None:
+        """on_kill after poke terminates the hook process."""
+        mock_hook_cls.return_value.run_cli.return_value = '[{"c": 1}]'
+        sensor = DuckDbSqlSensor(task_id="test_sensor", sql="SELECT 1")
+        sensor.poke({})
+
+        sensor.on_kill()
+
+        mock_hook_cls.return_value.on_kill.assert_called_once()

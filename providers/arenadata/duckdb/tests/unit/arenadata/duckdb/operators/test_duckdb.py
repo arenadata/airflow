@@ -24,6 +24,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from airflow.providers.arenadata.duckdb.operators.duckdb import DuckDbOperator
+from airflow.providers.arenadata.duckdb.utils.errors import DuckDbConfigurationError
 
 MOCK_HOOK = "airflow.providers.arenadata.duckdb.operators.duckdb.DuckDbHook"
 
@@ -39,6 +40,8 @@ class TestDuckDbOperator:
             "database",
             "duckdb_conn_id",
         )
+        assert "lock_retry_attempts" not in DuckDbOperator.template_fields
+        assert "log_output_limit" not in DuckDbOperator.template_fields
         assert DuckDbOperator.template_ext == (".sql",)
         assert DuckDbOperator.template_fields_renderers == {
             "sql": "sql",
@@ -57,12 +60,35 @@ class TestDuckDbOperator:
 
         operator.execute({})
 
-        mock_hook_cls.assert_called_once_with(duckdb_conn_id="duckdb_test")
+        mock_hook_cls.assert_called_once_with(
+            duckdb_conn_id="duckdb_test",
+            lock_retry_attempts=None,
+            log_output_limit=None,
+        )
         mock_hook_cls.return_value.run_cli.assert_called_once_with(
             "SELECT 1",
             output_format="json",
             database=None,
             parameters=None,
+        )
+
+    @patch(MOCK_HOOK)
+    def test_execute_forwards_hook_kwargs(self, mock_hook_cls: MagicMock) -> None:
+        """lock_retry_attempts and log_output_limit are forwarded to the hook."""
+        mock_hook_cls.return_value.run_cli.return_value = "ok"
+        operator = DuckDbOperator(
+            task_id="test_op",
+            sql="SELECT 1",
+            lock_retry_attempts=3,
+            log_output_limit=100,
+        )
+
+        operator.execute({})
+
+        mock_hook_cls.assert_called_once_with(
+            duckdb_conn_id="duckdb_default",
+            lock_retry_attempts=3,
+            log_output_limit=100,
         )
 
     @patch(MOCK_HOOK)
@@ -104,6 +130,11 @@ class TestDuckDbOperator:
 
         assert mock_hook_cls.return_value.run_cli.call_args.kwargs["output_format"] == "csv"
 
+    def test_invalid_output_format_raises(self) -> None:
+        """Invalid output_format fails fast at construction."""
+        with pytest.raises(DuckDbConfigurationError, match="Invalid output_format"):
+            DuckDbOperator(task_id="test_op", sql="SELECT 1", output_format="parquet")
+
     @patch(MOCK_HOOK)
     def test_execute_returns_stdout_for_xcom(self, mock_hook_cls: MagicMock) -> None:
         """execute() returns raw CLI stdout for XCom."""
@@ -143,3 +174,19 @@ class TestDuckDbOperator:
         operator.execute({})
 
         assert mock_hook_cls.return_value.run_cli.call_args.kwargs["parameters"] == {"id": 1}
+
+    def test_on_kill_safe_when_hook_is_none(self) -> None:
+        """on_kill before execute must not raise."""
+        operator = DuckDbOperator(task_id="test_op", sql="SELECT 1")
+        operator.on_kill()
+
+    @patch(MOCK_HOOK)
+    def test_on_kill_delegates_to_hook(self, mock_hook_cls: MagicMock) -> None:
+        """on_kill after execute terminates the hook process."""
+        mock_hook_cls.return_value.run_cli.return_value = "ok"
+        operator = DuckDbOperator(task_id="test_op", sql="SELECT 1")
+        operator.execute({})
+
+        operator.on_kill()
+
+        mock_hook_cls.return_value.on_kill.assert_called_once()
