@@ -1,5 +1,4 @@
 
-
  .. Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
     distributed with this work for additional information
@@ -68,7 +67,10 @@ Python package path:
 Current provider scope
 ----------------------
 
-This provider runs DuckDB SQL through the DuckDB CLI in a subprocess. It includes:
+This provider is **CLI-only**: it runs DuckDB SQL through the DuckDB CLI (or
+ADO wrapper) in a subprocess. It does not embed the Python ``duckdb`` package.
+
+Included building blocks:
 
 * :class:`~airflow.providers.arenadata.duckdb.hooks.duckdb.DuckDbHook`
 * :class:`~airflow.providers.arenadata.duckdb.operators.duckdb.DuckDbOperator`
@@ -77,8 +79,50 @@ This provider runs DuckDB SQL through the DuckDB CLI in a subprocess. It include
 Runtime deployment model
 ------------------------
 
-The worker must have the ``duckdb`` binary available at the path configured in the
-Airflow connection (default ``/usr/bin/duckdb``).
+This provider does not install the DuckDB binary by itself. The worker must
+already have a ``duckdb`` executable (upstream CLI or ADO wrapper that applies
+global DuckDB configuration before starting DuckDB).
+
+Configure the path in the Airflow connection Extra ``duckdb_binary``
+(default ``/usr/bin/duckdb``). On macOS with Homebrew the binary is often
+``/opt/homebrew/bin/duckdb``.
+
+Quick start checklist
+---------------------
+
+For a minimal working setup:
+
+1. Install or provision the ``duckdb`` CLI / ADO wrapper on the worker.
+2. Create a ``duckdb`` connection in Airflow (``host`` = path to a ``.duckdb``
+   file or ``:memory:``; Extra ``duckdb_binary`` if not at the default path).
+3. Verify with connection ``test_connection()`` or an example DAG
+   (see :doc:`example-dags`).
+
+Connection contract
+-------------------
+
+Connection fields are parsed at runtime by ``DuckDbHook``. There is no separate
+connection schema module. Full field reference, Extra keys, ban-list, logging,
+and lock behavior: :doc:`connections`.
+
+Not in scope
+------------
+
+* No embedded Python DuckDB API (``import duckdb``): execution is CLI-only.
+* ``:memory:`` databases are not shared across tasks: each task runs a separate
+  CLI subprocess, so in-memory state does not persist between tasks.
+* DuckDB allows only one writer process per ``.duckdb`` file. Use separate
+  files, an Airflow pool, or ``lock_retry_attempts`` as documented in
+  :doc:`connections`.
+
+Guides
+------
+
+* :doc:`connections`: Connection fields and Extra
+* :doc:`operators`: ``DuckDbOperator`` how-to
+* :doc:`sensors`: ``DuckDbSqlSensor`` how-to
+* :doc:`hooks`: ``DuckDbHook`` API and when to call it directly
+* :doc:`example-dags`: shipped example DAGs
 
 Requirements
 ------------
@@ -89,6 +133,53 @@ Example DAGs
 ------------
 
 Example DAGs are located in:
-``airflow/providers/arenadata/duckdb/src/airflow/providers/arenadata/duckdb/example_dags``.
+``providers/arenadata/duckdb/src/airflow/providers/arenadata/duckdb/example_dags``.
 
 .. THE REMAINDER OF THE FILE IS AUTOMATICALLY GENERATED. IT WILL BE OVERWRITTEN AT RELEASE TIME!
+
+
+.. toctree::
+    :hidden:
+    :maxdepth: 1
+    :caption: Commits
+
+    Detailed list of commits <commits>
+
+
+apache-airflow-providers-arenadata-duckdb package
+------------------------------------------------------
+
+`DuckDB <https://duckdb.org/>`__ provider by Arenadata.
+
+Runs DuckDB SQL through the DuckDB CLI (or ADO wrapper) with:
+
+- ``DuckDbOperator`` for SQL execution from DAGs
+- ``DuckDbSqlSensor`` for waiting on truthy query results
+- ``DuckDbHook`` and a ``duckdb`` Connection type
+
+
+Release: 1.0.0
+
+Provider package
+----------------
+
+This package is for the ``arenadata.duckdb`` provider.
+All classes for this package are included in the ``airflow.providers.arenadata.duckdb`` python package.
+
+Installation
+------------
+
+You can install this package on top of an existing Airflow installation via
+``pip install apache-airflow-providers-arenadata-duckdb``.
+For the minimum Airflow version supported, see ``Requirements`` below.
+
+Requirements
+------------
+
+The minimum Apache Airflow version supported by this provider distribution is ``3.0.0``.
+
+==================  ==================
+PIP package         Version required
+==================  ==================
+``apache-airflow``  ``>=3.0.0``
+==================  ==================

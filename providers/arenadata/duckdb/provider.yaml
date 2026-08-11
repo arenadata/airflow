@@ -19,7 +19,13 @@
 package-name: apache-airflow-providers-arenadata-duckdb
 name: Arenadata DuckDB
 description: |
-    `DuckDB <https://duckdb.org/>`__ provider by Arenadata
+    `DuckDB <https://duckdb.org/>`__ provider by Arenadata.
+
+    Runs DuckDB SQL through the DuckDB CLI (or ADO wrapper) with:
+
+    - ``DuckDbOperator`` for SQL execution from DAGs
+    - ``DuckDbSqlSensor`` for waiting on truthy query results
+    - ``DuckDbHook`` and a ``duckdb`` Connection type
 
 state: ready
 lifecycle: production
@@ -36,6 +42,7 @@ integrations:
     external-doc-url: https://duckdb.org/
     how-to-guide:
       - /docs/apache-airflow-providers-arenadata-duckdb/operators.rst
+      - /docs/apache-airflow-providers-arenadata-duckdb/sensors.rst
       - /docs/apache-airflow-providers-arenadata-duckdb/connections.rst
     tags: [database]
 

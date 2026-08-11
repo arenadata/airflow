@@ -25,13 +25,14 @@ def get_provider_info():
     return {
         "package-name": "apache-airflow-providers-arenadata-duckdb",
         "name": "Arenadata DuckDB",
-        "description": "`DuckDB <https://duckdb.org/>`__ provider by Arenadata\n",
+        "description": "`DuckDB <https://duckdb.org/>`__ provider by Arenadata.\n\nRuns DuckDB SQL through the DuckDB CLI (or ADO wrapper) with:\n\n- ``DuckDbOperator`` for SQL execution from DAGs\n- ``DuckDbSqlSensor`` for waiting on truthy query results\n- ``DuckDbHook`` and a ``duckdb`` Connection type\n",
         "integrations": [
             {
                 "integration-name": "DuckDB",
                 "external-doc-url": "https://duckdb.org/",
                 "how-to-guide": [
                     "/docs/apache-airflow-providers-arenadata-duckdb/operators.rst",
+                    "/docs/apache-airflow-providers-arenadata-duckdb/sensors.rst",
                     "/docs/apache-airflow-providers-arenadata-duckdb/connections.rst",
                 ],
                 "tags": ["database"],

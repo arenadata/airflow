@@ -98,7 +98,8 @@ Demonstrates operator features beyond inline SQL:
 * Jinja templating in inline SQL (``{{ params.table }}``, ``{{ params.label }}``)
 * SQL loaded from a file (``queries/load_demo.sql`` via ``template_ext``)
 * Per-task ``database="{{ params.db_path }}"`` override of Connection ``host``
-* ``output_format="csv"`` on an export task
+* ``output_format="csv"`` on an export task (CLI uses ``-noheader``; ``stdout``
+  has no column names - see :doc:`operators`)
 
 DAG ``params`` (overridable from Trigger UI / ``dag_run.conf``):
 
@@ -132,8 +133,10 @@ Connection ID: ``duckdb_default``; the database path comes from Connection
 
 Task chain: ``seed_data >> wait_inline >> wait_from_sql_file``.
 
-The sensor implementation also supports ``fail_on_empty`` and ``soft_fail``; this
-example DAG does not demonstrate those flags.
+The sensor also supports ``fail_on_empty`` (DuckDB-specific) and inherits
+BaseSensorOperator flags such as ``soft_fail``, ``silent_fail``, and
+``never_fail`` (see :doc:`sensors`). This example DAG does not demonstrate
+those flags.
 
 Configuration
 -------------
