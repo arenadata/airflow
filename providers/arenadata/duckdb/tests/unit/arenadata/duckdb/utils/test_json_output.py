@@ -43,6 +43,13 @@ class TestParseJsonOutput:
             assert parse_json_output(raw) == [{"ready": True}]
         assert "Discarded non-JSON prefix" in caplog.text
 
+    def test_salvage_discards_trailing_array(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Second JSON array after the first is dropped, contract is one statement."""
+        raw = '[{"a": 1}]\n[{"b": 2}]'
+        with caplog.at_level("WARNING"):
+            assert parse_json_output(raw) == [{"a": 1}]
+        assert "Discarded trailing data after first JSON value" in caplog.text
+
     def test_salvage_object_root_rejected(self) -> None:
         """Non-list JSON root fails with DuckDbOutputError (sensor contract)."""
         with pytest.raises(DuckDbOutputError, match="must be a list"):

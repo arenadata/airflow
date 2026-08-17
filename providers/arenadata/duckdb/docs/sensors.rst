@@ -39,7 +39,8 @@ Behavior
 On each ``poke()`` the sensor:
 
 1. Runs ``sql`` with ``output_format="json"`` via the hook.
-2. Parses the JSON result set.
+2. Parses the JSON result set (one statement / first JSON array; see
+   :doc:`operators`).
 3. Evaluates the **first cell of the first row** as a Python truthy check
    (``bool(value)``).
 

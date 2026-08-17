@@ -37,8 +37,12 @@ from airflow.providers.arenadata.duckdb.utils.sql_script import (
     bind_sql_parameters,
     write_sql_script,
 )
-from airflow.providers.arenadata.duckdb.version_compat import BaseHook, mask_secret, redact
-from airflow.sdk._shared.secrets_masker import DEFAULT_SENSITIVE_FIELDS
+from airflow.providers.arenadata.duckdb.version_compat import (
+    DEFAULT_SENSITIVE_FIELDS,
+    BaseHook,
+    mask_secret,
+    redact,
+)
 
 DEFAULT_TIMEOUT = 300
 DEFAULT_CLI_PATH = "/usr/bin/duckdb"
@@ -84,6 +88,8 @@ SENSITIVE_CLI_FLAG_NAMES = frozenset(DEFAULT_SENSITIVE_FIELDS) | frozenset(
     }
 )
 
+ALLOWED_OUTPUT_FORMATS = frozenset({None, "json", "csv"})
+
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 _URI_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
@@ -103,7 +109,8 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
           - ``duckdb_binary`` (str)  – path to the duckdb binary (default: ``"/usr/bin/duckdb"``)
           - ``timeout``         (int)  – subprocess timeout in seconds (default: 300)
           - ``readonly``        (bool) – open the database in read-only mode (default: false)
-          - ``cli_params``    (str)  – additional CLI parameters passed to the DuckDB binary
+          - ``cli_params``    (str | list[str])  – additional CLI parameters passed to the
+            DuckDB binary (shell string or JSON array of string tokens)
           - ``lock_retry_attempts`` (int) – opt-in lock retries; number of CLI launches
             when > 0 (default: 0 = off). Resolution: ctor override > extra > 0.
 
@@ -144,7 +151,7 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
         """
         conn = self.get_connection(self.duckdb_conn_id)
         extra = conn.extra_dejson or {}
-        raw_cli_params = str(extra.get("cli_params", ""))
+        raw_cli_params = extra.get("cli_params", "")
         cli_param_tokens = self._parse_cli_params(raw_cli_params)
         self._mask_sensitive_cli_params(cli_param_tokens)
         self._assert_cli_params_allowed(cli_param_tokens)
@@ -213,13 +220,31 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
         return attempts
 
     @staticmethod
-    def _parse_cli_params(raw: str) -> list[str]:
-        if not raw.strip():
-            return []
-        try:
-            return shlex.split(raw)
-        except ValueError as exc:
-            raise DuckDbConfigurationError(f"Invalid cli_params in DuckDB connection extra: {exc}") from exc
+    def _parse_cli_params(raw: Any) -> list[str]:
+        """Parse Extra ``cli_params``: shell string or JSON list/tuple of strings."""
+        if isinstance(raw, str):
+            if not raw.strip():
+                return []
+            try:
+                return shlex.split(raw)
+            except ValueError as exc:
+                raise DuckDbConfigurationError(
+                    f"Invalid cli_params in DuckDB connection extra: {exc}"
+                ) from exc
+        if isinstance(raw, (list, tuple)):
+            tokens: list[str] = []
+            for item in raw:
+                if not isinstance(item, str):
+                    raise DuckDbConfigurationError(
+                        "Invalid cli_params in DuckDB connection extra: "
+                        f"list elements must be strings, got {type(item).__name__}"
+                    )
+                tokens.append(item)
+            return tokens
+        raise DuckDbConfigurationError(
+            "Invalid cli_params in DuckDB connection extra: "
+            f"expected a string or a list of strings, got {type(raw).__name__}"
+        )
 
     @staticmethod
     def _normalize_cli_token(token: str) -> str:
@@ -339,6 +364,11 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
         :param sql: inline SQL string to execute with ``-c``.
         :param sql_file: path to a ``.sql`` file to execute with ``-f``.
         """
+        if output_format not in ALLOWED_OUTPUT_FORMATS:
+            raise DuckDbConfigurationError(
+                f"Invalid output_format={output_format!r}. Allowed values: None, 'json', 'csv'."
+            )
+
         cmd: list[str] = [params["cli_path"], params["db_path"]]
 
         if params["readonly"]:
@@ -349,7 +379,7 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
 
         tokens = params.get("cli_param_tokens")
         if tokens is None:
-            tokens = self._parse_cli_params(str(params.get("cli_params", "")))
+            tokens = self._parse_cli_params(params.get("cli_params", ""))
         if tokens:
             cmd.extend(tokens)
 
@@ -386,13 +416,17 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
 
         :param sql: SQL statement to execute (after Jinja templating).
         :param output_format: output format: ``"json"`` (default), ``"csv"``, or ``None``
-            (default DuckDB table format).
+            (CLI table). Default is JSON so XCom and sensors can parse a single statement.
+            :meth:`run_file` defaults to ``None`` instead: ``-json`` plus first-array salvage
+            would keep only the first result of a multi-statement script.
         :param database: optional path to ``.duckdb`` file; overrides Connection ``host``
             when non-empty.
         :param parameters: optional ``%(name)s`` placeholders to bind before execution.
         :return: raw stdout from the CLI, stripped of leading/trailing whitespace.
-        :raises DuckDbCliError: on CLI error, timeout, or missing binary at launch.
-        :raises DuckDbConfigurationError: on configuration / bind errors.
+        :raises DuckDbConfigurationError: on configuration, bind, or preflight errors
+            (including a missing or non-executable binary).
+        :raises DuckDbCliError: on CLI non-zero exit, timeout, or ``Popen`` ``OSError``
+            after preflight (binary vanished between preflight and launch).
         """
         params = self._resolve_params(database=database)
         try:
@@ -428,12 +462,16 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
         Use :meth:`run_cli` for parameterized inline SQL.
 
         :param sql_file: absolute path to the SQL file.
-        :param output_format: output format: ``"json"``, ``"csv"``, or ``None``.
+        :param output_format: output format: ``"json"``, ``"csv"``, or ``None`` (default).
+            Default is ``None`` (CLI table) so a multi-statement file is not truncated by
+            ``-json`` / first-array salvage. Pass ``"json"`` for a single-statement file.
         :param database: optional path to ``.duckdb`` file; overrides Connection ``host``
             when non-empty.
         :return: raw stdout from the CLI, stripped of leading/trailing whitespace.
-        :raises DuckDbCliError: on CLI error, timeout, or missing binary at launch.
-        :raises DuckDbConfigurationError: when the SQL file does not exist.
+        :raises DuckDbConfigurationError: when the SQL file does not exist, or on
+            connection / preflight errors (including a missing or non-executable binary).
+        :raises DuckDbCliError: on CLI non-zero exit, timeout, or ``Popen`` ``OSError``
+            after preflight.
         """
         params = self._resolve_params(database=database)
         sql_path = Path(sql_file)

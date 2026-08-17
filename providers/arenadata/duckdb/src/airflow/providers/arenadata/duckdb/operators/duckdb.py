@@ -22,14 +22,12 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from airflow.providers.arenadata.duckdb.hooks.duckdb import DuckDbHook
+from airflow.providers.arenadata.duckdb.hooks.duckdb import ALLOWED_OUTPUT_FORMATS, DuckDbHook
 from airflow.providers.arenadata.duckdb.utils.errors import DuckDbConfigurationError
 from airflow.providers.arenadata.duckdb.version_compat import BaseOperator
 
 if TYPE_CHECKING:
     from airflow.providers.arenadata.duckdb.version_compat import Context
-
-ALLOWED_OUTPUT_FORMATS = frozenset({None, "json", "csv"})
 
 
 class DuckDbOperator(BaseOperator):  # pylint: disable=too-few-public-methods

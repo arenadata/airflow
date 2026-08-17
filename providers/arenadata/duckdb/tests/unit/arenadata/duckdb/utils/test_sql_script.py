@@ -51,6 +51,10 @@ class TestSerializeSqlValue:
                 datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
                 "TIMESTAMPTZ '2024-01-15 10:30:00+00:00'",
             ),
+            (
+                datetime(2024, 6, 15, 12, 30, 45, 123456, tzinfo=timezone.utc),
+                "TIMESTAMPTZ '2024-06-15 12:30:45.123456+00:00'",
+            ),
             (Decimal("123.45"), "123.45"),
         ],
     )

@@ -38,9 +38,7 @@ from airflow.providers.arenadata.duckdb.utils.errors import DuckDbCliError, Duck
 from airflow.providers.arenadata.duckdb.version_compat import redact
 from airflow.sdk._shared.secrets_masker import reset_secrets_masker
 
-LOCK_STDERR = (
-    'Could not set lock on file "/tmp/test.duckdb": Conflicting lock is held'
-)
+LOCK_STDERR = 'Could not set lock on file "/tmp/test.duckdb": Conflicting lock is held'
 
 MOCK_POPEN = "airflow.providers.arenadata.duckdb.hooks.duckdb.subprocess.Popen"
 
@@ -217,6 +215,11 @@ class TestDuckDbBuildCommand:
         assert "-noheader" in cmd
         assert "-json" not in cmd
 
+    def test_build_command_invalid_output_format(self, duckdb_hook: DuckDbHook) -> None:
+        """Unknown output_format fails fast on the hook, same allowlist as the operator."""
+        with pytest.raises(DuckDbConfigurationError, match="Invalid output_format"):
+            duckdb_hook._build_command(BASE_PARAMS, output_format="parquet", sql="SELECT 1")
+
     def test_build_command_requires_sql_or_file(self, duckdb_hook: DuckDbHook) -> None:
         """Command builder requires either sql or sql_file."""
         with pytest.raises(ValueError, match="Either 'sql' or 'sql_file' must be provided"):
@@ -269,8 +272,37 @@ class TestDuckDbBanList:
         duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
 
         params = duckdb_hook._get_conn_params()
-
         assert params["cli_param_tokens"] == ["--threads", "4"]
+
+    def test_list_cli_params_allowed(self, duckdb_hook: DuckDbHook) -> None:
+        """JSON-array Extra cli_params is parsed as tokens, not str(list)."""
+        conn = MagicMock()
+        conn.host = "/tmp/test.duckdb"
+        conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": ["--threads", "4"]}
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+
+        params = duckdb_hook._get_conn_params()
+        assert params["cli_param_tokens"] == ["--threads", "4"]
+
+    def test_list_cli_params_banned_flag(self, duckdb_hook: DuckDbHook) -> None:
+        """JSON-array Extra still applies the ban-list."""
+        conn = MagicMock()
+        conn.host = "/tmp/test.duckdb"
+        conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": ["-readonly"]}
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+
+        with pytest.raises(DuckDbConfigurationError, match="banned flag '-readonly'"):
+            duckdb_hook._get_conn_params()
+
+    def test_list_cli_params_non_str_element(self, duckdb_hook: DuckDbHook) -> None:
+        """Non-string JSON-array elements are rejected (no silent str())."""
+        conn = MagicMock()
+        conn.host = "/tmp/test.duckdb"
+        conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": ["--threads", 4]}
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+
+        with pytest.raises(DuckDbConfigurationError, match="list elements must be strings"):
+            duckdb_hook._get_conn_params()
 
 
 class TestDuckDbPreflight:
@@ -416,6 +448,23 @@ class TestDuckDbSecretsMasking:
         duckdb_hook._get_conn_params()
 
         assert redact("prefix SuperSecret12345 suffix") == "prefix *** suffix"
+        reset_secrets_masker()
+
+    @pytest.mark.enable_redact
+    def test_mask_secret_list_cli_params_equals_form(self, duckdb_hook: DuckDbHook) -> None:
+        """JSON-array Extra --token=value is registered (not bypassed by str(list))."""
+        reset_secrets_masker()
+        conn = MagicMock()
+        conn.host = "/tmp/test.duckdb"
+        conn.extra_dejson = {
+            "duckdb_binary": "/usr/bin/duckdb",
+            "cli_params": ["--token=abcdef12345"],
+        }
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+
+        duckdb_hook._get_conn_params()
+
+        assert redact("token=abcdef12345") == "token=***"
         reset_secrets_masker()
 
 

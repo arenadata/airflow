@@ -60,6 +60,10 @@ Default ``output_format`` is ``"json"``.
 
 Returns raw stripped ``stdout`` as a ``str``.
 
+The JSON default is for XCom and sensors (one statement, one JSON array).
+``run_file`` defaults to ``None`` so ``-json`` plus first-array salvage does
+not drop later results from a multi-statement script.
+
 ``run_file``
 ~~~~~~~~~~~~
 

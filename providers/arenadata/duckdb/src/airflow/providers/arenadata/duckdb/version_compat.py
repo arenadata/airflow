@@ -26,18 +26,18 @@ from airflow.sdk import (
     Context,
     Param,
 )
-from airflow.sdk._shared.secrets_masker import mask_secret, redact
-from airflow.sdk.exceptions import AirflowException, AirflowFailException, AirflowSkipException
+from airflow.sdk._shared.secrets_masker import DEFAULT_SENSITIVE_FIELDS, mask_secret, redact
+from airflow.sdk.exceptions import AirflowException, AirflowFailException
 
 __all__ = [
     "AirflowException",
     "AirflowFailException",
-    "AirflowSkipException",
     "BaseHook",
     "BaseOperator",
     "BaseSensorOperator",
     "Context",
     "DAG",
+    "DEFAULT_SENSITIVE_FIELDS",
     "Param",
     "mask_secret",
     "redact",

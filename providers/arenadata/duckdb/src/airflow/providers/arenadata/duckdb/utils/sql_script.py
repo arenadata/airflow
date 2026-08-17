@@ -49,7 +49,7 @@ def serialize_sql_value(value: Any) -> str:
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, datetime):
-        literal = value.isoformat(sep=" ", timespec="seconds")
+        literal = value.isoformat(sep=" ")
         sql_type = "TIMESTAMPTZ" if value.tzinfo is not None else "TIMESTAMP"
         return f"{sql_type} '{literal}'"
     if isinstance(value, date):

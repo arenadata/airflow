@@ -30,7 +30,12 @@ log = logging.getLogger(__name__)
 
 
 def parse_json_output(output: str) -> list[Any]:
-    """Parse CLI ``-json`` output; salvage JSON after optional log prefix. Must be a list."""
+    """
+    Parse CLI ``-json`` output; salvage JSON after optional log prefix. Must be a list.
+
+    Intended for a single statement (one JSON array). Trailing data after the first
+    decoded value is discarded with a warning.
+    """
     raw_output = (output or "").strip()
     if not raw_output:
         raise DuckDbOutputError("Empty JSON output.")
@@ -55,13 +60,19 @@ def _salvage_json(raw_output: str) -> Any:
         if char not in "[{":
             continue
         try:
-            parsed, _ = decoder.raw_decode(raw_output, idx=index)
+            parsed, end = decoder.raw_decode(raw_output, idx=index)
         except json.JSONDecodeError:
             continue
         if index > 0:
             log.info(
                 "Discarded non-JSON prefix from DuckDB output: %s",
                 redact(raw_output[:index].strip()),
+            )
+        remainder = raw_output[end:].strip()
+        if remainder:
+            log.warning(
+                "Discarded trailing data after first JSON value in DuckDB output: %s",
+                redact(remainder),
             )
         return parsed
     raise DuckDbOutputError(f"Failed to parse JSON output: {redact(raw_output)}")

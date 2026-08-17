@@ -48,7 +48,8 @@ Connection fields
        checks that the file exists and is readable; parent writability is not
        required (read-only mounts are supported).
    * - Extra ``cli_params``
-     - Additional CLI parameters (see ban-list below)
+     - Additional CLI parameters: a shell string or a JSON array of strings
+       (see ban-list below)
    * - Extra ``lock_retry_attempts``
      - Opt-in file-lock retries: number of CLI launches when ``> 0``
        (default: ``0`` = off). See :ref:`duckdb-lock-retry`.
@@ -136,16 +137,22 @@ SQL submission (``-c`` / ``-f`` / ``-s``), output format (``-json`` / ``-csv``),
 Putting them in ``cli_params`` raises a configuration error. Use
 ``DuckDbOperator(output_format=...)`` for json/csv.
 
-Hard-banned tokens (normalized after ``shlex.split``, verified against
+Hard-banned tokens (normalized after ``shlex.split`` or JSON-array tokens, verified against
 DuckDB CLI ``1.5.x`` ``duckdb -help``; ``-s`` is an alias of ``-c``):
 ``-c``, ``-s``, ``-f``, ``-cmd``, ``-init``, ``-json``, ``-csv``, ``-readonly``,
 ``-bail``, ``-no-stdin``.
 
+``cli_params`` may be a shell string (``"--threads 4"``, as in the Extra example
+above) or a JSON array of string tokens (``["--threads", "4"]``). Non-string
+array elements raise a configuration error.
+
 Store credentials in Connection Extra keys that Airflow masks
 (``*password*``, ``*secret*``, ``*token*``, ``*access_key*``, …), not inline in
-SQL. Sensitive flag values in ``cli_params`` (for example ``--password`` /
-``--token=...``) are registered with ``mask_secret`` so they appear as ``***``
-in logs.
+SQL and not in operator/hook ``parameters``. Bound ``parameters`` are inlined as
+SQL literals; on CLI error DuckDB typically echoes the statement in stderr, so
+the value appears in task logs. Sensitive flag values in ``cli_params`` (for
+example ``--password`` / ``--token=...``) are registered with ``mask_secret`` so
+they appear as ``***`` in logs.
 
 SQL files (operator / sensor)
 -----------------------------

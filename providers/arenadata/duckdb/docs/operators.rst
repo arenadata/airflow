@@ -90,6 +90,8 @@ string to XCom. It does **not** return parsed table rows.
 With the default ``output_format="json"``, prefer
 ``airflow.providers.arenadata.duckdb.utils.json_output.parse_json_output``
 (handles optional non-JSON prefixes and requires a JSON list of rows).
+Use **one statement** per task: salvage keeps the first JSON array and
+discards trailing data (with a warning).
 Plain ``json.loads`` is only safe for clean list-shaped JSON:
 
 .. code-block:: python
@@ -153,6 +155,9 @@ literal:
   ``parameters`` is non-empty.
 * Do **not** use ``parameters`` for identifiers (table/column names). Use Jinja
   for those.
+* Do **not** put secrets in ``parameters``. Values are inlined into SQL; a CLI
+  error echoes the statement in stderr. Store credentials in Connection Extra /
+  Variables and pass them via ``cli_params`` flags (see :doc:`connections`).
 
 This is **not** the same as prepared-statement binding. Prefer trusted
 parameter values; do not treat ``parameters`` as full SQL-injection protection.
