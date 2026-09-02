@@ -39,8 +39,11 @@ Connection fields
      - Description
    * - Host
      - Path to the ``.duckdb`` file, or ``:memory:`` for an in-memory database
-   * - Extra ``duckdb_binary``
-     - Path to the DuckDB binary (default: ``/usr/bin/duckdb``)
+   * - DuckDB binary
+     - Dedicated Connection field (stored in ``extra``); path to the DuckDB
+       binary or ADO wrapper. Empty, omitted, or JSON ``null`` uses
+       ``/usr/bin/duckdb``. The Connection extra is not rewritten; the hook
+       resolves the path at runtime.
    * - Extra ``timeout``
      - Subprocess timeout **per CLI attempt** in seconds (default: 300)
    * - Extra ``readonly``
@@ -57,10 +60,12 @@ Connection fields
 Example Extra JSON
 ------------------
 
+``duckdb_binary`` is a dedicated Connection form field (stored in ``extra``).
+Do not put it in the Extra JSON textarea.
+
 .. code-block:: json
 
    {
-     "duckdb_binary": "/usr/bin/duckdb",
      "timeout": 300,
      "readonly": false,
      "cli_params": "",

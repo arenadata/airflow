@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Airflow 3-only SDK imports for the DuckDB provider (``apache-airflow>=3.0.0``)."""
+"""Airflow 3-only SDK imports for the DuckDB provider (``apache-airflow>=3.2.1``)."""
 
 from __future__ import annotations
 
@@ -30,14 +30,14 @@ from airflow.sdk._shared.secrets_masker import DEFAULT_SENSITIVE_FIELDS, mask_se
 from airflow.sdk.exceptions import AirflowException, AirflowFailException
 
 __all__ = [
+    "DAG",
+    "DEFAULT_SENSITIVE_FIELDS",
     "AirflowException",
     "AirflowFailException",
     "BaseHook",
     "BaseOperator",
     "BaseSensorOperator",
     "Context",
-    "DAG",
-    "DEFAULT_SENSITIVE_FIELDS",
     "Param",
     "mask_secret",
     "redact",

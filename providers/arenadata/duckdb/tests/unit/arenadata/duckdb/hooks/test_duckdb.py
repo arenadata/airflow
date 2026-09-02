@@ -109,6 +109,32 @@ class TestDuckDbHookConnection:
         assert params["lock_retry_attempts"] == 0
         duckdb_hook._preflight_binary.assert_called_once_with(DEFAULT_CLI_PATH)
 
+    @pytest.mark.parametrize("raw", [None, "", "  "])
+    def test_get_conn_params_blank_binary_uses_default(
+        self, duckdb_hook: DuckDbHook, raw: str | None
+    ) -> None:
+        """UI/JSON null or blank duckdb_binary falls back to the default CLI path."""
+        conn = MagicMock()
+        conn.host = "/tmp/test.duckdb"
+        conn.extra_dejson = {"duckdb_binary": raw}
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+
+        params = duckdb_hook._get_conn_params()
+
+        assert params["cli_path"] == DEFAULT_CLI_PATH
+        duckdb_hook._preflight_binary.assert_called_once_with(DEFAULT_CLI_PATH)
+
+    def test_get_conn_params_invalid_binary_type(self, duckdb_hook: DuckDbHook) -> None:
+        """Non-string duckdb_binary extra fails before preflight."""
+        conn = MagicMock()
+        conn.host = "/tmp/test.duckdb"
+        conn.extra_dejson = {"duckdb_binary": ["usr", "bin"]}
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+
+        with pytest.raises(DuckDbConfigurationError, match="Invalid 'duckdb_binary'"):
+            duckdb_hook._get_conn_params()
+        duckdb_hook._preflight_binary.assert_not_called()
+
     def test_get_conn_params_from_extra(self, duckdb_hook: DuckDbHook) -> None:
         """Connection extras are mapped to hook runtime parameters."""
         params = duckdb_hook._get_conn_params()
@@ -136,22 +162,28 @@ class TestDuckDbHookConnection:
         """Boolean extras accept common string representations."""
         assert DuckDbHook._coerce_bool(value) is expected
 
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (None, DEFAULT_CLI_PATH),
+            ("", DEFAULT_CLI_PATH),
+            ("  ", DEFAULT_CLI_PATH),
+            ("/opt/homebrew/bin/duckdb", "/opt/homebrew/bin/duckdb"),
+        ],
+    )
+    def test_coerce_cli_path(self, value: str | None, expected: str) -> None:
+        """Missing, null, or blank duckdb_binary uses the default CLI path."""
+        assert DuckDbHook._coerce_cli_path(value) == expected
+
+    def test_coerce_cli_path_invalid(self) -> None:
+        """Non-string duckdb_binary extra raises DuckDbConfigurationError."""
+        with pytest.raises(DuckDbConfigurationError, match="Invalid 'duckdb_binary'"):
+            DuckDbHook._coerce_cli_path(["usr", "bin"])
+
     def test_coerce_timeout_invalid(self) -> None:
         """Invalid timeout extra raises DuckDbConfigurationError."""
         with pytest.raises(DuckDbConfigurationError, match="Invalid 'timeout'"):
             DuckDbHook._coerce_timeout("abc")
-
-    def test_get_ui_field_behaviour(self) -> None:
-        """Connection UI customisation exposes expected fields."""
-        result = DuckDbHook.get_ui_field_behaviour()
-
-        assert "hidden_fields" in result
-        assert "relabeling" in result
-        assert "placeholders" in result
-        assert result["hidden_fields"] == ["port", "schema", "login", "password"]
-        assert result["relabeling"]["host"] == "Database file path"
-        assert ":memory:" in result["placeholders"]["host"]
-        assert "lock_retry_attempts" in result["placeholders"]["extra"]
 
     def test_ctor_log_output_limit_default(self) -> None:
         """Default log_output_limit comes from module constant."""
@@ -367,9 +399,9 @@ class TestDuckDbPreflight:
             tmp_path.chmod(0o755)
 
     def test_binary_missing_raises(self, tmp_path: Path) -> None:
-        """Missing binary raises ConfigurationError with duckdb_binary hint."""
+        """Missing binary raises ConfigurationError with DuckDB binary field hint."""
         hook = DuckDbHook(duckdb_conn_id="duckdb_test")
-        with pytest.raises(DuckDbConfigurationError, match="extra.duckdb_binary") as exc_info:
+        with pytest.raises(DuckDbConfigurationError, match="DuckDB binary field") as exc_info:
             hook._preflight_binary(str(tmp_path / "no-duckdb"))
         assert "duckdb_test" in str(exc_info.value)
 

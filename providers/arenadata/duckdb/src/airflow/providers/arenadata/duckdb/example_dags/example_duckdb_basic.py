@@ -16,15 +16,14 @@
 # specific language governing permissions and limitations
 # under the License.
 """
-Example DAG: DuckDB pipeline (inline SQL, Connection, sensor, XCom)
+Example DAG: DuckDB pipeline (inline SQL, Connection, XCom)
 
 Before running, create an Airflow Connection:
 
 Connection ID: duckdb_default
 Connection Type: duckdb
 Host (database file path): /tmp/example_duckdb.duckdb
-Extra (JSON):
-  {"duckdb_binary": "/usr/bin/duckdb"}
+DuckDB binary: /usr/bin/duckdb
 
 On macOS with Homebrew use ``/opt/homebrew/bin/duckdb`` instead of ``/usr/bin/duckdb``
 
@@ -32,14 +31,9 @@ Important:
 
 - Do not use ``:memory:`` in multi-task DAGs: each task runs DuckDB CLI in a
   separate subprocess, so in-memory state does not persist between tasks.
-- ``DuckDbSqlSensor`` waits for a truthy query result against an **existing**
-  table or view. A query against a missing object fails the task; it does not
-  keep waiting
 - Do not run ``example_duckdb_basic`` and ``example_duckdb_sensors`` at the
   same time: they share ``duckdb_default.host``. DuckDB allows only one writer
   process per file. Use separate Connections for parallel runs
-- In production the data producer is often an external process or another DAG;
-  the sensor then blocks until data appears
 """
 
 from __future__ import annotations
@@ -47,7 +41,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from airflow.providers.arenadata.duckdb.operators.duckdb import DuckDbOperator
-from airflow.providers.arenadata.duckdb.sensors.duckdb import DuckDbSqlSensor
 from airflow.providers.arenadata.duckdb.version_compat import DAG
 
 CONN_ID = "duckdb_default"
@@ -78,19 +71,10 @@ with DAG(
         duckdb_conn_id=CONN_ID,
     )
 
-    wait_for_rows = DuckDbSqlSensor(
-        task_id="wait_for_rows",
-        sql="SELECT count(*) AS c FROM demo",
-        duckdb_conn_id=CONN_ID,
-        mode="reschedule",
-        poke_interval=30,
-        timeout=300,
-    )
-
     select_count = DuckDbOperator(
         task_id="select_count",
         sql="SELECT count(*) AS c FROM demo",
         duckdb_conn_id=CONN_ID,
     )
 
-    create_table >> insert_data >> wait_for_rows >> select_count
+    create_table >> insert_data >> select_count

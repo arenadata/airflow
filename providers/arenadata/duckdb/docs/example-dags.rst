@@ -21,7 +21,7 @@ DuckDB Example DAGs
 ===================
 
 This provider ships example DAGs that run DuckDB SQL through the DuckDB CLI in a
-subprocess. All examples require Apache Airflow 3.0+ and the ``duckdb`` binary on
+subprocess. All examples require Apache Airflow 3.2.1+ and the ``duckdb`` binary on
 the worker host.
 
 Where example DAGs are located
@@ -52,7 +52,7 @@ Before running any example DAG:
   * Connection ID: ``duckdb_default``
   * Connection Type: ``duckdb``
   * Host: path to the ``.duckdb`` file (for example ``/tmp/example_duckdb.duckdb``)
-  * Extra (JSON): ``{"duckdb_binary": "/usr/bin/duckdb"}``
+  * DuckDB binary: ``/usr/bin/duckdb`` (dedicated Connection field, stored in ``extra``)
 
 See :doc:`connections` for all connection fields and extras.
 
@@ -76,19 +76,19 @@ Available example DAGs
 ``example_duckdb_basic.py`` - Basic pipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Demonstrates a minimal end-to-end DuckDB workflow with inline SQL, a sensor, and
+Demonstrates a minimal end-to-end DuckDB workflow with inline SQL and
 XCom-friendly operator output.
 
 * Creates a demo table with ``DuckDbOperator``
 * Inserts sample rows
-* Waits for rows with ``DuckDbSqlSensor`` (``mode="reschedule"``)
 * Runs a final ``SELECT count(*)`` and returns stdout for XCom
 
 Connection ID: ``duckdb_default``.
 
-Task chain: ``create_table >> insert_data >> wait_for_rows >> select_count``.
+Task chain: ``create_table >> insert_data >> select_count``.
 
-Best for a first smoke-check after installing the provider.
+Best for a first smoke-check after installing the provider. Waiting for
+external data is :ref:`example-duckdb-sensors`.
 
 ``example_duckdb_sql_file.py`` - SQL files, Jinja, and database override
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -114,13 +114,34 @@ override demo is visible (for example host ``/tmp/example_duckdb.duckdb`` and
 
 Task chain: ``create_table >> load_from_file >> export_csv``.
 
-``example_duckdb_sensors.py`` - Sensor patterns
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _example-duckdb-sensors:
+
+``example_duckdb_sensors.py`` - Wait for external data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Demonstrates ``DuckDbSqlSensor`` with inline SQL and with a SQL file template.
+This DAG **does not insert data**. Sensors wait until a query is truthy; the
+producer is a CLI session, another DAG, or an external job.
 
-* Seeds data with ``DuckDbOperator`` (``CREATE OR REPLACE TABLE`` + ``INSERT``)
-* ``wait_inline`` - sensor with templated inline SQL
+How to run:
+
+1. Create Connection ``duckdb_default`` (see Prerequisites).
+2. Create the table first. A missing object fails the task; it does not wait::
+
+      CREATE TABLE IF NOT EXISTS events(id INT);
+
+   An empty table is enough.
+3. Trigger the DAG. ``wait_inline`` stays up for reschedule while there are
+   no rows (default timeout 300 seconds).
+4. Insert a row from **another** session (not while a poke holds the file
+   lock)::
+
+      INSERT INTO events VALUES (1);
+
+5. The next poke succeeds, then ``wait_from_sql_file`` runs
+   ``queries/wait_until_ready.sql``.
+
+* ``wait_inline`` - sensor with templated inline SQL (``count(*)``)
 * ``wait_from_sql_file`` - sensor using ``queries/wait_until_ready.sql``
 
 DAG ``params``:
@@ -131,7 +152,8 @@ DAG ``params``:
 Connection ID: ``duckdb_default``; the database path comes from Connection
 ``host`` (this DAG does not set per-task ``database=``).
 
-Task chain: ``seed_data >> wait_inline >> wait_from_sql_file``.
+Task chain: ``wait_inline >> wait_from_sql_file`` (sequential so two CLI
+processes do not lock the same file).
 
 The sensor also supports ``fail_on_empty`` (DuckDB-specific) and inherits
 BaseSensorOperator flags such as ``soft_fail``, ``silent_fail``, and
@@ -152,8 +174,8 @@ DAG developer notes
 
 * All example DAGs use ``schedule=None`` and ``catchup=False``; they do not
   backfill.
-* Example DAGs require the ``duckdb`` CLI on the worker at the path configured in
-  the connection extra.
+* Example DAGs require the ``duckdb`` CLI on the worker at the path set in the
+  DuckDB binary Connection field.
 * Connection IDs in the examples are configurable; create the required connections
   before triggering a DAG run.
 * See also :doc:`hooks`, :doc:`operators`, and :doc:`sensors` for API reference.
