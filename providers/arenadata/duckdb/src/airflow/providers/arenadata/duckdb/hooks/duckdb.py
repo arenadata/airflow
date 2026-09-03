@@ -105,8 +105,11 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
 
     Reads connection parameters from an Airflow Connection:
       - host     : path to the .duckdb file, or ``:memory:`` for in-memory database
-      - extra    : JSON object with optional keys:
-          - ``duckdb_binary`` (str)  – path to the duckdb binary (default: ``"/usr/bin/duckdb"``)
+      - extra    : JSON object with optional keys (``duckdb_binary`` is exposed as a
+        dedicated field in the Connection UI, but is stored in ``extra`` like the rest):
+          - ``duckdb_binary`` (str)  – path to the duckdb binary. Missing, JSON
+            ``null``, or blank uses ``"/usr/bin/duckdb"``. The Connection extra
+            is not rewritten; the hook resolves the path at runtime.
           - ``timeout``         (int)  – subprocess timeout in seconds (default: 300)
           - ``readonly``        (bool) – open the database in read-only mode (default: false)
           - ``cli_params``    (str | list[str])  – additional CLI parameters passed to the
@@ -163,7 +166,7 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
 
         params: dict[str, Any] = {
             "db_path": conn.host or ":memory:",
-            "cli_path": str(extra.get("duckdb_binary", DEFAULT_CLI_PATH)),
+            "cli_path": self._coerce_cli_path(extra.get("duckdb_binary")),
             "timeout": self._coerce_timeout(extra.get("timeout", DEFAULT_TIMEOUT)),
             "readonly": self._coerce_bool(extra.get("readonly", False)),
             "cli_params": raw_cli_params,
@@ -186,6 +189,18 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
         if validate_db_path:
             self._preflight_db_path(params["db_path"], readonly=params["readonly"])
         return params
+
+    @staticmethod
+    def _coerce_cli_path(value: Any) -> str:
+        """Treat missing, JSON null, or blank extra as the default CLI path."""
+        if value is None:
+            return DEFAULT_CLI_PATH
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or DEFAULT_CLI_PATH
+        raise DuckDbConfigurationError(
+            f"Invalid 'duckdb_binary' in DuckDB connection extra: {value!r}"
+        )
 
     @staticmethod
     def _coerce_bool(value: Any) -> bool:
@@ -302,7 +317,7 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
             return
         raise DuckDbConfigurationError(
             f"DuckDB binary not found or not executable: {cli_path}. "
-            f"Set extra.duckdb_binary on connection '{self.duckdb_conn_id}'."
+            f"Set the DuckDB binary field on connection '{self.duckdb_conn_id}'."
         )
 
     def _preflight_db_path(self, db_path: str, *, readonly: bool) -> None:
@@ -782,25 +797,3 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
             process.wait(timeout=TERMINATE_GRACE_PERIOD_SECONDS)
         except subprocess.TimeoutExpired:
             self.log.warning("DuckDB process did not exit after kill (pid=%s)", process.pid)
-
-    @classmethod
-    def get_ui_field_behaviour(cls) -> dict[str, Any]:
-        """Return custom field labels and placeholders for the Airflow connection UI."""
-        return {
-            "hidden_fields": ["port", "schema", "login", "password"],
-            "relabeling": {
-                "host": "Database file path",
-            },
-            "placeholders": {
-                "host": ":memory:  or  /absolute/path/to/file.duckdb",
-                "extra": (
-                    "{\n"
-                    '  "duckdb_binary": "/usr/bin/duckdb",\n'
-                    '  "timeout": 300,\n'
-                    '  "readonly": false,\n'
-                    '  "cli_params": "",\n'
-                    '  "lock_retry_attempts": 0\n'
-                    "}"
-                ),
-            },
-        }

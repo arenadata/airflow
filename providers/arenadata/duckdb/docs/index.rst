@@ -83,7 +83,7 @@ This provider does not install the DuckDB binary by itself. The worker must
 already have a ``duckdb`` executable (upstream CLI or ADO wrapper that applies
 global DuckDB configuration before starting DuckDB).
 
-Configure the path in the Airflow connection Extra ``duckdb_binary``
+Configure the path in the DuckDB binary Connection field
 (default ``/usr/bin/duckdb``). On macOS with Homebrew the binary is often
 ``/opt/homebrew/bin/duckdb``.
 
@@ -94,7 +94,7 @@ For a minimal working setup:
 
 1. Install or provision the ``duckdb`` CLI / ADO wrapper on the worker.
 2. Create a ``duckdb`` connection in Airflow (``host`` = path to a ``.duckdb``
-   file or ``:memory:``; Extra ``duckdb_binary`` if not at the default path).
+   file or ``:memory:``; DuckDB binary field if not at the default path).
 3. Verify with connection ``test_connection()`` or an example DAG
    (see :doc:`example-dags`).
 
@@ -127,7 +127,7 @@ Guides
 Requirements
 ------------
 
-* ``apache-airflow`` >= ``3.0.0``
+* ``apache-airflow`` >= ``3.2.1``
 
 Example DAGs
 ------------

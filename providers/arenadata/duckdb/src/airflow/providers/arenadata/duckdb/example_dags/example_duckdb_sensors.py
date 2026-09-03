@@ -16,36 +16,29 @@
 # specific language governing permissions and limitations
 # under the License.
 """
-Example DAG: DuckDB sensor patterns (inline SQL and SQL file)
+Example DAG: DuckDbSqlSensor (inline SQL and SQL file)
 
-Uses ``duckdb_default`` Connection; the database path comes from Connection
-``host``. Optional ``database=`` on the sensor overrides ``host`` (same as
-``DuckDbOperator``); this DAG does not set it
+This DAG does not insert data. It waits until a query is truthy.
 
-Connection ``duckdb_default``:
+Connection ``duckdb_default`` — same as ``example_duckdb_basic``.
 
-Connection Type: duckdb
-Host: /tmp/example_duckdb.duckdb
-Extra: {"duckdb_binary": "/usr/bin/duckdb"}  (macOS: /opt/homebrew/bin/duckdb)
+Before trigger, the table must already exist (missing object fails, it does
+not wait). Empty is fine:
 
-Important:
+    CREATE TABLE IF NOT EXISTS events(id INT);
 
-- The sensor waits for **data** in an existing table, not for the table itself
-  Queries against missing objects fail the task.
-- Data is seeded in this DAG for a self-contained demo. In production the
-  producer is usually an external process or another DAG; then the sensor
-  blocks until data is ready
-- Do not run together with ``example_duckdb_basic``: both use the same file
-  and DuckDB allows only one writer at a time
-- ``fail_on_empty=True`` fails when the query returns no rows;
-  ``soft_fail=True`` raises ``AirflowSkipException`` instead (not shown here)
+Trigger the DAG: ``wait_inline`` reschedules while there are no rows
+(timeout 300s). Unblock from another session (not during a poke — file lock):
+
+    INSERT INTO events VALUES (1);
+
+Do not run together with ``example_duckdb_basic`` on the same Connection host
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from airflow.providers.arenadata.duckdb.operators.duckdb import DuckDbOperator
 from airflow.providers.arenadata.duckdb.sensors.duckdb import DuckDbSqlSensor
 from airflow.providers.arenadata.duckdb.version_compat import DAG, Param
 
@@ -69,15 +62,6 @@ with DAG(
         "min_id": Param(1, type="integer"),
     },
 ) as dag:
-    seed_data = DuckDbOperator(
-        task_id="seed_data",
-        sql="""
-            CREATE OR REPLACE TABLE {{ params.table }}(id INT);
-            INSERT INTO {{ params.table }} VALUES (1);
-        """,
-        duckdb_conn_id=CONN_ID,
-    )
-
     wait_inline = DuckDbSqlSensor(
         task_id="wait_inline",
         sql="SELECT count(*) AS ready FROM {{ params.table }}",
@@ -96,4 +80,4 @@ with DAG(
         timeout=300,
     )
 
-    seed_data >> wait_inline >> wait_from_sql_file
+    wait_inline >> wait_from_sql_file

@@ -60,6 +60,21 @@ def get_provider_info():
             {
                 "hook-class-name": "airflow.providers.arenadata.duckdb.hooks.duckdb.DuckDbHook",
                 "connection-type": "duckdb",
+                "conn-fields": {
+                    "duckdb_binary": {
+                        "label": "DuckDB binary",
+                        "schema": {"type": ["string", "null"], "default": "/usr/bin/duckdb"},
+                        "description": "Path to the duckdb CLI binary (or ADO wrapper) used to execute SQL.",
+                    }
+                },
+                "ui-field-behaviour": {
+                    "hidden-fields": ["port", "schema", "login", "password"],
+                    "relabeling": {"host": "Database file path"},
+                    "placeholders": {
+                        "host": ":memory:  or  /absolute/path/to/file.duckdb",
+                        "extra": '{\n  "timeout": 300,\n  "readonly": false,\n  "cli_params": "",\n  "lock_retry_attempts": 0\n}',
+                    },
+                },
             }
         ],
     }

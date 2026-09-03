@@ -35,7 +35,7 @@ versions:
   - 1.0.0
 
 dependencies:
-  - apache-airflow>=3.0.0
+  - apache-airflow>=3.2.1
 
 integrations:
   - integration-name: DuckDB
@@ -64,6 +64,30 @@ sensors:
 connection-types:
   - hook-class-name: airflow.providers.arenadata.duckdb.hooks.duckdb.DuckDbHook
     connection-type: duckdb
+    conn-fields:
+      duckdb_binary:
+        label: DuckDB binary
+        schema:
+          type: [string, "null"]
+          default: /usr/bin/duckdb
+        description: Path to the duckdb CLI binary (or ADO wrapper) used to execute SQL.
+    ui-field-behaviour:
+      hidden-fields:
+        - port
+        - schema
+        - login
+        - password
+      relabeling:
+        host: Database file path
+      placeholders:
+        host: ":memory:  or  /absolute/path/to/file.duckdb"
+        extra: |-
+          {
+            "timeout": 300,
+            "readonly": false,
+            "cli_params": "",
+            "lock_retry_attempts": 0
+          }
 
 example-dags:
   - airflow.providers.arenadata.duckdb.example_dags.example_duckdb_basic

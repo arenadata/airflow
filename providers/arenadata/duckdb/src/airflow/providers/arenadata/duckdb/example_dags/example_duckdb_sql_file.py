@@ -27,7 +27,7 @@ Connection ``duckdb_default`` (same as example_duckdb_basic):
 
 Connection Type: duckdb
 Host: /tmp/example_duckdb.duckdb
-Extra: {"duckdb_binary": "/usr/bin/duckdb"}  (macOS: /opt/homebrew/bin/duckdb)
+DuckDB binary: /usr/bin/duckdb  (macOS: /opt/homebrew/bin/duckdb)
 """
 
 from __future__ import annotations

@@ -31,7 +31,7 @@ To use this operator:
 
 * Configure a :doc:`DuckDB Connection <connections>`.
 * Make sure the ``duckdb`` binary (or ADO wrapper) is available on the worker
-  at the path set in connection Extra ``duckdb_binary`` (default
+  at the path set in the DuckDB binary Connection field (default
   ``/usr/bin/duckdb``).
 
 Common operator parameters

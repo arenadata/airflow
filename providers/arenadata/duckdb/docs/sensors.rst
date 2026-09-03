@@ -40,7 +40,7 @@ On each ``poke()`` the sensor:
 
 1. Runs ``sql`` with ``output_format="json"`` via the hook.
 2. Parses the JSON result set (one statement / first JSON array; see
-   :doc:`operators`).
+   :ref:`duckdb-sensor-single-statement` and :doc:`operators`).
 3. Evaluates the **first cell of the first row** as a Python truthy check
    (``bool(value)``).
 
@@ -70,6 +70,30 @@ Important caveat: a query against a missing table (for example
 default flags. It does **not** keep waiting. If you need to wait until data
 appears, create the table (or view) ahead of time - empty is fine - and poke a
 condition such as ``SELECT count(*) > 0 ...``.
+
+.. _duckdb-sensor-single-statement:
+
+Setup statements in ``sql``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The sensor parses only the **first JSON array** in ``stdout``; later statements
+are discarded with a log warning. No statement before the condition may return
+rows.
+
+* ``INSTALL``, ``LOAD``, ``ATTACH``, ``SET`` print nothing and may precede the
+  condition.
+* ``CREATE SECRET`` returns a success row. It becomes the first result set, so
+  the sensor succeeds without evaluating the condition - the task turns green
+  with only a warning in the logs.
+* Each task is a separate CLI process: ``LOAD`` / ``ATTACH`` must stay in the
+  sensor's ``sql``, while ``INSTALL``, ``CREATE PERSISTENT SECRET`` and
+  ``CREATE VIEW`` can run once in a preceding ``DuckDbOperator``.
+
+.. code-block:: sql
+
+    -- wrong: the sensor reads the CREATE SECRET row, not the condition
+    CREATE SECRET s3_lake (TYPE s3, PROVIDER credential_chain);
+    SELECT count(*) > 0 FROM events;
 
 ``fail_on_empty``
 ~~~~~~~~~~~~~~~~~

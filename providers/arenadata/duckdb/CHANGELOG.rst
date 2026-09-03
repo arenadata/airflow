@@ -51,7 +51,11 @@ Behavior
 Notes
 ~~~~~
 
-* Requires Apache Airflow 3.0.0 or later
+* Requires Apache Airflow 3.2.1 or later
 * Uses ``version_compat.py`` as an Airflow 3-only SDK shim (no Airflow 2.x support)
 * Ban-list for ``cli_params`` and soft path preflight are documented in
   ``docs/connections.rst``
+* ``duckdb_binary`` is exposed as a dedicated Connection UI field (declared via
+  ``conn-fields`` in ``provider.yaml``) instead of a raw ``extra`` JSON key
+* Empty, omitted, or JSON ``null`` ``duckdb_binary`` resolves to
+  ``/usr/bin/duckdb`` at hook runtime (Connection extra is not rewritten)
