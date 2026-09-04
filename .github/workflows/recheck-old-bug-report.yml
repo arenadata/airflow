@@ -26,6 +26,7 @@ permissions:
   issues: write
 jobs:
   recheck-old-bug-report:
+    if: github.repository_owner == 'apache' || github.event_name != 'schedule'
     runs-on: ["ubuntu-22.04"]
     steps:
       - uses: actions/stale@b5d41d4e1d5dceea10e7104786b73624c18a190f  # v10.2.0

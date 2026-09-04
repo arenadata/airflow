@@ -34,6 +34,7 @@ env:
 jobs:
 
   workflow-status:
+    if: github.repository_owner == 'apache' || github.event_name != 'schedule'
     strategy:
       matrix:
         branch: ["v3-2-test"]

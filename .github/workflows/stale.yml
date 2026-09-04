@@ -27,6 +27,7 @@ permissions:
   issues: write
 jobs:
   stale:
+    if: github.repository_owner == 'apache' || github.event_name != 'schedule'
     runs-on: ["ubuntu-22.04"]
     steps:
       # Handle all PRs (45-day stale) and pending-response issues (14-day stale)

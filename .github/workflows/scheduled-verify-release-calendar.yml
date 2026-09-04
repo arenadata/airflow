@@ -27,6 +27,7 @@ permissions:
 jobs:
   verify-release-calendar:
     name: "Verify release calendar"
+    if: github.repository_owner == 'apache' || github.event_name != 'schedule'
     runs-on: ["ubuntu-22.04"]
     timeout-minutes: 10
     steps:
