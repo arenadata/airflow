@@ -80,18 +80,12 @@ jobs:
           - provider: ozone
             python-version: "3.12"
           - provider: hbase
-            python-version: "3.11"
+            python-version: "3.12"
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           persist-credentials: false
-
-      - name: "Install SASL build deps"
-        if: matrix.provider == 'hbase'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libsasl2-dev
 
       - name: "Install uv"
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
@@ -100,7 +94,21 @@ jobs:
           enable-cache: true
 
       - name: "Run unit tests"
+        if: matrix.provider != 'hbase'
         run: >
           uv run --project "providers/arenadata/${{ matrix.provider }}"
           pytest "providers/arenadata/${{ matrix.provider }}/tests/unit"
           -q --color=yes
+
+      # sasl==0.3.1 does not build on CPython 3.12; unit tests mock sasl/thrift_sasl
+      - name: "Run unit tests (hbase, skip sasl C-extension)"
+        if: matrix.provider == 'hbase'
+        run: |
+          uv export --project providers/arenadata/hbase \
+            --prune sasl --prune thrift-sasl --no-emit-project \
+            -o /tmp/hbase-req.txt
+          uv venv --python "${{ matrix.python-version }}" /tmp/hbase-venv
+          uv pip install --python /tmp/hbase-venv/bin/python -r /tmp/hbase-req.txt
+          uv pip install --python /tmp/hbase-venv/bin/python --no-deps \
+            -e providers/arenadata/hbase
+          /tmp/hbase-venv/bin/pytest providers/arenadata/hbase/tests/unit -q --color=yes
