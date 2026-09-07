@@ -18,13 +18,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from airflow.exceptions import AirflowException
-from airflow.models.connection import Connection
 from airflow.providers.arenadata.ozone.utils.helpers import (
     JsonDict,
     TypeNormalizationHelper,
 )
+
+if TYPE_CHECKING:
+    from airflow.models.connection import Connection
 
 # ============================================================================
 # Ozone connection schema and runtime defaults

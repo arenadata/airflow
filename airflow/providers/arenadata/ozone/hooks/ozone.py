@@ -56,6 +56,8 @@ SLOW_TIMEOUT_SECONDS = 60 * 60
 
 
 class ExistingTargetPolicy(str, Enum):
+    """Policy when the destination already exists."""
+
     ERROR = "error"
     IGNORE = "ignore"
     OVERWRITE = "overwrite"
