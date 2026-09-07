@@ -33,6 +33,7 @@ jobs:
 
   analyze-flaky-tests:
     name: "Analyze E2E flaky tests"
+    if: github.repository_owner == 'apache' || github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout ${{ github.ref }} ( ${{ github.sha }} )"

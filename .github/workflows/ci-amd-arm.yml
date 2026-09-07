@@ -18,8 +18,7 @@
 ---
 name: Tests
 on:  # yamllint disable-line rule:truthy
-  schedule:
-    - cron: '28 1,3,7,9,13,15,19,21 * * *'
+  # Full Apache scheduled CI is disabled on this fork (no GHCR cache, canary, or Slack).
   push:
     branches:
       - v[0-9]+-[0-9]+-test

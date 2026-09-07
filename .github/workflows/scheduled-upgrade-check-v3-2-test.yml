@@ -28,6 +28,7 @@ permissions:
 jobs:
   upgrade-v3-2-test:
     name: "[v3-2-test] Upgrade"
+    if: github.repository_owner == 'apache' || github.event_name != 'schedule'
     uses: ./.github/workflows/upgrade-check.yml
     with:
       target-branch: v3-2-test
