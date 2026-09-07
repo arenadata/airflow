@@ -51,7 +51,6 @@ from airflow.providers.arenadata.ozone.sensors.ozone import OzoneKeySensor
 from airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone import HdfsToOzoneOperator
 from airflow.utils import timezone
 
-
 DEFAULT_OM_HOST = os.getenv("OZONE_EXAMPLE_OM_HOST") or "om"
 DEFAULT_CONN_ID = os.getenv("OZONE_EXAMPLE_COPY_FROM_HDFS_CONN_ID") or "ozone_admin_default"
 DEFAULT_HDFS_CONN_ID = os.getenv("OZONE_EXAMPLE_COPY_FROM_HDFS_HDFS_CONN_ID") or "hdfs_admin_default"
