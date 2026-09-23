@@ -68,8 +68,6 @@ class DuckDbOperator(BaseOperator):  # pylint: disable=too-few-public-methods
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if not sql:
-            raise ValueError("sql cannot be empty")
         if output_format not in ALLOWED_OUTPUT_FORMATS:
             raise DuckDbConfigurationError(
                 f"Invalid output_format={output_format!r}. Allowed values: None, 'json', 'csv'."
@@ -78,13 +76,15 @@ class DuckDbOperator(BaseOperator):  # pylint: disable=too-few-public-methods
         self.duckdb_conn_id = duckdb_conn_id
         self.database = database
         self.output_format = output_format
-        self.parameters = dict(parameters) if parameters is not None else None
+        self.parameters = parameters
         self.lock_retry_attempts = lock_retry_attempts
         self.log_output_limit = log_output_limit
         self._hook: DuckDbHook | None = None
 
     def execute(self, context: Context) -> str:
         """Run SQL and return raw stdout from DuckDB CLI."""
+        if not self.sql:
+            raise ValueError("sql cannot be empty")
         self._hook = DuckDbHook(
             duckdb_conn_id=self.duckdb_conn_id,
             lock_retry_attempts=self.lock_retry_attempts,
@@ -94,7 +94,7 @@ class DuckDbOperator(BaseOperator):  # pylint: disable=too-few-public-methods
             self.sql,
             output_format=self.output_format,
             database=self.database,
-            parameters=self.parameters,
+            parameters=dict(self.parameters) if self.parameters is not None else None,
         )
 
     def on_kill(self) -> None:

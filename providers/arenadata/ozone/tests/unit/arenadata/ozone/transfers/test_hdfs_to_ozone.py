@@ -99,14 +99,15 @@ class TestHdfsToOzoneOperator:
             operator.execute(context={})
         mock_run_process.assert_not_called()
 
-    def test_init_invalid_optional_conn_type(self):
+    def test_execute_invalid_optional_conn_type(self):
+        operator = HdfsToOzoneOperator(
+            task_id="hdfs_to_ozone_test_invalid",
+            source_path="hdfs://nn:8020/user/data",
+            dest_path="ofs://om:9862/vol1/bucket1/data",
+            hdfs_conn_id=123,  # type: ignore[arg-type]
+        )
         with pytest.raises(ValueError, match="hdfs_conn_id must be a string or None"):
-            HdfsToOzoneOperator(
-                task_id="hdfs_to_ozone_test_invalid",
-                source_path="hdfs://nn:8020/user/data",
-                dest_path="ofs://om:9862/vol1/bucket1/data",
-                hdfs_conn_id=123,  # type: ignore[arg-type]
-            )
+            operator.execute(context={})
 
     @patch(
         "airflow.providers.arenadata.ozone.transfers.hdfs_to_ozone.shutil.which",

@@ -15,9 +15,27 @@
 # specific language governing permissions and limitations
 # under the License.
 
+#
+# NOTE! THIS FILE IS COPIED MANUALLY IN OTHER PROVIDERS DELIBERATELY TO AVOID ADDING UNNECESSARY
+# DEPENDENCIES BETWEEN PROVIDERS. IF YOU WANT TO ADD CONDITIONAL CODE IN YOUR PROVIDER THAT DEPENDS
+# ON AIRFLOW VERSION, PLEASE COPY THIS FILE TO THE ROOT PACKAGE OF YOUR PROVIDER AND IMPORT
+# THOSE CONSTANTS FROM IT RATHER THAN IMPORTING THEM FROM ANOTHER PROVIDER OR TEST CODE
+#
 from __future__ import annotations
 
-from airflow.providers.common.compat.version_compat import AIRFLOW_V_3_0_PLUS
+from airflow.providers.common.compat.sdk import AirflowException
+
+
+def get_base_airflow_version_tuple() -> tuple[int, int, int]:
+    from packaging.version import Version
+
+    from airflow import __version__
+
+    airflow_version = Version(__version__)
+    return airflow_version.major, airflow_version.minor, airflow_version.micro
+
+
+AIRFLOW_V_3_0_PLUS: bool = get_base_airflow_version_tuple() >= (3, 0, 0)
 
 if AIRFLOW_V_3_0_PLUS:
     from airflow.sdk import Connection
@@ -33,8 +51,6 @@ else:
     from airflow.sensors.base import BaseSensorOperator
     from airflow.utils.context import Context
     from airflow.utils.log.secrets_masker import mask_secret, redact
-
-from airflow.providers.common.compat.sdk import AirflowException
 
 __all__ = [
     "AIRFLOW_V_3_0_PLUS",
