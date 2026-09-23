@@ -20,7 +20,7 @@
 # IF YOU WANT TO MODIFY THIS FILE EXCEPT DEPENDENCIES, YOU SHOULD MODIFY THE TEMPLATE
 # `pyproject_TEMPLATE.toml.jinja2` IN the `dev/breeze/src/airflow_breeze/templates` DIRECTORY
 [build-system]
-requires = ["flit_core==3.12.0"]
+requires = ["flit_core==4.0.2"]
 build-backend = "flit_core.buildapi"
 
 [project]
@@ -109,3 +109,15 @@ provider_info = "airflow.providers.arenadata.duckdb.get_provider_info:get_provid
 
 [tool.flit.module]
 name = "airflow.providers.arenadata.duckdb"
+
+# Explicit sdist contents so the build does not rely on VCS information
+# (flit 4.0 makes --no-use-vcs the default — see https://github.com/pypa/flit/pull/782).
+[tool.flit.sdist]
+include = [
+    "docs/",
+    "provider.yaml",
+    "src/airflow/__init__.py",
+    "src/airflow/providers/__init__.py",
+    "src/airflow/providers/arenadata/__init__.py",
+    "tests/",
+]

@@ -38,6 +38,7 @@ All providers start with version **1.0.0** (no alpha or beta releases).
 def create_table(table_name: str, families: dict) -> None:
     pass
 
+
 # Version 2.0.0 - signature changed (breaking)
 def create_table(table_name: str, families: dict, namespace: str = "default") -> None:
     pass
@@ -48,6 +49,7 @@ def create_table(table_name: str, families: dict, namespace: str = "default") ->
 # Version 1.0.0
 class HBaseCreateTableOperator:
     pass
+
 
 # Version 1.1.0 - new operator added
 class HBaseAlterTableOperator:  # New functionality
@@ -60,6 +62,7 @@ class HBaseAlterTableOperator:  # New functionality
 def delete_table(table_name: str) -> None:
     # Bug: doesn't disable table before deletion
     pass
+
 
 # Version 1.0.1 - bug fixed
 def delete_table(table_name: str) -> None:

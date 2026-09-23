@@ -38,6 +38,7 @@ All providers start with version **1.0.0** (no alpha or beta releases).
 def run_query(sql: str) -> str:
     pass
 
+
 # Version 2.0.0 - signature changed (breaking)
 def run_query(sql: str, database: str = ":memory:") -> str:
     pass
@@ -48,6 +49,7 @@ def run_query(sql: str, database: str = ":memory:") -> str:
 # Version 1.0.0
 class DuckDbOperator:
     pass
+
 
 # Version 1.1.0 - new sensor added
 class DuckDbSqlSensor:  # New functionality
@@ -60,6 +62,7 @@ class DuckDbSqlSensor:  # New functionality
 def test_connection() -> tuple[bool, str]:
     # Bug: ignores readonly extra
     pass
+
 
 # Version 1.0.1 - bug fixed
 def test_connection() -> tuple[bool, str]:
