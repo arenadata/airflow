@@ -24,8 +24,7 @@ on:  # yamllint disable-line rule:truthy
     paths:
       - "java-sdk/**"
       - ".github/workflows/java-sdk-dependency-security.yml"
-  schedule:
-    - cron: "23 4 * * 1"
+  # Scheduled Apache CI is disabled on this fork.
 
 permissions:
   contents: read

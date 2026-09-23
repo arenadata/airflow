@@ -32,6 +32,7 @@ env:
 jobs:
 
   analyze-flaky-tests:
+    if: github.repository_owner == 'apache' || github.event_name != 'schedule'
     name: "Analyze E2E flaky tests"
     runs-on: ubuntu-slim
     steps:

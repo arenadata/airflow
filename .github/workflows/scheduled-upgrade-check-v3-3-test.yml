@@ -27,6 +27,7 @@ permissions:
   pull-requests: write
 jobs:
   upgrade-v3-3-test:
+    if: github.repository_owner == 'apache' || github.event_name != 'schedule'
     name: "[v3-3-test] Upgrade"
     uses: ./.github/workflows/upgrade-check.yml
     with:

@@ -26,6 +26,7 @@ permissions:
   contents: read
 jobs:
   verify-release-calendar:
+    if: github.repository_owner == 'apache' || github.event_name != 'schedule'
     name: "Verify release calendar"
     runs-on: ["ubuntu-slim"]
     timeout-minutes: 10
