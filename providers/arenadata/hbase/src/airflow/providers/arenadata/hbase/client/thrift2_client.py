@@ -171,7 +171,7 @@ class HBaseThrift2Client:
 
     def _setup_kerberos(self) -> None:  # pylint: disable=too-many-branches
         """
-        Setup Kerberos authentication.
+        Set up Kerberos authentication.
 
         Raises:
             RuntimeError: If Kerberos setup fails
@@ -272,7 +272,7 @@ class HBaseThrift2Client:
 
     def _setup_kerberos_transport(self, sock: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
         """
-        Setup Kerberos transport and client.
+        Set up Kerberos transport and client.
 
         Args:
             sock: Base socket
@@ -288,7 +288,7 @@ class HBaseThrift2Client:
 
     def _setup_simple_transport(self, sock: TSocket.TSocket | TSSLSocket.TSSLSocket) -> None:
         """
-        Setup simple transport without authentication.
+        Set up simple transport without authentication.
 
         Args:
             sock: Base socket
@@ -309,7 +309,8 @@ class HBaseThrift2Client:
 
                 # Test connection
                 client = self._client
-                assert client is not None
+                if client is None:
+                    raise RuntimeError("HBase Thrift2 client is not initialized")
                 client.getTableNamesByPattern(regex=None, includeSysTables=False)
 
                 logger.info(
@@ -479,7 +480,7 @@ class HBaseThrift2Client:
             self._client.deleteTable(table_name_obj)
             logger.info("Successfully deleted table %s", table_name)
         except Exception as e:
-            logger.error("Failed to delete table %s: %s", table_name, e, exc_info=True)
+            logger.exception("Failed to delete table %s: %s", table_name, e)
             raise
 
     def put(self, table_name: str, row_key: str, data: dict[str, str]) -> None:

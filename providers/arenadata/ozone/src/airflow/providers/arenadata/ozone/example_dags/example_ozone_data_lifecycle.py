@@ -56,7 +56,7 @@ else:
     from airflow import DAG
     from airflow.models.param import Param
     from airflow.operators.bash import BashOperator
-    from airflow.utils import timezone
+    from airflow.providers.common.compat.sdk import timezone
     from airflow.utils.task_group import TaskGroup
 
 DEFAULT_OM_HOST = os.getenv("OZONE_EXAMPLE_OM_HOST") or "om"

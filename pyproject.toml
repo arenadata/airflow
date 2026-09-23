@@ -603,6 +603,7 @@ extend-exclude = [
     ".eggs",
     "*/_vendor/*",
     "airflow-core/tests/unit/dags/test_imports.py",
+    "providers/arenadata/hbase/src/airflow/providers/arenadata/hbase/hbase_thrift2_generated",
 ]
 
 [tool.ruff.lint]

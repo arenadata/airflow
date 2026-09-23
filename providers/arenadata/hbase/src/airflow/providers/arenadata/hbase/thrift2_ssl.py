@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import ssl
 import tempfile
@@ -97,9 +98,7 @@ def create_ssl_context(ssl_config: dict[str, Any]) -> tuple[ssl.SSLContext, Call
     def cleanup():
         """Cleanup temporary files."""
         for filepath in temp_files:
-            try:
+            with contextlib.suppress(Exception):
                 os.unlink(filepath)
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass
 
     return ssl_context, cleanup

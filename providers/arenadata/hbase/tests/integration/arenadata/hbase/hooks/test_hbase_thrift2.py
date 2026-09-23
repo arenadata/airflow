@@ -26,12 +26,13 @@ from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
 TABLE_NAME = "integration_test_table"
 CONN_ID = "hbase_test"
-HBASE_HOST = os.environ.get("HBASE_HOST", "hbase" if os.environ.get("INTEGRATION_HBASE") == "true" else "localhost")
+HBASE_HOST = os.environ.get(
+    "HBASE_HOST", "hbase" if os.environ.get("INTEGRATION_HBASE") == "true" else "localhost"
+)
 
 
 @pytest.mark.integration("hbase")
 class TestHBaseThriftHookIntegration:
-
     def setup_method(self):
         os.environ["AIRFLOW_CONN_HBASE_TEST"] = Connection(
             conn_id=CONN_ID,

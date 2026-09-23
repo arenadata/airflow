@@ -17,6 +17,7 @@
 # under the License.
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 
@@ -52,7 +53,7 @@ def _cleanup_volume(hook: OzoneAdminHook) -> None:
     if not hook.volume_exists(VOLUME):
         return
     if hook.bucket_exists(VOLUME, BUCKET):
-        try:
+        with contextlib.suppress(Exception):
             hook.run_cli(
                 [
                     "ozone",
@@ -66,16 +67,10 @@ def _cleanup_volume(hook: OzoneAdminHook) -> None:
                 log_output=False,
                 retry_attempts=0,
             )
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             hook.delete_bucket(VOLUME, BUCKET)
-        except Exception:
-            pass
-    try:
+    with contextlib.suppress(Exception):
         hook.delete_volume(VOLUME)
-    except Exception:
-        pass
 
 
 @pytest.mark.integration("ozone")

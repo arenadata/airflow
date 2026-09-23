@@ -205,13 +205,13 @@ class HBaseCLIHook(BaseHook):
 
         output_lines: list[str] = []
         process = self._process
-        assert process is not None
-        assert process.stdout is not None
+        if process is None or process.stdout is None:
+            raise RuntimeError("HBase CLI process is not running")
         for line in iter(process.stdout.readline, ""):
-            line = line.strip()
-            if line:
-                logger.info(line)
-                output_lines.append(line)
+            stripped_line = line.strip()
+            if stripped_line:
+                logger.info(stripped_line)
+                output_lines.append(stripped_line)
 
         returncode = self._process.wait()
         self._process = None

@@ -23,10 +23,11 @@ import concurrent.futures
 import os
 import time
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
-from airflow.providers.arenadata.hbase.thrift2_pool import Thrift2ConnectionPool
+if TYPE_CHECKING:
+    from airflow.providers.arenadata.hbase.client import HBaseThrift2Client
+    from airflow.providers.arenadata.hbase.thrift2_pool import Thrift2ConnectionPool
 
 # Delay between batch operations to avoid overwhelming HBase
 BATCH_DELAY = float(os.getenv("HBASE_BATCH_DELAY", "0.1"))
@@ -223,7 +224,7 @@ class Thrift2Strategy(HBaseStrategy):
                     chunk_bytes,
                     MAX_CHUNK_BYTES,
                 )
-            self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_bytes} bytes")
+            self.log.info("Processing chunk: %d rows, ~%d bytes", len(chunk), chunk_bytes)
 
             try:
                 puts = []
@@ -239,7 +240,7 @@ class Thrift2Strategy(HBaseStrategy):
                         row_data = {k: v for k, v in row.items() if k != "row_key"}
                         puts.append((row_key, row_data))
                     else:
-                        self.log.warning(f"Unknown row format: {type(row)}, {row}")
+                        self.log.warning("Unknown row format: %s, %s", type(row), row)
 
                 if puts:
                     self.client.put_multiple(table_name, puts)
@@ -248,11 +249,11 @@ class Thrift2Strategy(HBaseStrategy):
 
                 time.sleep(BATCH_DELAY)
             except Exception as e:
-                self.log.error(f"Chunk processing failed: {e}")
+                self.log.error("Chunk processing failed: %s", e)
                 raise
 
         chunks = self._create_chunks(rows, batch_size)
-        self.log.info(f"Processing {len(rows)} rows in {len(chunks)} chunks (batch_size={batch_size})")
+        self.log.info("Processing %d rows in %d chunks (batch_size=%d)", len(rows), len(chunks), batch_size)
 
         for chunk in chunks:
             process_chunk(chunk)
@@ -274,18 +275,18 @@ class Thrift2Strategy(HBaseStrategy):
 
         def process_chunk(chunk):
             """Process chunk using batch delete API."""
-            self.log.info(f"Deleting chunk: {len(chunk)} rows")
+            self.log.info("Deleting chunk: %d rows", len(chunk))
             try:
                 # Convert row_keys to (row_key, None) tuples for delete_multiple
                 deletes = [(row_key, None) for row_key in chunk]
                 self.client.delete_multiple(table_name, deletes)
                 time.sleep(BATCH_DELAY)
             except Exception as e:
-                self.log.error(f"Chunk deletion failed: {e}")
+                self.log.error("Chunk deletion failed: %s", e)
                 raise
 
         chunks = self._create_chunks(row_keys, batch_size)
-        self.log.info(f"Deleting {len(row_keys)} rows in {len(chunks)} chunks (batch_size={batch_size})")
+        self.log.info("Deleting %d rows in %d chunks (batch_size=%d)", len(row_keys), len(chunks), batch_size)
 
         for chunk in chunks:
             process_chunk(chunk)
@@ -394,7 +395,9 @@ class PooledThrift2Strategy(HBaseStrategy):
         max_workers = max_workers or 4
         if hasattr(self.pool, "size") and self.pool.size < max_workers:
             self.log.warning(
-                f"Pool size ({self.pool.size}) < max_workers ({max_workers}). Consider increasing pool size."
+                "Pool size (%d) < max_workers (%d). Consider increasing pool size.",
+                self.pool.size,
+                max_workers,
             )
 
         def process_chunk(chunk):
@@ -406,7 +409,7 @@ class PooledThrift2Strategy(HBaseStrategy):
                     chunk_bytes,
                     MAX_CHUNK_BYTES,
                 )
-            self.log.info(f"Processing chunk: {len(chunk)} rows, ~{chunk_bytes} bytes")
+            self.log.info("Processing chunk: %d rows, ~%d bytes", len(chunk), chunk_bytes)
 
             try:
                 with self.pool.connection() as client:
@@ -428,14 +431,17 @@ class PooledThrift2Strategy(HBaseStrategy):
 
                 time.sleep(BATCH_DELAY)
             except Exception as e:
-                self.log.error(f"Chunk processing failed: {e}")
+                self.log.error("Chunk processing failed: %s", e)
                 raise
 
         chunks = self._create_chunks(rows, batch_size)
 
         self.log.info(
-            f"Processing {len(rows)} rows in {len(chunks)} chunks "
-            f"with {max_workers} workers (batch_size={batch_size})"
+            "Processing %d rows in %d chunks with %d workers (batch_size=%d)",
+            len(rows),
+            len(chunks),
+            max_workers,
+            batch_size,
         )
 
         if max_workers > 1:
@@ -466,26 +472,31 @@ class PooledThrift2Strategy(HBaseStrategy):
         """Delete multiple rows in batch via pooled Thrift2 with parallel processing."""
         if hasattr(self.pool, "size") and self.pool.size < max_workers:
             self.log.warning(
-                f"Pool size ({self.pool.size}) < max_workers ({max_workers}). Consider increasing pool size."
+                "Pool size (%d) < max_workers (%d). Consider increasing pool size.",
+                self.pool.size,
+                max_workers,
             )
 
         def process_chunk(chunk):
             """Process chunk using pooled connection."""
-            self.log.info(f"Deleting chunk: {len(chunk)} rows")
+            self.log.info("Deleting chunk: %d rows", len(chunk))
             try:
                 with self.pool.connection() as client:
                     deletes = [(row_key, None) for row_key in chunk]
                     client.delete_multiple(table_name, deletes)
                 time.sleep(BATCH_DELAY)
             except Exception as e:
-                self.log.error(f"Chunk deletion failed: {e}")
+                self.log.error("Chunk deletion failed: %s", e)
                 raise
 
         chunks = self._create_chunks(row_keys, batch_size)
 
         self.log.info(
-            f"Deleting {len(row_keys)} rows in {len(chunks)} chunks "
-            f"with {max_workers} workers (batch_size={batch_size})"
+            "Deleting %d rows in %d chunks with %d workers (batch_size=%d)",
+            len(row_keys),
+            len(chunks),
+            max_workers,
+            batch_size,
         )
 
         if max_workers > 1:
