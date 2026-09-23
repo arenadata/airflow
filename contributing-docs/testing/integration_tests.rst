@@ -56,49 +56,55 @@ The following integrations are available.
 
 .. BEGIN AUTO-GENERATED INTEGRATION LIST
 
-+---------------+-------------------------------------------------------+
-| Identifier    | Description                                           |
-+===============+=======================================================+
-| cassandra     | Integration required for Cassandra hooks.             |
-+---------------+-------------------------------------------------------+
-| celery        | Integration required for Celery executor tests.       |
-+---------------+-------------------------------------------------------+
-| drill         | Integration required for drill operator and hook.     |
-+---------------+-------------------------------------------------------+
-| elasticsearch | Integration required for Elasticsearch hooks.         |
-+---------------+-------------------------------------------------------+
-| kafka         | Integration required for Kafka hooks.                 |
-+---------------+-------------------------------------------------------+
-| kerberos      | Integration that provides Kerberos authentication.    |
-+---------------+-------------------------------------------------------+
-| keycloak      | Integration for manual testing of multi-team Airflow. |
-+---------------+-------------------------------------------------------+
-| localstack    | Integration that emulates AWS services locally.       |
-+---------------+-------------------------------------------------------+
-| mongo         | Integration required for MongoDB hooks.               |
-+---------------+-------------------------------------------------------+
-| mssql         | Integration required for mssql hooks.                 |
-+---------------+-------------------------------------------------------+
-| openlineage   | Integration required for Openlineage hooks.           |
-+---------------+-------------------------------------------------------+
-| opensearch    | Integration required for OpenSearch hooks.            |
-+---------------+-------------------------------------------------------+
-| otel          | Integration required for OTEL/opentelemetry hooks.    |
-+---------------+-------------------------------------------------------+
-| pinot         | Integration required for Apache Pinot hooks.          |
-+---------------+-------------------------------------------------------+
-| qdrant        | Integration required for Qdrant tests.                |
-+---------------+-------------------------------------------------------+
-| redis         | Integration required for Redis tests.                 |
-+---------------+-------------------------------------------------------+
-| statsd        | Integration required for Statsd hooks.                |
-+---------------+-------------------------------------------------------+
-| tinkerpop     | Integration required for gremlin operator and hook.   |
-+---------------+-------------------------------------------------------+
-| trino         | Integration required for Trino hooks.                 |
-+---------------+-------------------------------------------------------+
-| ydb           | Integration required for YDB tests.                   |
-+---------------+-------------------------------------------------------+
++---------------+---------------------------------------------------------------------------+
+| Identifier    | Description                                                               |
++===============+===========================================================================+
+| cassandra     | Integration required for Cassandra hooks.                                 |
++---------------+---------------------------------------------------------------------------+
+| celery        | Integration required for Celery executor tests.                           |
++---------------+---------------------------------------------------------------------------+
+| drill         | Integration required for drill operator and hook.                         |
++---------------+---------------------------------------------------------------------------+
+| duckdb        | Integration required for DuckDB hooks, operators and sensors (CLI 1.5.3). |
++---------------+---------------------------------------------------------------------------+
+| elasticsearch | Integration required for Elasticsearch hooks.                             |
++---------------+---------------------------------------------------------------------------+
+| kafka         | Integration required for Kafka hooks.                                     |
++---------------+---------------------------------------------------------------------------+
+| kerberos      | Integration that provides Kerberos authentication.                        |
++---------------+---------------------------------------------------------------------------+
+| keycloak      | Integration for manual testing of multi-team Airflow.                     |
++---------------+---------------------------------------------------------------------------+
+| localstack    | Integration that emulates AWS services locally.                           |
++---------------+---------------------------------------------------------------------------+
+| mongo         | Integration required for MongoDB hooks.                                   |
++---------------+---------------------------------------------------------------------------+
+| mssql         | Integration required for mssql hooks.                                     |
++---------------+---------------------------------------------------------------------------+
+| openlineage   | Integration required for Openlineage hooks.                               |
++---------------+---------------------------------------------------------------------------+
+| opensearch    | Integration required for OpenSearch hooks.                                |
++---------------+---------------------------------------------------------------------------+
+| otel          | Integration required for OTEL/opentelemetry hooks.                        |
++---------------+---------------------------------------------------------------------------+
+| ozone         | * Ozone Storage Container Manager.                                        |
+|               | * Ozone Manager.                                                          |
+|               | * Ozone Datanode.                                                         |
++---------------+---------------------------------------------------------------------------+
+| pinot         | Integration required for Apache Pinot hooks.                              |
++---------------+---------------------------------------------------------------------------+
+| qdrant        | Integration required for Qdrant tests.                                    |
++---------------+---------------------------------------------------------------------------+
+| redis         | Integration required for Redis tests.                                     |
++---------------+---------------------------------------------------------------------------+
+| statsd        | Integration required for Statsd hooks.                                    |
++---------------+---------------------------------------------------------------------------+
+| tinkerpop     | Integration required for gremlin operator and hook.                       |
++---------------+---------------------------------------------------------------------------+
+| trino         | Integration required for Trino hooks.                                     |
++---------------+---------------------------------------------------------------------------+
+| ydb           | Integration required for YDB tests.                                       |
++---------------+---------------------------------------------------------------------------+
 
 .. END AUTO-GENERATED INTEGRATION LIST'
 
@@ -188,7 +194,7 @@ Running Integration Tests from the Host
 You can also run integration tests using Breeze from the host. Depending on the type of integration,
 you can rum "providers" or "core" integration tests. You can consult the table above to see which
 integration is "core" and which is "provider" one, also by running the
-``breeze providers-integration-tests --help`` or ``breeze core-integration-tests --help`` command
+``breeze testing providers-integration-tests --help`` or ``breeze testing core-integration-tests --help`` command
 you can see the list of available integrations for each type of test.
 
 Runs all core integration tests:

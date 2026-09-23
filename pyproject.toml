@@ -162,6 +162,15 @@ apache-airflow = "airflow.__main__:main"
 "arangodb" = [
     "apache-airflow-providers-arangodb>=2.7.0"
 ]
+"arenadata.duckdb" = [
+    "apache-airflow-providers-arenadata-duckdb>=1.0.0"
+]
+"arenadata.hbase" = [
+    "apache-airflow-providers-arenadata-hbase>=1.1.0"
+]
+"arenadata.ozone" = [
+    "apache-airflow-providers-arenadata-ozone>=1.1.0"
+]
 "asana" = [
     "apache-airflow-providers-asana>=2.7.0"
 ]
@@ -426,6 +435,9 @@ apache-airflow = "airflow.__main__:main"
     "apache-airflow-providers-apache-tinkerpop>=1.0.0",
     "apache-airflow-providers-apprise>=1.4.1",
     "apache-airflow-providers-arangodb>=2.7.0",
+    "apache-airflow-providers-arenadata-duckdb>=1.0.0",
+    "apache-airflow-providers-arenadata-hbase>=1.1.0",
+    "apache-airflow-providers-arenadata-ozone>=1.1.0",
     "apache-airflow-providers-asana>=2.7.0",
     "apache-airflow-providers-atlassian-jira>=2.7.1",
     "apache-airflow-providers-celery>=3.8.3",
@@ -1133,6 +1145,12 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/providers/apprise/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/arangodb/src",
     "$MYPY_CONFIG_FILE_DIR/providers/arangodb/tests",
+    "$MYPY_CONFIG_FILE_DIR/providers/arenadata/duckdb/src",
+    "$MYPY_CONFIG_FILE_DIR/providers/arenadata/duckdb/tests",
+    "$MYPY_CONFIG_FILE_DIR/providers/arenadata/hbase/src",
+    "$MYPY_CONFIG_FILE_DIR/providers/arenadata/hbase/tests",
+    "$MYPY_CONFIG_FILE_DIR/providers/arenadata/ozone/src",
+    "$MYPY_CONFIG_FILE_DIR/providers/arenadata/ozone/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/asana/src",
     "$MYPY_CONFIG_FILE_DIR/providers/asana/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/atlassian/jira/src",
@@ -1453,6 +1471,9 @@ apache-airflow-providers-apache-spark = false
 apache-airflow-providers-apache-tinkerpop = false
 apache-airflow-providers-apprise = false
 apache-airflow-providers-arangodb = false
+apache-airflow-providers-arenadata-duckdb = false
+apache-airflow-providers-arenadata-hbase = false
+apache-airflow-providers-arenadata-ozone = false
 apache-airflow-providers-asana = false
 apache-airflow-providers-atlassian-jira = false
 apache-airflow-providers-celery = false
@@ -1597,6 +1618,9 @@ apache-airflow-providers-apache-spark = false
 apache-airflow-providers-apache-tinkerpop = false
 apache-airflow-providers-apprise = false
 apache-airflow-providers-arangodb = false
+apache-airflow-providers-arenadata-duckdb = false
+apache-airflow-providers-arenadata-hbase = false
+apache-airflow-providers-arenadata-ozone = false
 apache-airflow-providers-asana = false
 apache-airflow-providers-atlassian-jira = false
 apache-airflow-providers-celery = false
@@ -1756,6 +1780,9 @@ apache-airflow-providers-apache-spark = { workspace = true }
 apache-airflow-providers-apache-tinkerpop = { workspace = true }
 apache-airflow-providers-apprise = { workspace = true }
 apache-airflow-providers-arangodb = { workspace = true }
+apache-airflow-providers-arenadata-duckdb = { workspace = true }
+apache-airflow-providers-arenadata-hbase = { workspace = true }
+apache-airflow-providers-arenadata-ozone = { workspace = true }
 apache-airflow-providers-asana = { workspace = true }
 apache-airflow-providers-atlassian-jira = { workspace = true }
 apache-airflow-providers-celery = { workspace = true }
@@ -1895,6 +1922,9 @@ members = [
     "providers/apache/tinkerpop",
     "providers/apprise",
     "providers/arangodb",
+    "providers/arenadata/duckdb",
+    "providers/arenadata/hbase",
+    "providers/arenadata/ozone",
     "providers/asana",
     "providers/atlassian/jira",
     "providers/celery",
