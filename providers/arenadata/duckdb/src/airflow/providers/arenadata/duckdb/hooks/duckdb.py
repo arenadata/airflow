@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shlex
@@ -198,9 +199,7 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
         if isinstance(value, str):
             stripped = value.strip()
             return stripped or DEFAULT_CLI_PATH
-        raise DuckDbConfigurationError(
-            f"Invalid 'duckdb_binary' in DuckDB connection extra: {value!r}"
-        )
+        raise DuckDbConfigurationError(f"Invalid 'duckdb_binary' in DuckDB connection extra: {value!r}")
 
     @staticmethod
     def _coerce_bool(value: Any) -> bool:
@@ -775,10 +774,8 @@ class DuckDbHook(BaseHook):  # pylint: disable=abstract-method
         except subprocess.TimeoutExpired:
             pass
 
-        try:
+        with contextlib.suppress(ProcessLookupError, OSError):
             os.killpg(pgid, signal.SIGKILL)
-        except (ProcessLookupError, OSError):
-            pass
 
         try:
             process.wait(timeout=TERMINATE_GRACE_PERIOD_SECONDS)

@@ -17,6 +17,7 @@
 # under the License.
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -69,7 +70,7 @@ def _cleanup_named_volume(hook: OzoneAdminHook, volume: str, bucket: str) -> Non
     if not hook.volume_exists(volume):
         return
     if hook.bucket_exists(volume, bucket):
-        try:
+        with contextlib.suppress(Exception):
             hook.run_cli(
                 [
                     "ozone",
@@ -83,16 +84,10 @@ def _cleanup_named_volume(hook: OzoneAdminHook, volume: str, bucket: str) -> Non
                 log_output=False,
                 retry_attempts=0,
             )
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             hook.delete_bucket(volume, bucket)
-        except Exception:
-            pass
-    try:
+    with contextlib.suppress(Exception):
         hook.delete_volume(volume)
-    except Exception:
-        pass
 
 
 def _edge_key_path(key: str) -> str:

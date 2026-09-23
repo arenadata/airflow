@@ -24,7 +24,7 @@ import logging
 import os
 import queue
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import Any
 
 from airflow.providers.arenadata.hbase.client import HBaseThrift2Client  # pylint: disable=import-error
@@ -175,10 +175,8 @@ class Thrift2ConnectionPool:
             # Check if connection is alive, reconnect if needed
             if client and not self._is_connection_alive(client):
                 logger.warning("Connection is dead, reconnecting...")
-                try:
+                with suppress(Exception):
                     client.close()
-                except Exception:  # pylint: disable=broad-exception-caught
-                    pass
                 client.open()
 
             yield client
@@ -186,10 +184,8 @@ class Thrift2ConnectionPool:
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Connection error: %s", e)
             if client:
-                try:
+                with suppress(Exception):
                     client.close()
-                except Exception:  # pylint: disable=broad-exception-caught
-                    pass
                 self._semaphore.release()
             raise
         if client:

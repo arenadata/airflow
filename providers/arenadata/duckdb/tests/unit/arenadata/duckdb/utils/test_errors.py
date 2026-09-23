@@ -30,9 +30,7 @@ from airflow.providers.arenadata.duckdb.utils.errors import (
 )
 from airflow.providers.arenadata.duckdb.version_compat import AirflowException
 
-LOCK_STDERR = (
-    'Could not set lock on file "/tmp/test.duckdb": Conflicting lock is held'
-)
+LOCK_STDERR = 'Could not set lock on file "/tmp/test.duckdb": Conflicting lock is held'
 
 
 class TestDuckDbErrorHierarchy:
