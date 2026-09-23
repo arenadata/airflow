@@ -25,12 +25,7 @@
 # Edit both files together when changing pipeline shape.
 name: Tests (AMD)
 on:  # yamllint disable-line rule:truthy
-  schedule:
-    # AMD canary runs 2x/day (01:58, 13:58), interleaved with ARM's 2x/day (07:28, 19:28)
-    # in `ci-arm.yml` so a full-matrix canary still runs roughly every ~6h (alternating
-    # architecture) while halving the scheduled AMD compute. The `:58` vs ARM's `:28`
-    # offset keeps the two from competing for runners at exactly the same minute.
-    - cron: '58 1,13 * * *'
+  # Scheduled Apache canary is disabled on this fork (no GHCR cache, canary, or Slack).
   pull_request:
     branches:
       - main

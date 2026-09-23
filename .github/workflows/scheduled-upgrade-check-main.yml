@@ -27,6 +27,7 @@ permissions:
   pull-requests: write
 jobs:
   upgrade-main:
+    if: github.repository_owner == 'apache' || github.event_name != 'schedule'
     name: "[main] Upgrade"
     uses: ./.github/workflows/upgrade-check.yml
     with:

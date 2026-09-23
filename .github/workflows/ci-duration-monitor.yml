@@ -18,9 +18,7 @@
 ---
 name: "CI Duration Monitor"
 on:  # yamllint disable-line rule:truthy
-  schedule:
-    # A few hours after the daily scheduled CI canaries, so the latest main run is in the window.
-    - cron: '0 9 * * *'
+  # Scheduled Apache CI is disabled on this fork.
   workflow_dispatch:
 permissions:
   contents: read
