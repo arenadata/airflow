@@ -23,6 +23,15 @@
 #
 from __future__ import annotations
 
+from airflow.providers.common.compat.sdk import (
+    BaseHook,
+    BaseOperator,
+    BaseSensorOperator,
+    Connection,
+    Context,
+    Variable,
+)
+
 
 def get_base_airflow_version_tuple() -> tuple[int, int, int]:
     from packaging.version import Version
@@ -34,18 +43,6 @@ def get_base_airflow_version_tuple() -> tuple[int, int, int]:
 
 
 AIRFLOW_V_3_0_PLUS: bool = get_base_airflow_version_tuple() >= (3, 0, 0)
-
-if AIRFLOW_V_3_0_PLUS:
-    from airflow.sdk import Connection, Variable
-    from airflow.sdk.bases.hook import BaseHook
-    from airflow.sdk.bases.operator import BaseOperator
-    from airflow.sdk.bases.sensor import BaseSensorOperator
-    from airflow.sdk.definitions.context import Context
-else:
-    from airflow.hooks.base import BaseHook
-    from airflow.models import BaseOperator, Connection, Variable
-    from airflow.sensors.base import BaseSensorOperator
-    from airflow.utils.context import Context
 
 __all__ = [
     "AIRFLOW_V_3_0_PLUS",
