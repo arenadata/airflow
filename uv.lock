@@ -4027,6 +4027,7 @@ dependencies = [
 dev = [
     { name = "apache-airflow" },
     { name = "apache-airflow-devel-common" },
+    { name = "apache-airflow-shared-secrets-masker" },
     { name = "apache-airflow-task-sdk" },
 ]
 docs = [
@@ -4040,6 +4041,7 @@ requires-dist = [{ name = "apache-airflow", editable = "." }]
 dev = [
     { name = "apache-airflow", editable = "." },
     { name = "apache-airflow-devel-common", editable = "devel-common" },
+    { name = "apache-airflow-shared-secrets-masker", editable = "shared/secrets_masker" },
     { name = "apache-airflow-task-sdk", editable = "task-sdk" },
 ]
 docs = [{ name = "apache-airflow-devel-common", extras = ["docs"], editable = "devel-common" }]
@@ -4067,6 +4069,7 @@ dev = [
     { name = "apache-airflow-devel-common" },
     { name = "apache-airflow-providers-common-compat" },
     { name = "apache-airflow-providers-openlineage" },
+    { name = "apache-airflow-shared-secrets-masker" },
     { name = "apache-airflow-task-sdk" },
 ]
 docs = [
@@ -4090,6 +4093,7 @@ dev = [
     { name = "apache-airflow-devel-common", editable = "devel-common" },
     { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
     { name = "apache-airflow-providers-openlineage", editable = "providers/openlineage" },
+    { name = "apache-airflow-shared-secrets-masker", editable = "shared/secrets_masker" },
     { name = "apache-airflow-task-sdk", editable = "task-sdk" },
 ]
 docs = [{ name = "apache-airflow-devel-common", extras = ["docs"], editable = "devel-common" }]
@@ -4108,6 +4112,7 @@ dev = [
     { name = "apache-airflow" },
     { name = "apache-airflow-devel-common" },
     { name = "apache-airflow-providers-common-compat" },
+    { name = "apache-airflow-shared-secrets-masker" },
     { name = "apache-airflow-task-sdk" },
 ]
 docs = [
@@ -4125,6 +4130,7 @@ dev = [
     { name = "apache-airflow", editable = "." },
     { name = "apache-airflow-devel-common", editable = "devel-common" },
     { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
+    { name = "apache-airflow-shared-secrets-masker", editable = "shared/secrets_masker" },
     { name = "apache-airflow-task-sdk", editable = "task-sdk" },
 ]
 docs = [{ name = "apache-airflow-devel-common", extras = ["docs"], editable = "devel-common" }]
