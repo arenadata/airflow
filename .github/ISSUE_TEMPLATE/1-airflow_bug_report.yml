@@ -131,6 +131,9 @@ body:
         - apache-pinot
         - apache-spark
         - apache-tinkerpop
+        - arenadata-duckdb
+        - arenadata-hbase
+        - arenadata-ozone
         - apprise
         - arangodb
         - asana
