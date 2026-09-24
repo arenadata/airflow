@@ -26,7 +26,7 @@ import subprocess
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TypeAlias, TypeVar
+from typing import TypeAlias, TypeVar, cast
 
 from tenacity import (
     before_sleep_log,
@@ -50,6 +50,15 @@ EnvOverridesMapping: TypeAlias = "Mapping[str, EnvOverrideValue]"
 
 DEFAULT_PROCESS_TIMEOUT_SECONDS = 300
 DEFAULT_RETRY_WAIT = wait_exponential(multiplier=2, min=2, max=60)
+
+
+def _to_text(value: str | bytes | None) -> str:
+    """Normalize subprocess stream values to text."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value
 
 
 @dataclass(frozen=True)
@@ -160,16 +169,18 @@ class CliRunner:
 
     @staticmethod
     def log_streams(
-        stdout: str | None,
-        stderr: str | None,
+        stdout: str | bytes | None,
+        stderr: str | bytes | None,
         *,
         level: int = logging.DEBUG,
     ) -> None:
         """Log stdout/stderr when they are not empty."""
-        if stdout and stdout.strip():
-            log.log(level, "stdout: %s", redact(stdout.strip()))
-        if stderr and stderr.strip():
-            log.log(level, "stderr: %s", redact(stderr.strip()))
+        stdout_text = _to_text(stdout)
+        stderr_text = _to_text(stderr)
+        if stdout_text.strip():
+            log.log(level, "stdout: %s", redact(stdout_text.strip()))
+        if stderr_text.strip():
+            log.log(level, "stderr: %s", redact(stderr_text.strip()))
 
     @classmethod
     def run(
@@ -185,7 +196,7 @@ class CliRunner:
     ) -> subprocess.CompletedProcess[str]:
         """Run command once without retry."""
         cmd = list(command)
-        masked_command = redact(shlex.join(cmd))
+        masked_command = cast("str", redact(shlex.join(cmd)))
         log.debug("Executing command: %s", masked_command)
 
         process: subprocess.Popen[str] | None = None
@@ -270,7 +281,7 @@ class CliRunner:
     ) -> str:
         """Run command via ``Popen`` and stream combined output line-by-line."""
         cmd = list(command)
-        masked_command = redact(shlex.join(cmd))
+        masked_command = cast("str", redact(shlex.join(cmd)))
         log.debug("Executing streaming command: %s", masked_command)
 
         try:
@@ -323,9 +334,6 @@ class CliRunner:
         retry_attempts: int = 3,
     ) -> Callable[[Callable[P, R]], Callable[P, R]]:
         """Build tenacity retry decorator with provider defaults."""
-        if retry_exceptions is None and retry_condition is None:
-            raise ValueError("retry_for requires retry_exceptions or retry_condition")
-
         if retry_condition is not None:
             condition_policy = retry_if_exception(retry_condition)
             retry_policy = (
@@ -333,8 +341,10 @@ class CliRunner:
                 if retry_exceptions is not None
                 else condition_policy
             )
-        else:
+        elif retry_exceptions is not None:
             retry_policy = retry_if_exception_type(retry_exceptions)
+        else:
+            raise ValueError("retry_for requires retry_exceptions or retry_condition")
 
         return retry(
             wait=DEFAULT_RETRY_WAIT,
@@ -411,7 +421,7 @@ class OzoneCliRunner(CliRunner):
                 retryable=False,
             )
         if isinstance(err, subprocess.TimeoutExpired):
-            error_message = (err.stderr or err.stdout or "Ozone command timed out").strip()
+            error_message = _to_text(err.stderr or err.stdout or "Ozone command timed out").strip()
             return OzoneCliError(
                 f"Ozone command timed out after {timeout} seconds: {redact(error_message)}",
                 command=cmd,
