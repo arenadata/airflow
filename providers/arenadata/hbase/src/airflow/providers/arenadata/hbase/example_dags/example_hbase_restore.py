@@ -45,8 +45,8 @@ if AIRFLOW_V_3_0_PLUS:
     from airflow.sdk.definitions.param import Param
 else:
     from airflow import DAG
-    from airflow.models.param import Param
-    from airflow.operators.python import PythonOperator
+    from airflow.models.param import Param  # type: ignore[no-redef]
+    from airflow.operators.python import PythonOperator  # type: ignore[no-redef]
 
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.providers.arenadata.hbase.operators.hbase import (

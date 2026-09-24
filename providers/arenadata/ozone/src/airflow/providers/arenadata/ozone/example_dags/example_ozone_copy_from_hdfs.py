@@ -54,8 +54,8 @@ if AIRFLOW_V_3_0_PLUS:
     from airflow.sdk.definitions.param import Param
 else:
     from airflow import DAG
-    from airflow.models.param import Param
-    from airflow.operators.bash import BashOperator
+    from airflow.models.param import Param  # type: ignore[no-redef]
+    from airflow.operators.bash import BashOperator  # type: ignore[no-redef]
     from airflow.providers.common.compat.sdk import timezone
 
 DEFAULT_OM_HOST = os.getenv("OZONE_EXAMPLE_OM_HOST") or "om"
