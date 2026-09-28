@@ -39,6 +39,7 @@ from airflow.providers.arenadata.duckdb.hooks.duckdb import (
 from airflow.providers.arenadata.duckdb.utils.errors import DuckDbCliError, DuckDbConfigurationError
 from airflow.providers.common.compat.sdk import redact
 from airflow.sdk._shared.secrets_masker import reset_secrets_masker
+from airflow.sdk.execution_time.comms import MaskSecret
 
 LOCK_STDERR = 'Could not set lock on file "/tmp/test.duckdb": Conflicting lock is held'
 
@@ -496,6 +497,28 @@ class TestDuckDbSecretsMasking:
         duckdb_hook._get_conn_params()
 
         assert redact("token=abcdef12345") == "token=***"
+        reset_secrets_masker()
+
+    @pytest.mark.enable_redact
+    def test_mask_secret_notifies_supervisor(self, duckdb_hook: DuckDbHook) -> None:
+        """Registered secrets are forwarded to the supervisor, which redacts task logs."""
+        reset_secrets_masker()
+        conn = MagicMock()
+        conn.host = "/tmp/test.duckdb"
+        conn.extra_dejson = {
+            "duckdb_binary": "/usr/bin/duckdb",
+            "cli_params": "--password supersecretvalue",
+        }
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
+
+        comms = MagicMock()
+        with patch("airflow.sdk.execution_time.task_runner.SUPERVISOR_COMMS", comms, create=True):
+            duckdb_hook._get_conn_params()
+
+        comms.send.assert_called_once()
+        sent = comms.send.call_args.args[0]
+        assert isinstance(sent, MaskSecret)
+        assert sent.value == "supersecretvalue"
         reset_secrets_masker()
 
 

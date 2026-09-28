@@ -26,8 +26,12 @@ from airflow.sdk import (
     Context,
     Param,
 )
-from airflow.sdk._shared.secrets_masker import DEFAULT_SENSITIVE_FIELDS, mask_secret, redact
+from airflow.sdk._shared.secrets_masker import DEFAULT_SENSITIVE_FIELDS
 from airflow.sdk.exceptions import AirflowException, AirflowFailException
+
+# `airflow.sdk.log.mask_secret` additionally forwards masked values to the supervisor
+# process, where task-log redaction happens; `_shared.secrets_masker.mask_secret` is local-only.
+from airflow.sdk.log import mask_secret, redact
 
 __all__ = [
     "DAG",
