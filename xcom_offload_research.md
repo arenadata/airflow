@@ -70,3 +70,62 @@ S3-поддержка реализована в `providers/amazon/src/airflow/pr
 Решение: вызывать `cache_clear()` внутри каждого таска. Тогда кеш сбрасывается при каждом выполнении таска, независимо от состояния модуля
 
 
+
+## Реализация поддержки Ozone через WebHDFS
+
+### Контекст
+
+Apache Ozone предоставляет HTTP-совместимый интерфейс через HttpFS (порт 14001)
+Стандартный `XComObjectStorageBackend` не подходит напрямую, потому что fsspec реализует
+WebHDFS upload в два шага:
+1. POST для создания файла, сервер отвечает redirect URL
+2. PUT на redirect URL с данными
+
+Ozone HttpFS этот протокол не поддерживает. Вместо этого требует один PUT запрос
+с параметрами `op=CREATE&data=true` напрямую на URL файла с данными в теле запроса
+
+### Патч WebHDFile
+
+Реализован в `providers/arenadata/ozone/src/airflow/providers/arenadata/ozone/fs/webhdfs.py`
+
+Класс `_OzoneWebHDFile` переопределяет два метода:
+- `_initiate_upload`: no-op, пропускаем первый шаг
+- `_upload_chunk`: единственный PUT с `op=CREATE&data=true`
+
+Патч применяется на уровне класса `WebHDFile` через `_make_ozone_webhdfs`,
+которая вызывается один раз при создании `WebHDFS` клиента в `get_fs()`.
+Патч класса гарантирует что все последующие инстансы `WebHDFile` получат нужные методы
+
+### Кастомный XCom backend
+
+`XComOzoneBackend(XComObjectStorageBackend)` реализован в
+`providers/arenadata/ozone/src/airflow/providers/arenadata/ozone/xcom/backend.py`
+
+Кастомный backend нужен потому что стандартный `XComObjectStorageBackend` использует
+fsspec напрямую без патча, запись в Ozone через него упала бы на двухшаговом upload
+
+`serialize_value`:
+- Сериализует значение через `json.dumps`
+- Записывает в Ozone по пути `<base_path>/<dag_id>/<run_id>/<task_id>/<uuid>`
+- В БД сохраняет строку `webhdfs://conn_id@/path`
+
+`deserialize_value`:
+- Десериализует значение из БД через `BaseXCom.deserialize_value`
+- Если результат не начинается с `webhdfs://` то делегирует в `XComObjectStorageBackend.deserialize_value(result)` (передаётся оригинальный `result`, не уже десериализованное значение)
+- Иначе читает файл из Ozone и десериализует через `json.load`
+
+### Конфигурация
+
+```ini
+[core]
+xcom_backend = airflow.providers.arenadata.ozone.xcom.backend.XComOzoneBackend
+
+[arenadata.ozone.xcom]
+conn_id = ozone_webhdfs_default
+base_path = /vol1/bucket-legacy/xcom
+```
+
+### Регистрация fs провайдера
+
+`get_fs` зарегистрирован в `provider.yaml` под ключом `filesystems` со схемой `webhdfs`
+Папка `fs/` — стандартное соглашение Airflow провайдеров для fsspec-реализаций
