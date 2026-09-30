@@ -21,20 +21,34 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from fsspec import AbstractFileSystem
 
+from fsspec.implementations.webhdfs import WebHDFS
+from fsspec.implementations.webhdfs import WebHDFile
+from airflow.hooks.base import BaseHook
+
 schemes = ["webhdfs"]
 
 
 class _OzoneWebHDFile:
-    """Patched WebHDFile that uses a single PUT with op=CREATE&data=true as per Ozone HttpFS docs."""
+    """
+    Overrides WebHDFile upload methods to work with Ozone HttpFS
+
+    Standard WebHDFS upload is a two-step process:
+      1. _initiate_upload: POST to create the file, server responds with a redirect URL
+      2. _upload_chunk: PUT to the redirect URL with the actual data
+
+    Ozone HttpFS does not support this redirect-based protocol
+    Instead, it requires a single PUT request with op=CREATE&data=true
+    directly to the file URL, with the data in the request body
+    https://ozone.apache.org/docs/2.1.2/user-guide/client-interfaces/httpfs#upload-a-file
+    """
 
     def _initiate_upload(self):
+        # Ozone does not use a two-step upload, skip initiation
         pass
 
     def _upload_chunk(self, final=False):
-        import logging
-        log = logging.getLogger(__name__)
+        # Single PUT with data=true as required by Ozone HttpFS
         data = self.buffer.getvalue()
-        log.warning("[ozone] _upload_chunk data_len=%s", len(data))
         params = {"op": "CREATE", "data": "true", "overwrite": "true"}
         params.update(self.fs.pars)
         out = self.fs.session.put(
@@ -43,33 +57,22 @@ class _OzoneWebHDFile:
             data=data,
             headers={"content-type": "application/octet-stream"},
         )
-        log.warning("[ozone] _upload_chunk response: status=%s body=%s", out.status_code, out.text)
         out.raise_for_status()
         return True
 
 
 def _make_ozone_webhdfs(base_fs):
-    """Patch WebHDFS instance to use _OzoneWebHDFile."""
-    original_open = base_fs._open
+    # Patch WebHDFile class directly so all instances get Ozone-compatible upload behaviour
 
-    def _open(path, mode="rb", **kwargs):
-        f = original_open(path, mode=mode, **kwargs)
-        if "w" in mode:
-            f.__class__ = type("OzoneWebHDFile", (_OzoneWebHDFile, type(f)), {})
-        return f
-
-    import types
-    base_fs._open = types.MethodType(lambda self, path, mode="rb", **kw: _open(path, mode, **kw), base_fs)
+    WebHDFile._initiate_upload = _OzoneWebHDFile._initiate_upload
+    WebHDFile._upload_chunk = _OzoneWebHDFile._upload_chunk
     return base_fs
 
 
 def get_fs(conn_id: str | None, storage_options: dict[str, str] | None = None) -> AbstractFileSystem:
-    from fsspec.implementations.webhdfs import WebHDFS
 
     if conn_id is None:
         return WebHDFS()
-
-    from airflow.hooks.base import BaseHook
 
     conn = BaseHook.get_connection(conn_id)
     options = {

@@ -1,3 +1,7 @@
+import time
+from fsspec.implementations.webhdfs import WebHDFS
+
+from airflow.hooks.base import BaseHook
 from airflow.sdk import dag, task
 
 LARGE_PAYLOAD = {"data": "x" * 100}
@@ -16,21 +20,18 @@ def test_xcom_webhdfs():
 
     @task
     def verify_ozone(**context):
-        import time
         time.sleep(5)
-        from fsspec.implementations.webhdfs import WebHDFS
-        from airflow.hooks.base import BaseHook
+
         run_id = context["run_id"].replace(":", "_").replace("+", "_")
         conn = BaseHook.get_connection("ozone_webhdfs_default")
         fs = WebHDFS(host=conn.host, port=conn.port, user=conn.login or None)
         files = fs.find("/vol1/bucket-legacy", detail=True)
-        print(f"All files in /vol1/bucket-legacy: {len(files)}")
-        for name, info in files.items():
-            print(f"  {name}  size={info.get('size', '?')}")
         current_run_files = [
             (name, info) for name, info in files.items()
             if run_id in name and info.get("size", 0) > 0
         ]
+        for name, info in current_run_files:
+            print(f"XCom file: {name}  size={info.get('size', '?')}")
         assert current_run_files, f"No non-empty XCom files found for run_id={run_id}"
 
     produced = produce()

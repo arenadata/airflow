@@ -6,9 +6,10 @@ import re
 import uuid
 from typing import Any, TypeVar
 
+from airflow.utils.json import XComDecoder
 from airflow.providers.common.io.xcom.backend import XComObjectStorageBackend
 from airflow.providers.common.io.version_compat import AIRFLOW_V_3_0_PLUS
-from airflow.utils.json import XComDecoder
+from airflow.providers.arenadata.ozone.fs.webhdfs import get_fs
 
 if AIRFLOW_V_3_0_PLUS:
     from airflow.sdk.bases.xcom import BaseXCom
@@ -31,7 +32,6 @@ def _safe(value: str | None) -> str | None:
 
 
 def _get_fs():
-    from airflow.providers.arenadata.ozone.fs.webhdfs import get_fs
     return get_fs(_CONN_ID)
 
 
@@ -67,8 +67,7 @@ class XComOzoneBackend(XComObjectStorageBackend):
     def deserialize_value(result) -> Any:
         base_xcom_deser_result = BaseXCom.deserialize_value(result)
         if not isinstance(base_xcom_deser_result, str) or not base_xcom_deser_result.startswith("webhdfs://"):
-            return base_xcom_deser_result
-        # Extract HDFS path from webhdfs://conn_id@/path
+            return XComObjectStorageBackend.deserialize_value(result)
         try:
             from urllib.parse import urlsplit
             url = urlsplit(base_xcom_deser_result)

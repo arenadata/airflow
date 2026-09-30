@@ -37,6 +37,3 @@ def resolve_xcom_backend():
 
 
 XCom = resolve_xcom_backend()
-with open("/tmp/xcom_debug.txt", "a") as f:
-    import os
-    f.write(f"pid={os.getpid()} XCom={XCom} xcom_backend={conf.get('core', 'xcom_backend', fallback='NOT SET')}\n")
