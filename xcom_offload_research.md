@@ -16,7 +16,7 @@ xcom_backend = airflow.providers.common.io.xcom.backend.XComObjectStorageBackend
 
 [common.io]
 xcom_objectstorage_path = s3://conn_id@mybucket/key
-xcom_objectstorage_threshold = 1048576   # байт, если -1, то offload всегда в БД
+xcom_objectstorage_threshold = 0   # всегда offload в хранилище
 xcom_objectstorage_compression = gzip    # опционально
 ```
 
@@ -129,3 +129,62 @@ base_path = /vol1/bucket-legacy/xcom
 
 `get_fs` зарегистрирован в `provider.yaml` под ключом `filesystems` со схемой `webhdfs`
 Папка `fs/` — стандартное соглашение Airflow провайдеров для fsspec-реализаций
+
+
+## Реализация поддержки HDFS через HttpFS
+
+### Контекст
+
+Apache HDFS предоставляет HTTP-интерфейс через HttpFS (порт 14000)
+В отличие от Ozone, HDFS HttpFS поддерживает стандартный двухшаговый WebHDFS протокол:
+1. PUT для создания файла, сервер отвечает redirect 307 на DataNode
+2. PUT на redirect URL с данными
+
+Стандартный fsspec `WebHDFS` работает с HDFS без патчей. Однако `XComObjectStorageBackend`
+не подходит напрямую из-за проблемы с `run_id`
+
+### Проблема run_id в HDFS путях
+
+`run_id` в Airflow содержит символы `:` и `+` (например `manual__2024-01-15T10:30:00+00:00`)
+HDFS считает такие символы невалидными в именах файлов и возвращает ошибку:
+`Pathname /xcom/.../manual__2024-01-15T10:30:00+00:00/... is not a valid DFS filename`
+
+`XComObjectStorageBackend` не санитизирует `run_id` перед формированием пути, это его ограничение
+
+### Кастомный XCom backend
+
+`XComHdfsBackend(XComObjectStorageBackend)` реализован в
+`providers/arenadata/ozone/src/airflow/providers/arenadata/ozone/xcom/hdfs_backend.py`
+
+Положен рядом с Ozone backend для простоты тестирования
+
+`serialize_value` единственный переопределённый метод:
+- Санитизирует `run_id` через `_safe()` перед передачей в родительский класс
+- Делегирует всё остальное в `XComObjectStorageBackend.serialize_value`
+
+`deserialize_value` не переопределяется, родительский метод работает корректно,
+путь в БД содержит уже санитизированный `run_id`, чтение файла проходит без проблем
+
+`_safe(value)` заменяет все символы кроме `\w`, `.`, `-` на `_`
+
+### Конфигурация
+
+```ini
+[core]
+xcom_backend = airflow.providers.arenadata.ozone.xcom.hdfs_backend.XComHdfsBackend
+
+[common.io]
+xcom_objectstorage_path = webhdfs://hdfs_default@/xcom
+xcom_objectstorage_threshold = 0
+```
+
+### Почему не нужен патч WebHDFile
+
+HDFS HttpFS поддерживает стандартный двухшаговый WebHDFS upload с redirect 307
+fsspec `WebHDFS` реализует именно этот протокол, поэтому патч `_OzoneWebHDFile` не нужен
+Достаточно зарегистрировать коннекшн типа `webhdfs` с хостом и портом HttpFS (14000)
+
+### Итог
+
+Минимальный backend решает проблему санитизации `run_id`,  вся остальная логика (fsspec, ObjectStoragePath, threshold, compression) наследуется
+из `XComObjectStorageBackend` без изменений
