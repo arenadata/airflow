@@ -23,6 +23,7 @@ import subprocess
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
+from typing import Literal, cast, overload
 
 from airflow.providers.arenadata.ozone.utils.cli_runner import (
     CliRunner,
@@ -194,6 +195,9 @@ class OzoneCliHook(BaseHook):
             return cmd
 
         config_dir = self._cached_effective_config_dir
+        if config_dir is None:
+            return cmd
+
         config_files_exist = KerberosConfig.check_config_files_exist(
             config_dir,
             snapshot=self.connection_snapshot,
@@ -226,6 +230,48 @@ class OzoneCliHook(BaseHook):
         if kerberos_enabled:
             return "kerberos"
         return "plain"
+
+    @overload
+    def run_cli(
+        self,
+        cmd: list[str],
+        *,
+        timeout: int = ...,
+        retry_attempts: int | None = ...,
+        input_text: str | None = ...,
+        check: bool = ...,
+        log_output: bool = ...,
+        return_result: Literal[True],
+        return_json_result: Literal[False] = False,
+    ) -> subprocess.CompletedProcess[str]: ...
+
+    @overload
+    def run_cli(
+        self,
+        cmd: list[str],
+        *,
+        timeout: int = ...,
+        retry_attempts: int | None = ...,
+        input_text: str | None = ...,
+        check: bool = ...,
+        log_output: bool = ...,
+        return_result: Literal[False] = False,
+        return_json_result: Literal[True],
+    ) -> JsonValue: ...
+
+    @overload
+    def run_cli(
+        self,
+        cmd: list[str],
+        *,
+        timeout: int = ...,
+        retry_attempts: int | None = ...,
+        input_text: str | None = ...,
+        check: bool = ...,
+        log_output: bool = ...,
+        return_result: Literal[False] = False,
+        return_json_result: Literal[False] = False,
+    ) -> str: ...
 
     def run_cli(
         self,
@@ -1302,7 +1348,7 @@ class OzoneAdminHook(OzoneCliHook):
             raise OzoneProviderError(
                 f"Unexpected JSON payload from {resource.value} list {parent_path}: expected list, got {type(parsed).__name__}."
             )
-        return parsed
+        return cast("list[JsonDict]", parsed)
 
     def _quota_cmd(
         self,
@@ -1521,7 +1567,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
             raise OzoneProviderError(
                 f"Unexpected JSON payload from tenant list: expected list, got {type(parsed).__name__}."
             )
-        return parsed
+        return cast("list[JsonDict]", parsed)
 
     def delete_tenant(
         self,
@@ -1621,7 +1667,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
             raise OzoneProviderError(
                 f"Unexpected JSON payload from tenant user list {tenant_name}: expected list, got {type(parsed).__name__}."
             )
-        return parsed
+        return cast("list[JsonDict]", parsed)
 
     def get_tenant_user_info(
         self,
@@ -1678,7 +1724,7 @@ class OzoneAdminExtraHook(OzoneAdminHook):
                 "Unexpected JSON payload from container report: "
                 f"expected dict or list, got {type(parsed).__name__}."
             )
-        return parsed
+        return cast("JsonDict | list[JsonDict]", parsed)
 
     # ==============================
     # Shared extra helpers
