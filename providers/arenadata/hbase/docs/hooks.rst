@@ -39,6 +39,8 @@ Uses the Apache Thrift2 binary protocol to communicate with a running
 * **Scan operations**: ``scan_table`` with optional start/stop rows, column filters, and row limits
 * **Batch operations**: ``batch_put_rows``, ``batch_get_rows``, ``batch_delete_rows``
 * **Table administration**: ``create_table``, ``delete_table``, ``table_exists``
+* **Connectivity check**: ``test_connection``, used by the Airflow *Test connection* UI and
+  ``airflow connections test`` CLI command
 
 **Connection strategy**
 

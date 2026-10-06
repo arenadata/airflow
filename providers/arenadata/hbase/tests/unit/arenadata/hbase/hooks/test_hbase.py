@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from airflow.models import Connection
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 
@@ -114,6 +116,39 @@ class TestHBaseThriftHook:
             assert result.scheme == "hbase"
             assert result.authority == "localhost:9090"
             assert result.database == "default"
+
+
+class TestTestConnection:
+    """Test the `airflow connections test` hook contract."""
+
+    @patch.object(HBaseThriftHook, "_get_strategy")
+    def test_connection_success(self, mock_get_strategy):
+        mock_get_strategy.return_value.table_exists.return_value = False
+
+        hook = HBaseThriftHook()
+        success, message = hook.test_connection()
+
+        assert success is True
+        assert message == "HBase Thrift2 connection test succeeded."
+        mock_get_strategy.return_value.table_exists.assert_called_once_with("airflow_connection_test")
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            ConnectionError("Connection refused"),
+            TimeoutError("Connection timed out"),
+            RuntimeError("Client not connected"),
+        ],
+    )
+    @patch.object(HBaseThriftHook, "_get_strategy")
+    def test_connection_failure(self, mock_get_strategy, error):
+        mock_get_strategy.return_value.table_exists.side_effect = error
+
+        hook = HBaseThriftHook()
+        success, message = hook.test_connection()
+
+        assert success is False
+        assert message == f"HBase Thrift2 connection test failed: {error}"
 
 
 class TestRetryLogic:

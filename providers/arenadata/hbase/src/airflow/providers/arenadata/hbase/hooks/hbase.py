@@ -178,6 +178,14 @@ class HBaseThriftHook(BaseHook):  # pylint: disable=abstract-method
         """Check if table exists in HBase."""
         return self._get_strategy().table_exists(table_name)
 
+    def test_connection(self) -> tuple[bool, str]:
+        """Verify HBase Thrift2 connectivity with a read-only probe."""
+        try:
+            self.table_exists("airflow_connection_test")
+        except Exception as err:  # pylint: disable=broad-exception-caught
+            return False, f"HBase Thrift2 connection test failed: {err}"
+        return True, "HBase Thrift2 connection test succeeded."
+
     def create_table(self, table_name: str, families: dict[str, dict]) -> None:
         """Create HBase table."""
         self._get_strategy().create_table(table_name, families)
