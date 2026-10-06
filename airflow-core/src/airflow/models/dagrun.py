@@ -2257,6 +2257,10 @@ class DagRun(Base, LoggingMixin):
         debug_try_number_check = self.log.isEnabledFor(logging.DEBUG)
         expected_try_number_by_ti_id: dict[UUID, tuple[int, int, str | None]] = {}
         for ti in schedulable_tis:
+            if ti.state == TaskInstanceState.UP_FOR_RETRY:
+                if TYPE_CHECKING:
+                    assert ti.task
+                ti.refresh_from_task(ti.task, dag_run=self)
             if not ti.is_schedulable:
                 empty_ti_ids.append(ti.id)
             # The defer_task method will check "start_trigger_args" to see whether the operator
@@ -2582,24 +2586,28 @@ def get_or_create_dagrun(
     """
     Create a DAG run, replacing an existing instance if needed to prevent collisions.
 
-    This function is only meant to be used by :meth:`DAG.test` as a helper function.
+    This function is only meant to be used by :meth:`DAG.test` and ``airflow tasks test``
+    as a helper function.
 
     :param dag: DAG to be used to find run.
     :param conf: Configuration to pass to newly created run.
     :param start_date: Start date of new run.
-    :param logical_date: Logical date for finding an existing run.
+    :param logical_date: Logical date for finding an existing run to replace. ``None`` skips
+        the lookup, since NULL dates cannot violate the ``(dag_id, logical_date)`` unique key.
     :param run_id: Run ID for the new DAG run.
     :param triggered_by: the entity which triggers the dag_run
     :param triggering_user_name: the user name who triggers the dag_run
 
     :return: The newly created DAG run.
     """
-    dr = session.scalar(
-        select(DagRun).where(DagRun.dag_id == dag.dag_id, DagRun.logical_date == logical_date)
-    )
-    if dr:
-        session.delete(dr)
-        session.commit()
+    # ``== None`` compiles to ``IS NULL``, which would match an unrelated dateless run.
+    if logical_date is not None:
+        dr = session.scalar(
+            select(DagRun).where(DagRun.dag_id == dag.dag_id, DagRun.logical_date == logical_date)
+        )
+        if dr:
+            session.delete(dr)
+            session.flush()
     dr = dag.create_dagrun(
         run_id=run_id,
         logical_date=logical_date,
@@ -2610,7 +2618,7 @@ def get_or_create_dagrun(
         state=DagRunState.RUNNING,
         triggered_by=triggered_by,
         triggering_user_name=triggering_user_name,
-        start_date=start_date or logical_date,
+        start_date=start_date or timezone.utcnow(),
         session=session,
     )
     log.info("Created dag run.", dagrun=dr)
