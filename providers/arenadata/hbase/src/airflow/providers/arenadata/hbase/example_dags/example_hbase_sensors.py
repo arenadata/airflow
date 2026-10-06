@@ -41,7 +41,7 @@ if AIRFLOW_V_3_0_PLUS:
     from airflow.sdk import DAG
 else:
     from airflow import DAG
-    from airflow.operators.python import PythonOperator
+    from airflow.operators.python import PythonOperator  # type: ignore[no-redef]
 
 from airflow.providers.arenadata.hbase.hooks.hbase import HBaseThriftHook
 from airflow.providers.arenadata.hbase.operators.hbase import HBaseDeleteTableOperator

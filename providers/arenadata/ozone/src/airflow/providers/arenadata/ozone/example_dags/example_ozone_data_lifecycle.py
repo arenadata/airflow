@@ -54,10 +54,10 @@ if AIRFLOW_V_3_0_PLUS:
     from airflow.sdk.definitions.param import Param
 else:
     from airflow import DAG
-    from airflow.models.param import Param
-    from airflow.operators.bash import BashOperator
+    from airflow.models.param import Param  # type: ignore[no-redef]
+    from airflow.operators.bash import BashOperator  # type: ignore[no-redef]
     from airflow.providers.common.compat.sdk import timezone
-    from airflow.utils.task_group import TaskGroup
+    from airflow.utils.task_group import TaskGroup  # type: ignore[no-redef]
 
 DEFAULT_OM_HOST = os.getenv("OZONE_EXAMPLE_OM_HOST") or "om"
 DEFAULT_CONN_ID = os.getenv("OZONE_EXAMPLE_LIFECYCLE_CONN_ID") or "ozone_admin_default"
