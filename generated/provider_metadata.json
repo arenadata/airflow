@@ -3433,13 +3433,13 @@
     },
     "arenadata.hbase": {
         "1.1.0": {
-            "associated_airflow_version": "3.2.1",
+            "associated_airflow_version": "3.3.2",
             "date_released": "2026-07-14T00:00:00Z"
         }
     },
     "arenadata.ozone": {
         "1.1.0": {
-            "associated_airflow_version": "3.2.1",
+            "associated_airflow_version": "3.3.2",
             "date_released": "2026-06-18T00:00:00Z"
         }
     },
