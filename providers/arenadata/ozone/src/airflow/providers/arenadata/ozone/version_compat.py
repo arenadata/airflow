@@ -23,7 +23,28 @@
 #
 from __future__ import annotations
 
-from airflow.providers.common.compat.sdk import AirflowException
+from typing import TYPE_CHECKING
+
+from airflow.providers.common.compat.sdk import (
+    AirflowException,
+    BaseHook,
+    BaseOperator,
+    BaseSensorOperator,
+    Connection,
+    Context,
+    redact,
+)
+
+if TYPE_CHECKING:
+    from airflow.sdk.execution_time.secrets_masker import mask_secret
+else:
+    try:
+        from airflow.sdk.log import mask_secret
+    except ImportError:
+        try:
+            from airflow.sdk.execution_time.secrets_masker import mask_secret
+        except ImportError:
+            from airflow.utils.log.secrets_masker import mask_secret
 
 
 def get_base_airflow_version_tuple() -> tuple[int, int, int]:
@@ -36,21 +57,6 @@ def get_base_airflow_version_tuple() -> tuple[int, int, int]:
 
 
 AIRFLOW_V_3_0_PLUS: bool = get_base_airflow_version_tuple() >= (3, 0, 0)
-
-if AIRFLOW_V_3_0_PLUS:
-    from airflow.sdk import Connection
-    from airflow.sdk._shared.secrets_masker import mask_secret, redact
-    from airflow.sdk.bases.hook import BaseHook
-    from airflow.sdk.bases.operator import BaseOperator
-    from airflow.sdk.bases.sensor import BaseSensorOperator
-    from airflow.sdk.definitions.context import Context
-else:
-    from airflow.hooks.base import BaseHook
-    from airflow.models import BaseOperator
-    from airflow.models.connection import Connection
-    from airflow.sensors.base import BaseSensorOperator
-    from airflow.utils.context import Context
-    from airflow.utils.log.secrets_masker import mask_secret, redact
 
 __all__ = [
     "AIRFLOW_V_3_0_PLUS",
