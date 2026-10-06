@@ -30,6 +30,10 @@ def get_provider_info():
             {
                 "integration-name": "Apache Ozone",
                 "external-doc-url": "https://ozone.apache.org/",
+                "how-to-guide": [
+                    "/docs/apache-airflow-providers-arenadata-ozone/operators.rst",
+                    "/docs/apache-airflow-providers-arenadata-ozone/sensors.rst",
+                ],
                 "tags": ["apache"],
             }
         ],

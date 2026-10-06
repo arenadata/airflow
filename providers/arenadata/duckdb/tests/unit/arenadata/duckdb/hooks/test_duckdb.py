@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -381,22 +382,19 @@ class TestDuckDbPreflight:
         hook = DuckDbHook(duckdb_conn_id="duckdb_test")
         db = tmp_path / "ro.duckdb"
         db.write_bytes(b"")
-        tmp_path.chmod(0o555)
-        try:
+        with patch(
+            "airflow.providers.arenadata.duckdb.hooks.duckdb.os.access",
+            side_effect=lambda path, mode: mode != os.W_OK,
+        ):
             hook._preflight_db_path(str(db), readonly=True)
-        finally:
-            tmp_path.chmod(0o755)
 
     def test_write_mode_requires_writable_parent(self, tmp_path: Path) -> None:
         """Write mode still requires a writable parent directory."""
         hook = DuckDbHook(duckdb_conn_id="duckdb_test")
         db = tmp_path / "w.duckdb"
-        tmp_path.chmod(0o555)
-        try:
+        with patch("airflow.providers.arenadata.duckdb.hooks.duckdb.os.access", return_value=False):
             with pytest.raises(DuckDbConfigurationError, match="not writable"):
                 hook._preflight_db_path(str(db), readonly=False)
-        finally:
-            tmp_path.chmod(0o755)
 
     def test_binary_missing_raises(self, tmp_path: Path) -> None:
         """Missing binary raises ConfigurationError with DuckDB binary field hint."""

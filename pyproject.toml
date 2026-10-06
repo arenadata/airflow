@@ -1387,6 +1387,11 @@ ignore_errors = true
 module="airflowctl.api.datamodels.*"
 ignore_errors = true
 
+# Arenadata HBase generated Thrift2 bindings
+[[tool.mypy.overrides]]
+module="airflow.providers.arenadata.hbase.hbase_thrift2_generated.*"
+ignore_errors = true
+
 [dependency-groups]
 dev = [
     "apache-airflow[all]",
