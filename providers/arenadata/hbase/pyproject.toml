@@ -80,6 +80,8 @@ dev = [
     "apache-airflow-devel-common",
     "apache-airflow-providers-common-compat",
     "apache-airflow-providers-openlineage",
+    # devel-common's tests_common imports airflow_shared.secrets_masker
+    "apache-airflow-shared-secrets-masker",
     # Additional devel dependencies (do not remove this line and add extra development dependencies)
 ]
 
