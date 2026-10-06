@@ -71,7 +71,7 @@ class HBasePutOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("table_name", "row_key", "data")
+    template_fields: Sequence[str] = ("table_name", "row_key", "data", "hbase_conn_id")
 
     def __init__(
         self,
@@ -82,8 +82,6 @@ class HBasePutOperator(BaseOperator):  # pylint: disable=too-few-public-methods
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if not table_name:
-            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.row_key = row_key
         self.data = data
@@ -91,6 +89,8 @@ class HBasePutOperator(BaseOperator):  # pylint: disable=too-few-public-methods
 
     def execute(self, context: Context | None = None) -> None:  # pylint: disable=unused-argument
         """Execute the operator."""
+        if not self.table_name:
+            raise ValueError("table_name cannot be empty")
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         hook.put_row(self.table_name, self.row_key, self.data)
 
@@ -105,7 +105,7 @@ class HBaseCreateTableOperator(BaseOperator):  # pylint: disable=too-few-public-
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("table_name", "families")
+    template_fields: Sequence[str] = ("table_name", "families", "hbase_conn_id")
 
     def __init__(
         self,
@@ -116,8 +116,6 @@ class HBaseCreateTableOperator(BaseOperator):  # pylint: disable=too-few-public-
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if not table_name:
-            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.families = families
         self.if_exists = if_exists
@@ -125,6 +123,8 @@ class HBaseCreateTableOperator(BaseOperator):  # pylint: disable=too-few-public-
 
     def execute(self, context: Context | None = None) -> None:  # pylint: disable=unused-argument
         """Execute the operator."""
+        if not self.table_name:
+            raise ValueError("table_name cannot be empty")
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         if not hook.table_exists(self.table_name):
             hook.create_table(self.table_name, self.families)
@@ -144,7 +144,7 @@ class HBaseDeleteTableOperator(BaseOperator):  # pylint: disable=too-few-public-
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("table_name",)
+    template_fields: Sequence[str] = ("table_name", "hbase_conn_id")
 
     def __init__(
         self,
@@ -155,8 +155,6 @@ class HBaseDeleteTableOperator(BaseOperator):  # pylint: disable=too-few-public-
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if not table_name:
-            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.disable = disable
         self.if_not_exists = if_not_exists
@@ -164,6 +162,8 @@ class HBaseDeleteTableOperator(BaseOperator):  # pylint: disable=too-few-public-
 
     def execute(self, context: Context | None = None) -> None:  # pylint: disable=unused-argument
         """Execute the operator."""
+        if not self.table_name:
+            raise ValueError("table_name cannot be empty")
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         if hook.table_exists(self.table_name):
             hook.delete_table(self.table_name)
@@ -186,7 +186,7 @@ class HBaseScanOperator(BaseOperator):  # pylint: disable=too-few-public-methods
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("table_name", "row_start", "row_stop", "columns")
+    template_fields: Sequence[str] = ("table_name", "row_start", "row_stop", "columns", "hbase_conn_id")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -200,8 +200,6 @@ class HBaseScanOperator(BaseOperator):  # pylint: disable=too-few-public-methods
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if not table_name:
-            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.row_start = row_start
         self.row_stop = row_stop
@@ -212,6 +210,8 @@ class HBaseScanOperator(BaseOperator):  # pylint: disable=too-few-public-methods
 
     def execute(self, context: Context | None = None) -> list:  # pylint: disable=unused-argument
         """Execute the operator."""
+        if not self.table_name:
+            raise ValueError("table_name cannot be empty")
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         results = hook.scan_table(
             table_name=self.table_name,
@@ -234,7 +234,7 @@ class HBaseBatchPutOperator(BaseOperator):  # pylint: disable=too-few-public-met
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("table_name", "rows")
+    template_fields: Sequence[str] = ("table_name", "rows", "hbase_conn_id")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -246,8 +246,6 @@ class HBaseBatchPutOperator(BaseOperator):  # pylint: disable=too-few-public-met
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if not table_name:
-            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.rows = rows
         self.batch_size = batch_size
@@ -256,6 +254,8 @@ class HBaseBatchPutOperator(BaseOperator):  # pylint: disable=too-few-public-met
 
     def execute(self, context: Context | None = None) -> None:  # pylint: disable=unused-argument
         """Execute the operator."""
+        if not self.table_name:
+            raise ValueError("table_name cannot be empty")
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         hook.batch_put_rows(self.table_name, self.rows, self.batch_size, self.max_workers)
 
@@ -271,7 +271,7 @@ class HBaseBatchGetOperator(BaseOperator):  # pylint: disable=too-few-public-met
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("table_name", "row_keys", "columns")
+    template_fields: Sequence[str] = ("table_name", "row_keys", "columns", "hbase_conn_id")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -283,8 +283,6 @@ class HBaseBatchGetOperator(BaseOperator):  # pylint: disable=too-few-public-met
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if not table_name:
-            raise ValueError("table_name cannot be empty")
         self.table_name = table_name
         self.row_keys = row_keys
         self.columns = columns
@@ -293,6 +291,8 @@ class HBaseBatchGetOperator(BaseOperator):  # pylint: disable=too-few-public-met
 
     def execute(self, context: Context | None = None) -> list:  # pylint: disable=unused-argument
         """Execute the operator."""
+        if not self.table_name:
+            raise ValueError("table_name cannot be empty")
         hook = HBaseThriftHook(hbase_conn_id=self.hbase_conn_id)
         results = hook.batch_get_rows(self.table_name, self.row_keys, self.columns)
         return convert_batch_results_to_serializable(results, self.encoding)
@@ -308,7 +308,7 @@ class HBaseBackupSetOperator(BaseOperator):  # pylint: disable=too-few-public-me
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("backup_set_name", "tables")
+    template_fields: Sequence[str] = ("backup_set_name", "tables", "hbase_conn_id")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -363,7 +363,7 @@ class HBaseCreateBackupOperator(BaseOperator):  # pylint: disable=too-few-public
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("backup_path", "backup_set_name", "tables")
+    template_fields: Sequence[str] = ("backup_path", "backup_set_name", "tables", "hbase_conn_id")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -434,7 +434,13 @@ class HBaseRestoreOperator(BaseOperator):  # pylint: disable=too-few-public-meth
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("backup_path", "backup_id", "backup_set_name", "tables")
+    template_fields: Sequence[str] = (
+        "backup_path",
+        "backup_id",
+        "backup_set_name",
+        "tables",
+        "hbase_conn_id",
+    )
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -478,7 +484,7 @@ class HBaseBackupHistoryOperator(BaseOperator):  # pylint: disable=too-few-publi
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("backup_set_name", "backup_path")
+    template_fields: Sequence[str] = ("backup_set_name", "backup_path", "hbase_conn_id")
 
     def __init__(
         self,

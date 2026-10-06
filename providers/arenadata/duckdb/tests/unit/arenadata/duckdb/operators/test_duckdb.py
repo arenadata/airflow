@@ -146,9 +146,10 @@ class TestDuckDbOperator:
         assert result == '[{"c": 5}]'
 
     def test_empty_sql_raises_value_error(self) -> None:
-        """Empty SQL is rejected at construction time."""
+        """Empty SQL is rejected at execution time."""
+        operator = DuckDbOperator(task_id="test_op", sql="")
         with pytest.raises(ValueError, match="sql cannot be empty"):
-            DuckDbOperator(task_id="test_op", sql="")
+            operator.execute({})
 
     def test_render_template_fields_sql(self) -> None:
         """Jinja templates in SQL are rendered before execution."""

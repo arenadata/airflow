@@ -35,7 +35,7 @@ from airflow.providers.arenadata.duckdb.hooks.duckdb import (
     DuckDbHook,
 )
 from airflow.providers.arenadata.duckdb.utils.errors import DuckDbCliError, DuckDbConfigurationError
-from airflow.providers.arenadata.duckdb.version_compat import redact
+from airflow.providers.common.compat.sdk import redact
 from airflow.sdk._shared.secrets_masker import reset_secrets_masker
 
 LOCK_STDERR = 'Could not set lock on file "/tmp/test.duckdb": Conflicting lock is held'

@@ -23,9 +23,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from airflow.exceptions import AirflowException, AirflowFailException
 from airflow.providers.arenadata.duckdb.sensors.duckdb import DuckDbSqlSensor
 from airflow.providers.arenadata.duckdb.utils.errors import DuckDbCliError, DuckDbOutputError
-from airflow.providers.arenadata.duckdb.version_compat import AirflowException, AirflowFailException
 
 MOCK_HOOK = "airflow.providers.arenadata.duckdb.sensors.duckdb.DuckDbHook"
 
@@ -221,9 +221,10 @@ class TestDuckDbSqlSensor:
         assert mock_hook_cls.return_value.run_cli.call_args.kwargs["parameters"] == {"flag": 1}
 
     def test_empty_sql_raises_value_error(self) -> None:
-        """Empty SQL is rejected at construction time."""
+        """Empty SQL is rejected at poke time."""
+        sensor = DuckDbSqlSensor(task_id="test_sensor", sql="")
         with pytest.raises(ValueError, match="sql cannot be empty"):
-            DuckDbSqlSensor(task_id="test_sensor", sql="")
+            sensor.poke({})
 
     def test_on_kill_safe_when_hook_is_none(self) -> None:
         """on_kill before poke must not raise."""

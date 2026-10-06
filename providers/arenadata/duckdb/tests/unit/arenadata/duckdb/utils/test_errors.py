@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import pytest
 
+from airflow.exceptions import AirflowException
 from airflow.providers.arenadata.duckdb.utils.errors import (
     DuckDbCliError,
     DuckDbCliErrors,
@@ -28,7 +29,6 @@ from airflow.providers.arenadata.duckdb.utils.errors import (
     DuckDbOutputError,
     DuckDbProviderError,
 )
-from airflow.providers.arenadata.duckdb.version_compat import AirflowException
 
 LOCK_STDERR = 'Could not set lock on file "/tmp/test.duckdb": Conflicting lock is held'
 

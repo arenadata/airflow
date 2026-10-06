@@ -33,7 +33,7 @@ class HBaseTableSensor(BaseSensorOperator):  # pylint: disable=too-few-public-me
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("table_name",)
+    template_fields: Sequence[str] = ("table_name", "hbase_conn_id")
 
     def __init__(
         self,
@@ -62,7 +62,7 @@ class HBaseRowSensor(BaseSensorOperator):  # pylint: disable=too-few-public-meth
     :param hbase_conn_id: The connection ID to use for HBase connection.
     """
 
-    template_fields: Sequence[str] = ("table_name", "row_key")
+    template_fields: Sequence[str] = ("table_name", "row_key", "hbase_conn_id")
 
     def __init__(
         self,
