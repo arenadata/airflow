@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import subprocess
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -177,7 +178,7 @@ class TestOzoneCliHookConnectionSnapshot:
         conn.port = 9862
         conn.extra_dejson = extra
         hook = OzoneCliHook(ozone_conn_id="ozone_default")
-        hook.get_connection = lambda _: conn
+        hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         mock_ensure_ticket.return_value = False
         mock_run_ozone.return_value = subprocess.CompletedProcess(
@@ -287,8 +288,9 @@ class TestOzoneAdminHook:
             timeout=3600,
             return_json_result=True,
         )
-        assert result["total"] == 1
-        assert len(result["containers"]) == 1
+        report = cast("dict[str, Any]", result)
+        assert report["total"] == 1
+        assert len(report["containers"]) == 1
 
 
 class TestOzoneFsHook:
