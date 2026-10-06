@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import pytest
 
@@ -31,7 +32,7 @@ HBASE_HOST = os.environ.get(
 
 
 def _make_pool(size=4, **kwargs) -> Thrift2ConnectionPool:
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         host=HBASE_HOST,
         port=9090,
         retry_max_attempts=2,

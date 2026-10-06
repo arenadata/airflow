@@ -100,7 +100,7 @@ class HBaseThrift2Client:
             retry_delay=retry_delay,
             retry_backoff_factor=retry_backoff_factor,
         )
-        self._client = None
+        self._client: THBaseService.Client | None = None
         self._transport: Any = None
 
         if auth_method and not SASL_AVAILABLE:
