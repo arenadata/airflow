@@ -121,10 +121,17 @@ SSL options can be specified in two formats:
      - Path to client certificate file or Variable name (store in Secret Backend, not plain Variable).
    * - ``key_file``
      - str
-     - Path to client key file or Variable name.
+     - Path to client key file or Variable name (store in Secret Backend, not plain Variable).
    * - ``validate``
      - bool
      - Whether to validate the server certificate (default: ``true``).
+
+.. note::
+
+    When certificate contents are kept in Airflow Variables, the values are stored in the
+    metadata database. Prefer a secret backend (``[secrets] backend``) so certificate material
+    is fetched from a managed secret store; secrets registered by Airflow are masked in logs
+    and rendered templates.
 
 **Connection pool**
 

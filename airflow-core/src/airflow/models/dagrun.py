@@ -91,7 +91,6 @@ from airflow.models.deadline_alert import DeadlineAlert as DeadlineAlertModel
 from airflow.models.taskinstance import TaskInstance as TI, _add_and_prime_mapped_ti, clear_task_instances
 from airflow.models.taskinstancehistory import TaskInstanceHistory as TIH
 from airflow.models.tasklog import LogTemplate
-from airflow.models.taskmap import TaskMap
 from airflow.serialization.definitions.deadline import SerializedReferenceModels
 from airflow.serialization.definitions.notset import NOTSET, ArgNotSet, is_arg_set
 from airflow.ti_deps.dep_context import DepContext
@@ -1729,7 +1728,7 @@ class DagRun(Base, LoggingMixin):
                 # the db references.
                 ti.clear_db_references(session=session)
             try:
-                expanded_tis, _ = TaskMap.expand_mapped_task(ti.task, self.run_id, session=session)
+                expanded_tis, _ = ti.expand_mapped_task(session=session)
             except NotMapped:  # Not a mapped task, nothing needed.
                 return None
             if expanded_tis:
@@ -1949,15 +1948,6 @@ class DagRun(Base, LoggingMixin):
             task_ids.add(ti.task_id)
             try:
                 task = dag.get_task(ti.task_id)
-
-                should_restore_task = (task is not None) and ti.state == TaskInstanceState.REMOVED
-                if should_restore_task:
-                    self.log.info("Restoring task '%s' which was previously removed from DAG '%s'", ti, dag)
-                    stats.incr(
-                        "task_restored_to_dag",
-                        tags={**self.stats_tags, "dag_id": dag.dag_id},
-                    )
-                    ti.state = None
             except AirflowException:
                 if ti.state == TaskInstanceState.REMOVED:
                     pass  # ti has already been removed, just ignore it
@@ -1973,7 +1963,7 @@ class DagRun(Base, LoggingMixin):
             try:
                 num_mapped_tis = task.get_parse_time_mapped_ti_count()
             except NotMapped:
-                continue
+                pass
             except NotFullyPopulated:
                 # What if it is _now_ dynamically mapped, but wasn't before?
                 try:
@@ -1985,15 +1975,17 @@ class DagRun(Base, LoggingMixin):
                             "Removing the unmapped TI '%s' as the mapping can't be resolved yet", ti
                         )
                         ti.state = TaskInstanceState.REMOVED
-                    continue
-                # Upstreams finished, check there aren't any extras
-                if ti.map_index >= total_length:
-                    self.log.debug(
-                        "Removing task '%s' as the map_index is longer than the resolved mapping list (%d)",
-                        ti,
-                        total_length,
-                    )
-                    ti.state = TaskInstanceState.REMOVED
+                        continue
+                else:
+                    # Upstreams finished, check there aren't any extras
+                    if ti.map_index >= total_length:
+                        self.log.debug(
+                            "Removing task '%s' as the map_index is longer than the resolved mapping list (%d)",
+                            ti,
+                            total_length,
+                        )
+                        ti.state = TaskInstanceState.REMOVED
+                        continue
             else:
                 # Check if the number of mapped literals has changed, and we need to mark this TI as removed.
                 if ti.map_index >= num_mapped_tis:
@@ -2003,9 +1995,21 @@ class DagRun(Base, LoggingMixin):
                         num_mapped_tis,
                     )
                     ti.state = TaskInstanceState.REMOVED
-                elif ti.map_index < 0:
+                    continue
+                if ti.map_index < 0:
                     self.log.debug("Removing the unmapped TI '%s' as the mapping can now be performed", ti)
                     ti.state = TaskInstanceState.REMOVED
+                    continue
+
+            if ti.state == TaskInstanceState.REMOVED:
+                self.log.info("Restoring task '%s' which was previously removed from DAG '%s'", ti, dag)
+                stats.incr(
+                    "task_restored_to_dag",
+                    tags={**self.stats_tags, "dag_id": dag.dag_id},
+                )
+                if ti.try_number > 0:
+                    ti.prepare_db_for_next_try(session)
+                ti.state = None
 
         return task_ids
 
@@ -2250,10 +2254,13 @@ class DagRun(Base, LoggingMixin):
         # tasks using EmptyOperator and without on_execute_callback / on_success_callback
         empty_ti_ids: list[UUID] = []
         schedulable_ti_ids: list[UUID] = []
-        reschedule_ti_ids: set[UUID] = set()
         debug_try_number_check = self.log.isEnabledFor(logging.DEBUG)
         expected_try_number_by_ti_id: dict[UUID, tuple[int, int, str | None]] = {}
         for ti in schedulable_tis:
+            if ti.state == TaskInstanceState.UP_FOR_RETRY:
+                if TYPE_CHECKING:
+                    assert ti.task
+                ti.refresh_from_task(ti.task, dag_run=self)
             if not ti.is_schedulable:
                 empty_ti_ids.append(ti.id)
             # The defer_task method will check "start_trigger_args" to see whether the operator
@@ -2263,13 +2270,9 @@ class DagRun(Base, LoggingMixin):
             # execute it to run in the worker.
             elif not ti.defer_task(session=session):
                 schedulable_ti_ids.append(ti.id)
-                if ti.state == TaskInstanceState.UP_FOR_RESCHEDULE:
-                    reschedule_ti_ids.add(ti.id)
                 if debug_try_number_check:
                     expected_try_number_by_ti_id[ti.id] = (
-                        ti.try_number
-                        if ti.state == TaskInstanceState.UP_FOR_RESCHEDULE
-                        else ti.try_number + 1,
+                        max(1, ti.try_number),
                         ti.try_number,
                         ti.state,
                     )
@@ -2283,17 +2286,8 @@ class DagRun(Base, LoggingMixin):
             TI.state.is_(None),
             TI.state.in_(non_null_schedulable_states),
         )
-        # Use TI.id (not TI.state) in the CASE to decide try_number. MySQL evaluates
-        # SET left-to-right, so referencing TI.state here would see the already-updated
-        # value if state is assigned first. TI.id is never modified in the SET clause.
-        next_try_number = (
-            case(
-                (TI.id.in_(reschedule_ti_ids), TI.try_number),
-                else_=TI.try_number + 1,
-            )
-            if reschedule_ti_ids
-            else TI.try_number + 1
-        )
+        # Allocate the first attempt; retries and clears allocate theirs when rotating the TI id.
+        next_try_number = case((TI.try_number == 0, 1), else_=TI.try_number)
         if schedulable_ti_ids:
             schedulable_ti_ids_chunks = chunks(
                 schedulable_ti_ids, max_tis_per_query or len(schedulable_ti_ids)
@@ -2592,24 +2586,28 @@ def get_or_create_dagrun(
     """
     Create a DAG run, replacing an existing instance if needed to prevent collisions.
 
-    This function is only meant to be used by :meth:`DAG.test` as a helper function.
+    This function is only meant to be used by :meth:`DAG.test` and ``airflow tasks test``
+    as a helper function.
 
     :param dag: DAG to be used to find run.
     :param conf: Configuration to pass to newly created run.
     :param start_date: Start date of new run.
-    :param logical_date: Logical date for finding an existing run.
+    :param logical_date: Logical date for finding an existing run to replace. ``None`` skips
+        the lookup, since NULL dates cannot violate the ``(dag_id, logical_date)`` unique key.
     :param run_id: Run ID for the new DAG run.
     :param triggered_by: the entity which triggers the dag_run
     :param triggering_user_name: the user name who triggers the dag_run
 
     :return: The newly created DAG run.
     """
-    dr = session.scalar(
-        select(DagRun).where(DagRun.dag_id == dag.dag_id, DagRun.logical_date == logical_date)
-    )
-    if dr:
-        session.delete(dr)
-        session.commit()
+    # ``== None`` compiles to ``IS NULL``, which would match an unrelated dateless run.
+    if logical_date is not None:
+        dr = session.scalar(
+            select(DagRun).where(DagRun.dag_id == dag.dag_id, DagRun.logical_date == logical_date)
+        )
+        if dr:
+            session.delete(dr)
+            session.flush()
     dr = dag.create_dagrun(
         run_id=run_id,
         logical_date=logical_date,
@@ -2620,7 +2618,7 @@ def get_or_create_dagrun(
         state=DagRunState.RUNNING,
         triggered_by=triggered_by,
         triggering_user_name=triggering_user_name,
-        start_date=start_date or logical_date,
+        start_date=start_date or timezone.utcnow(),
         session=session,
     )
     log.info("Created dag run.", dagrun=dr)

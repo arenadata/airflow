@@ -15,21 +15,34 @@
 # specific language governing permissions and limitations
 # under the License.
 
+#
+# NOTE! THIS FILE IS COPIED MANUALLY IN OTHER PROVIDERS DELIBERATELY TO AVOID ADDING UNNECESSARY
+# DEPENDENCIES BETWEEN PROVIDERS. IF YOU WANT TO ADD CONDITIONAL CODE IN YOUR PROVIDER THAT DEPENDS
+# ON AIRFLOW VERSION, PLEASE COPY THIS FILE TO THE ROOT PACKAGE OF YOUR PROVIDER AND IMPORT
+# THOSE CONSTANTS FROM IT RATHER THAN IMPORTING THEM FROM ANOTHER PROVIDER OR TEST CODE
+#
 from __future__ import annotations
 
-from airflow.providers.common.compat.version_compat import AIRFLOW_V_3_0_PLUS
+from airflow.providers.common.compat.sdk import (
+    BaseHook,
+    BaseOperator,
+    BaseSensorOperator,
+    Connection,
+    Context,
+    Variable,
+)
 
-if AIRFLOW_V_3_0_PLUS:
-    from airflow.sdk import Connection, Variable
-    from airflow.sdk.bases.hook import BaseHook
-    from airflow.sdk.bases.operator import BaseOperator
-    from airflow.sdk.bases.sensor import BaseSensorOperator
-    from airflow.sdk.definitions.context import Context
-else:
-    from airflow.hooks.base import BaseHook
-    from airflow.models import BaseOperator, Connection, Variable
-    from airflow.sensors.base import BaseSensorOperator
-    from airflow.utils.context import Context
+
+def get_base_airflow_version_tuple() -> tuple[int, int, int]:
+    from packaging.version import Version
+
+    from airflow import __version__
+
+    airflow_version = Version(__version__)
+    return airflow_version.major, airflow_version.minor, airflow_version.micro
+
+
+AIRFLOW_V_3_0_PLUS: bool = get_base_airflow_version_tuple() >= (3, 0, 0)
 
 __all__ = [
     "AIRFLOW_V_3_0_PLUS",

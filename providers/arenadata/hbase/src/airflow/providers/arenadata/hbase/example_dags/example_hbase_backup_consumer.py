@@ -44,8 +44,8 @@ if AIRFLOW_V_3_0_PLUS:
     from airflow.sdk import DAG
 else:
     from airflow import DAG
-    from airflow.operators.bash import BashOperator
-    from airflow.operators.python import BranchPythonOperator
+    from airflow.operators.bash import BashOperator  # type: ignore[no-redef]
+    from airflow.operators.python import BranchPythonOperator  # type: ignore[no-redef]
 
 from airflow.providers.arenadata.hbase.datasets.hbase import hbase_table_dataset
 from airflow.providers.arenadata.hbase.hooks.hbase_cli import HBaseCLIHook

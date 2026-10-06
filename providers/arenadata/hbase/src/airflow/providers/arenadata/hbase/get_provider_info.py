@@ -32,9 +32,9 @@ def get_provider_info():
                 "external-doc-url": "https://hbase.apache.org/",
                 "how-to-guide": [
                     "/docs/apache-airflow-providers-arenadata-hbase/operators.rst",
-                    "/docs/apache-airflow-providers-arenadata-hbase/connections.rst",
+                    "/docs/apache-airflow-providers-arenadata-hbase/sensors.rst",
                 ],
-                "tags": ["apache", "database"],
+                "tags": ["apache", "software"],
             }
         ],
         "operators": [
@@ -50,7 +50,14 @@ def get_provider_info():
             }
         ],
         "hooks": [
-            {"integration-name": "HBase", "python-modules": ["airflow.providers.arenadata.hbase.hooks.hbase"]}
+            {
+                "integration-name": "HBase",
+                "python-modules": [
+                    "airflow.providers.arenadata.hbase.hooks.hbase",
+                    "airflow.providers.arenadata.hbase.hooks.hbase_cli",
+                    "airflow.providers.arenadata.hbase.hooks.hbase_strategy",
+                ],
+            }
         ],
         "connection-types": [
             {

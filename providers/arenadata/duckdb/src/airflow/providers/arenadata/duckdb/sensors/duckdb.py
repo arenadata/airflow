@@ -71,18 +71,18 @@ class DuckDbSqlSensor(BaseSensorOperator):  # pylint: disable=too-few-public-met
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if not sql:
-            raise ValueError("sql cannot be empty")
         self.sql = sql
         self.duckdb_conn_id = duckdb_conn_id
         self.database = database
-        self.parameters = dict(parameters) if parameters is not None else None
+        self.parameters = parameters
         self.fail_on_empty = fail_on_empty
         self.log_output_limit = log_output_limit
         self._hook: DuckDbHook | None = None
 
     def poke(self, context: Context) -> bool:
         """Return True when the SQL query returns a truthy first cell."""
+        if not self.sql:
+            raise ValueError("sql cannot be empty")
         self._hook = DuckDbHook(
             duckdb_conn_id=self.duckdb_conn_id,
             lock_retry_attempts=0,
@@ -92,7 +92,7 @@ class DuckDbSqlSensor(BaseSensorOperator):  # pylint: disable=too-few-public-met
             self.sql,
             output_format="json",
             database=self.database,
-            parameters=self.parameters,
+            parameters=dict(self.parameters) if self.parameters is not None else None,
         )
 
         # Empty stdout = empty result set - wait (or fail_on_empty).

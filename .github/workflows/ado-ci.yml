@@ -62,7 +62,7 @@ jobs:
 
       - name: "Run ruff check"
         run: >
-          uv tool run --from ruff==0.15.10 ruff check
+          uv tool run --from ruff==0.16.8 ruff check
           providers/arenadata/duckdb
           providers/arenadata/ozone
 
@@ -86,7 +86,7 @@ jobs:
 
       - name: "Run ruff check"
         run: >
-          uv tool run --from ruff==0.15.10 ruff check
+          uv tool run --from ruff==0.16.8 ruff check
           providers/arenadata/hbase
           --exclude providers/arenadata/hbase/src/airflow/providers/arenadata/hbase/hbase_thrift2_generated
 

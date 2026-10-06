@@ -19,8 +19,10 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,8 +37,9 @@ from airflow.providers.arenadata.duckdb.hooks.duckdb import (
     DuckDbHook,
 )
 from airflow.providers.arenadata.duckdb.utils.errors import DuckDbCliError, DuckDbConfigurationError
-from airflow.providers.arenadata.duckdb.version_compat import redact
+from airflow.providers.common.compat.sdk import redact
 from airflow.sdk._shared.secrets_masker import reset_secrets_masker
+from airflow.sdk.execution_time.comms import MaskSecret
 
 LOCK_STDERR = 'Could not set lock on file "/tmp/test.duckdb": Conflicting lock is held'
 
@@ -82,7 +85,7 @@ def duckdb_hook() -> DuckDbHook:
         "readonly": False,
         "cli_params": "",
     }
-    hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+    hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
     hook._preflight_binary = MagicMock()  # type: ignore[method-assign]
     hook._preflight_db_path = MagicMock()  # type: ignore[method-assign]
     return hook
@@ -96,7 +99,7 @@ class TestDuckDbHookConnection:
         conn = MagicMock()
         conn.host = ""
         conn.extra_dejson = {}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         params = duckdb_hook._get_conn_params()
 
@@ -107,7 +110,7 @@ class TestDuckDbHookConnection:
         assert params["cli_params"] == ""
         assert params["cli_param_tokens"] == []
         assert params["lock_retry_attempts"] == 0
-        duckdb_hook._preflight_binary.assert_called_once_with(DEFAULT_CLI_PATH)
+        cast("MagicMock", duckdb_hook._preflight_binary).assert_called_once_with(DEFAULT_CLI_PATH)
 
     @pytest.mark.parametrize("raw", [None, "", "  "])
     def test_get_conn_params_blank_binary_uses_default(
@@ -117,23 +120,23 @@ class TestDuckDbHookConnection:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": raw}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         params = duckdb_hook._get_conn_params()
 
         assert params["cli_path"] == DEFAULT_CLI_PATH
-        duckdb_hook._preflight_binary.assert_called_once_with(DEFAULT_CLI_PATH)
+        cast("MagicMock", duckdb_hook._preflight_binary).assert_called_once_with(DEFAULT_CLI_PATH)
 
     def test_get_conn_params_invalid_binary_type(self, duckdb_hook: DuckDbHook) -> None:
         """Non-string duckdb_binary extra fails before preflight."""
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": ["usr", "bin"]}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         with pytest.raises(DuckDbConfigurationError, match="Invalid 'duckdb_binary'"):
             duckdb_hook._get_conn_params()
-        duckdb_hook._preflight_binary.assert_not_called()
+        cast("MagicMock", duckdb_hook._preflight_binary).assert_not_called()
 
     def test_get_conn_params_from_extra(self, duckdb_hook: DuckDbHook) -> None:
         """Connection extras are mapped to hook runtime parameters."""
@@ -269,7 +272,7 @@ class TestDuckDbBanList:
         # Pass hyphen form users type (no_stdin → -no-stdin)
         cli_flag = f"-{flag.replace('_', '-')}"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": cli_flag}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         with pytest.raises(DuckDbConfigurationError, match="banned flag") as exc_info:
             duckdb_hook._get_conn_params()
@@ -281,7 +284,7 @@ class TestDuckDbBanList:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": "-s 'SELECT 1'"}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         with pytest.raises(DuckDbConfigurationError, match="banned flag '-s'"):
             duckdb_hook._get_conn_params()
@@ -291,7 +294,7 @@ class TestDuckDbBanList:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": "-no-stdin"}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         with pytest.raises(DuckDbConfigurationError, match="banned flag '-no-stdin'"):
             duckdb_hook._get_conn_params()
@@ -301,7 +304,7 @@ class TestDuckDbBanList:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": "--threads 4"}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         params = duckdb_hook._get_conn_params()
         assert params["cli_param_tokens"] == ["--threads", "4"]
@@ -311,7 +314,7 @@ class TestDuckDbBanList:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": ["--threads", "4"]}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         params = duckdb_hook._get_conn_params()
         assert params["cli_param_tokens"] == ["--threads", "4"]
@@ -321,7 +324,7 @@ class TestDuckDbBanList:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": ["-readonly"]}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         with pytest.raises(DuckDbConfigurationError, match="banned flag '-readonly'"):
             duckdb_hook._get_conn_params()
@@ -331,7 +334,7 @@ class TestDuckDbBanList:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": ["--threads", 4]}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         with pytest.raises(DuckDbConfigurationError, match="list elements must be strings"):
             duckdb_hook._get_conn_params()
@@ -381,22 +384,19 @@ class TestDuckDbPreflight:
         hook = DuckDbHook(duckdb_conn_id="duckdb_test")
         db = tmp_path / "ro.duckdb"
         db.write_bytes(b"")
-        tmp_path.chmod(0o555)
-        try:
+        with patch(
+            "airflow.providers.arenadata.duckdb.hooks.duckdb.os.access",
+            side_effect=lambda path, mode: mode != os.W_OK,
+        ):
             hook._preflight_db_path(str(db), readonly=True)
-        finally:
-            tmp_path.chmod(0o755)
 
     def test_write_mode_requires_writable_parent(self, tmp_path: Path) -> None:
         """Write mode still requires a writable parent directory."""
         hook = DuckDbHook(duckdb_conn_id="duckdb_test")
         db = tmp_path / "w.duckdb"
-        tmp_path.chmod(0o555)
-        try:
+        with patch("airflow.providers.arenadata.duckdb.hooks.duckdb.os.access", return_value=False):
             with pytest.raises(DuckDbConfigurationError, match="not writable"):
                 hook._preflight_db_path(str(db), readonly=False)
-        finally:
-            tmp_path.chmod(0o755)
 
     def test_binary_missing_raises(self, tmp_path: Path) -> None:
         """Missing binary raises ConfigurationError with DuckDB binary field hint."""
@@ -424,7 +424,7 @@ class TestDuckDbSecretsMasking:
             "duckdb_binary": "/usr/bin/duckdb",
             "cli_params": "--password supersecretvalue",
         }
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         duckdb_hook._get_conn_params()
 
@@ -441,7 +441,7 @@ class TestDuckDbSecretsMasking:
             "duckdb_binary": "/usr/bin/duckdb",
             "cli_params": "--token=abcdef12345",
         }
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         duckdb_hook._get_conn_params()
 
@@ -458,7 +458,7 @@ class TestDuckDbSecretsMasking:
             "duckdb_binary": "/usr/bin/duckdb",
             "cli_params": "--access-key SuperSecret12345",
         }
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         duckdb_hook._get_conn_params()
 
@@ -475,7 +475,7 @@ class TestDuckDbSecretsMasking:
             "duckdb_binary": "/usr/bin/duckdb",
             "cli_params": "--access-key=SuperSecret12345",
         }
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         duckdb_hook._get_conn_params()
 
@@ -492,11 +492,33 @@ class TestDuckDbSecretsMasking:
             "duckdb_binary": "/usr/bin/duckdb",
             "cli_params": ["--token=abcdef12345"],
         }
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         duckdb_hook._get_conn_params()
 
         assert redact("token=abcdef12345") == "token=***"
+        reset_secrets_masker()
+
+    @pytest.mark.enable_redact
+    def test_mask_secret_notifies_supervisor(self, duckdb_hook: DuckDbHook) -> None:
+        """Registered secrets are forwarded to the supervisor, which redacts task logs."""
+        reset_secrets_masker()
+        conn = MagicMock()
+        conn.host = "/tmp/test.duckdb"
+        conn.extra_dejson = {
+            "duckdb_binary": "/usr/bin/duckdb",
+            "cli_params": "--password supersecretvalue",
+        }
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
+
+        comms = MagicMock()
+        with patch("airflow.sdk.execution_time.task_runner.SUPERVISOR_COMMS", comms, create=True):
+            duckdb_hook._get_conn_params()
+
+        comms.send.assert_called_once()
+        sent = comms.send.call_args.args[0]
+        assert isinstance(sent, MaskSecret)
+        assert sent.value == "supersecretvalue"
         reset_secrets_masker()
 
 
@@ -568,7 +590,7 @@ class TestDuckDbHookRun:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": "-c SELECT 1"}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         with pytest.raises(DuckDbConfigurationError, match="banned flag"):
             duckdb_hook.run_cli("SELECT %(x)s", parameters={})
@@ -742,7 +764,9 @@ class TestDuckDbHookRun:
 
         cmd = mock_popen.call_args.args[0]
         assert cmd[1] == "/override.duckdb"
-        duckdb_hook._preflight_db_path.assert_called_with("/override.duckdb", readonly=False)
+        cast("MagicMock", duckdb_hook._preflight_db_path).assert_called_with(
+            "/override.duckdb", readonly=False
+        )
 
     @patch(MOCK_POPEN)
     def test_database_empty_string_uses_connection(
@@ -766,7 +790,7 @@ class TestDuckDbLockRetry:
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "lock_retry_attempts": 5}
         hook = DuckDbHook(duckdb_conn_id="duckdb_test", lock_retry_attempts=2)
-        hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
         hook._preflight_binary = MagicMock()  # type: ignore[method-assign]
 
         assert hook._get_conn_params()["lock_retry_attempts"] == 2
@@ -776,7 +800,7 @@ class TestDuckDbLockRetry:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "lock_retry_attempts": 3}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         assert duckdb_hook._get_conn_params()["lock_retry_attempts"] == 3
 
@@ -813,7 +837,7 @@ class TestDuckDbLockRetry:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "lock_retry_attempts": 3}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
         mock_popen.return_value = _mock_process(stdout="", stderr=LOCK_STDERR, returncode=1)
 
         with patch("airflow.providers.arenadata.duckdb.hooks.duckdb.time.sleep") as mock_sleep:
@@ -836,7 +860,7 @@ class TestDuckDbLockRetry:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "lock_retry_attempts": 3}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
         mock_popen.side_effect = [
             _mock_process(stdout="", stderr=LOCK_STDERR, returncode=1),
             _mock_process(stdout='[{"ok":1}]\n'),
@@ -854,7 +878,7 @@ class TestDuckDbLockRetry:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "lock_retry_attempts": 5}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
         mock_popen.return_value = _mock_process(stdout="", stderr="Parser Error: syntax error", returncode=1)
 
         with patch("airflow.providers.arenadata.duckdb.hooks.duckdb.time.sleep") as mock_sleep:
@@ -880,7 +904,7 @@ class TestDuckDbLockRetry:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "lock_retry_attempts": 3}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
         proc = _mock_process(
             communicate_side_effect=[
                 subprocess.TimeoutExpired(cmd=["duckdb"], timeout=300),
@@ -905,7 +929,7 @@ class TestDuckDbLockRetry:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "lock_retry_attempts": 3}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
         mock_popen.return_value = _mock_process(stdout="", stderr=LOCK_STDERR, returncode=1)
 
         def sleep_and_kill(_delay: float) -> None:
@@ -928,7 +952,7 @@ class TestDuckDbLockRetry:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "lock_retry_attempts": 2}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
         mock_popen.return_value = _mock_process(stdout="", stderr=LOCK_STDERR, returncode=1)
         sql_files: list[str] = []
 
@@ -1011,8 +1035,8 @@ class TestDuckDbHookTestConnection:
         assert "-c" in cmd
         assert "SELECT 1" in cmd
         # db-path preflight skipped for the probe; binary preflight still runs.
-        duckdb_hook._preflight_db_path.assert_not_called()
-        duckdb_hook._preflight_binary.assert_called()
+        cast("MagicMock", duckdb_hook._preflight_db_path).assert_not_called()
+        cast("MagicMock", duckdb_hook._preflight_binary).assert_called()
 
     @patch(MOCK_POPEN)
     def test_test_connection_binary_not_found(self, mock_popen: MagicMock, duckdb_hook: DuckDbHook) -> None:
@@ -1042,7 +1066,7 @@ class TestDuckDbHookTestConnection:
         conn = MagicMock()
         conn.host = "/tmp/test.duckdb"
         conn.extra_dejson = {"duckdb_binary": "/usr/bin/duckdb", "cli_params": "-init /tmp/x"}
-        duckdb_hook.get_connection = lambda _: conn  # type: ignore[method-assign]
+        duckdb_hook.get_connection = lambda _: conn  # type: ignore[assignment,method-assign]
 
         ok, message = duckdb_hook.test_connection()
 

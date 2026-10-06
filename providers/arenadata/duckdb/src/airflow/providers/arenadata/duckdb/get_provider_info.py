@@ -28,31 +28,30 @@ def get_provider_info():
         "description": "`DuckDB <https://duckdb.org/>`__ provider by Arenadata.\n\nRuns DuckDB SQL through the DuckDB CLI (or ADO wrapper) with:\n\n- ``DuckDbOperator`` for SQL execution from DAGs\n- ``DuckDbSqlSensor`` for waiting on truthy query results\n- ``DuckDbHook`` and a ``duckdb`` Connection type\n",
         "integrations": [
             {
-                "integration-name": "DuckDB",
+                "integration-name": "Arenadata DuckDB",
                 "external-doc-url": "https://duckdb.org/",
                 "how-to-guide": [
                     "/docs/apache-airflow-providers-arenadata-duckdb/operators.rst",
                     "/docs/apache-airflow-providers-arenadata-duckdb/sensors.rst",
-                    "/docs/apache-airflow-providers-arenadata-duckdb/connections.rst",
                 ],
-                "tags": ["database"],
+                "tags": ["software"],
             }
         ],
         "hooks": [
             {
-                "integration-name": "DuckDB",
+                "integration-name": "Arenadata DuckDB",
                 "python-modules": ["airflow.providers.arenadata.duckdb.hooks.duckdb"],
             }
         ],
         "operators": [
             {
-                "integration-name": "DuckDB",
+                "integration-name": "Arenadata DuckDB",
                 "python-modules": ["airflow.providers.arenadata.duckdb.operators.duckdb"],
             }
         ],
         "sensors": [
             {
-                "integration-name": "DuckDB",
+                "integration-name": "Arenadata DuckDB",
                 "python-modules": ["airflow.providers.arenadata.duckdb.sensors.duckdb"],
             }
         ],
