@@ -69,3 +69,21 @@ transfers:
 connection-types:
   - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliHook
     connection-type: ozone
+    ui-field-behaviour:
+      hidden-fields:
+        - schema
+      relabeling:
+        host: Ozone OM Host
+        port: Ozone OM Port
+      placeholders:
+        host: ozone-om
+        port: "9862"
+        extra: |-
+          {
+            "ozone_security_enabled": "true",
+            "hadoop_security_authentication": "kerberos",
+            "kerberos_principal": "user@REALM",
+            "kerberos_keytab": "/opt/airflow/keytabs/user.keytab",
+            "krb5_conf": "/opt/airflow/kerberos-config/krb5.conf",
+            "ozone_conf_dir": "/opt/airflow/ozone-conf"
+          }
