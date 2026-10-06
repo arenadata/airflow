@@ -67,9 +67,9 @@ dev = [
     "apache-airflow",
     "apache-airflow-task-sdk",
     "apache-airflow-devel-common",
+    # Additional devel dependencies (do not remove this line and add extra development dependencies)
     # devel-common's tests_common imports airflow_shared.secrets_masker
     "apache-airflow-shared-secrets-masker",
-    # Additional devel dependencies (do not remove this line and add extra development dependencies)
 ]
 
 # To build docs:
