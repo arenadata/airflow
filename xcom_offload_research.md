@@ -52,25 +52,6 @@ S3-поддержка реализована в `providers/amazon/src/airflow/pr
 
 Функция `get_fs` берёт `conn_id`, создаёт `S3Hook` для чтения Airflow Connection, и возвращает `S3FileSystem`
 
-
-## DAG-тесты
-
-### test_xcom_offload.py, TaskFlow (неявный XCom)
-
-Таск `produce` возвращает `LARGE_PAYLOAD` через `return`. TaskFlow автоматически вызывает `xcom_push(key="return_value", ...)`. Таск `consume` получает значение как аргумент, TaskFlow вызывает `xcom_pull` до входа в функцию
-
-### test_xcom_offload_explicit.py, явный xcom_push/xcom_pull
-
-Таск `produce` вызывает `ti.xcom_push(key="my_data", value=LARGE_PAYLOAD)` явно. Таск `consume` вызывает `ti.xcom_pull(task_ids="produce", key="my_data")` явно и проверяет наличие файла в object storage
-
-### Проблема кеширования и её решение
-
-`_get_base_path()` и `_get_threshold()` декорированы `@cache`. При запуске через UI модуль DAG-файла может быть уже закеширован в памяти воркера, с момента парсинга планировщиком, когда env vars ещё не были выставлены
-
-Решение: вызывать `cache_clear()` внутри каждого таска. Тогда кеш сбрасывается при каждом выполнении таска, независимо от состояния модуля
-
-
-
 ## Реализация поддержки Ozone через WebHDFS
 
 ### Контекст
@@ -98,21 +79,12 @@ Ozone HttpFS этот протокол не поддерживает. Вмест
 
 ### Кастомный XCom backend
 
-`XComOzoneBackend(XComObjectStorageBackend)` реализован в
-`providers/arenadata/ozone/src/airflow/providers/arenadata/ozone/xcom/backend.py`
+`XComHdfsBackend(XComObjectStorageBackend)` реализован в
+`providers/arenadata/ozone/src/airflow/providers/arenadata/ozone/xcom/hdfs_backend.py`
 
-Кастомный backend нужен потому что стандартный `XComObjectStorageBackend` использует
-fsspec напрямую без патча, запись в Ozone через него упала бы на двухшаговом upload
-
-`serialize_value`:
-- Сериализует значение через `json.dumps`
-- Записывает в Ozone по пути `<base_path>/<dag_id>/<run_id>/<task_id>/<uuid>`
-- В БД сохраняет строку `webhdfs://conn_id@/path`
-
-`deserialize_value`:
-- Десериализует значение из БД через `BaseXCom.deserialize_value`
-- Если результат не начинается с `webhdfs://` то делегирует в `XComObjectStorageBackend.deserialize_value(result)` (передаётся оригинальный `result`, не уже десериализованное значение)
-- Иначе читает файл из Ozone и десериализует через `json.load`
+Кастомный backend нужен по двум причинам:
+- Ozone не принимает `:` и `+` в путях, нужна санитизация `run_id`
+- Ozone не поддерживает двухшаговый WebHDFS upload, нужен патч `WebHDFile`
 
 ### Конфигурация
 
@@ -120,15 +92,19 @@ fsspec напрямую без патча, запись в Ozone через не
 [core]
 xcom_backend = airflow.providers.arenadata.ozone.xcom.backend.XComOzoneBackend
 
-[arenadata.ozone.xcom]
-conn_id = ozone_webhdfs_default
-base_path = /vol1/bucket-legacy/xcom
+[common.io]
+xcom_objectstorage_path = webhdfs://ozone_webhdfs_default@/vol1/bucket-legacy/xcom
+xcom_objectstorage_threshold = 1
 ```
 
 ### Регистрация fs провайдера
 
 `get_fs` зарегистрирован в `provider.yaml` под ключом `filesystems` со схемой `webhdfs`
-Папка `fs/` — стандартное соглашение Airflow провайдеров для fsspec-реализаций
+Папка `fs/` это стандартное соглашение Airflow провайдеров для fsspec-реализаций
+
+Регистрация нужна чтобы `ObjectStoragePath("webhdfs://...")` нашел пропатченный `get_fs`
+через `_register_filesystems()` в `airflow.sdk.io.fs`. Без неё использовался бы стандартный
+fsspec `WebHDFS` без патча, и запись в Ozone сломалась бы на двухшаговом upload
 
 
 ## Реализация поддержки HDFS через HttpFS
@@ -140,7 +116,7 @@ Apache HDFS предоставляет HTTP-интерфейс через HttpFS
 1. PUT для создания файла, сервер отвечает redirect 307 на DataNode
 2. PUT на redirect URL с данными
 
-Стандартный fsspec `WebHDFS` работает с HDFS без патчей. Однако `XComObjectStorageBackend`
+Также поддерживает и одношаговый протокол. Стандартный fsspec `WebHDFS` работает с HDFS без патчей. Однако `XComObjectStorageBackend`
 не подходит напрямую из-за проблемы с `run_id`
 
 ### Проблема run_id в HDFS путях
@@ -155,8 +131,6 @@ HDFS считает такие символы невалидными в имен
 
 `XComHdfsBackend(XComObjectStorageBackend)` реализован в
 `providers/arenadata/ozone/src/airflow/providers/arenadata/ozone/xcom/hdfs_backend.py`
-
-Положен рядом с Ozone backend для простоты тестирования
 
 `serialize_value` единственный переопределённый метод:
 - Санитизирует `run_id` через `_safe()` перед передачей в родительский класс
@@ -178,11 +152,11 @@ xcom_objectstorage_path = webhdfs://hdfs_default@/xcom
 xcom_objectstorage_threshold = 0
 ```
 
-### Почему не нужен патч WebHDFile
+### Патч WebHDFile применяется и для HDFS
 
-HDFS HttpFS поддерживает стандартный двухшаговый WebHDFS upload с redirect 307
-fsspec `WebHDFS` реализует именно этот протокол, поэтому патч `_OzoneWebHDFile` не нужен
-Достаточно зарегистрировать коннекшн типа `webhdfs` с хостом и портом HttpFS (14000)
+`get_fs` из `webhdfs.py` патчит `WebHDFile` глобально через `_make_ozone_webhdfs`
+для любого `webhdfs://` соединения, включая HDFS. HDFS HttpFS принимает одношаговый
+PUT с `data=true` наравне со стандартным двухшаговым протоколом, поэтому патч не ломает HDFS
 
 ### Итог
 
