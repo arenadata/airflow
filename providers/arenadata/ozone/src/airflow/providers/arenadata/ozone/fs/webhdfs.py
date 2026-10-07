@@ -16,6 +16,7 @@
 # under the License.
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -24,6 +25,8 @@ if TYPE_CHECKING:
 from fsspec.implementations.webhdfs import WebHDFS
 from fsspec.implementations.webhdfs import WebHDFile
 from airflow.hooks.base import BaseHook
+
+log = logging.getLogger(__name__)
 
 schemes = ["webhdfs"]
 
@@ -48,6 +51,7 @@ class _OzoneWebHDFile:
 
     def _upload_chunk(self, final=False):
         # Single PUT with data=true as required by Ozone HttpFS
+        log.info("_OzoneWebHDFile._upload_chunk: writing to %s", self.path)
         data = self.buffer.getvalue()
         params = {"op": "CREATE", "data": "true", "overwrite": "true"}
         params.update(self.fs.pars)

@@ -1,4 +1,3 @@
-import time
 from fsspec.implementations.webhdfs import WebHDFS
 
 from airflow.hooks.base import BaseHook

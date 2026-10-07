@@ -1,8 +1,4 @@
-import os
-import time
 from fsspec.implementations.webhdfs import WebHDFS
-
-from airflow.providers.common.io.xcom.backend import _get_base_path, _get_threshold
 
 from airflow.hooks.base import BaseHook
 from airflow.sdk import dag, task
@@ -23,7 +19,6 @@ def test_xcom_hdfs():
 
     @task
     def verify_hdfs(**context):
-        time.sleep(5)
 
         run_id = context["run_id"].replace(":", "_").replace("+", "_")
         conn = BaseHook.get_connection("hdfs_webhdfs_default")

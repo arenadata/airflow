@@ -1,4 +1,3 @@
-import time
 import s3fs
 
 from airflow.hooks.base import BaseHook
@@ -20,8 +19,6 @@ def test_xcom_s3():
 
     @task
     def verify_s3(**context):
-        time.sleep(5)
-
         run_id = context["run_id"].replace(":", "_").replace("+", "_")
         conn = BaseHook.get_connection("s3_xcom_default")
         extra = conn.extra_dejson
