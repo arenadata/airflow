@@ -6,33 +6,30 @@ import re
 import uuid
 from typing import Any, TypeVar
 
-from airflow.utils.json import XComDecoder
-from airflow.providers.common.io.xcom.backend import XComObjectStorageBackend
+log = logging.getLogger(__name__)
+
+from airflow.utils.json import XComDecoder, XComEncoder
+from airflow.providers.common.io.xcom.backend import (
+    XComObjectStorageBackend,
+    _get_base_path,
+    _get_compression,
+    _get_compression_suffix,
+    _get_threshold,
+)
 from airflow.providers.common.io.version_compat import AIRFLOW_V_3_0_PLUS
-from airflow.providers.arenadata.ozone.fs.webhdfs import get_fs
 
 if AIRFLOW_V_3_0_PLUS:
     from airflow.sdk.bases.xcom import BaseXCom
 else:
     from airflow.models.xcom import BaseXCom  # type: ignore[no-redef]
 
-log = logging.getLogger(__name__)
-
 T = TypeVar("T")
-
-_CONN_ID = "ozone_webhdfs_default"
-_BASE_PATH = "/vol1/bucket-legacy/xcom"
-_XCOM_PATH_PREFIX = f"webhdfs://{_CONN_ID}@{_BASE_PATH}"
 
 _UNSAFE = re.compile(r"[^\w.\-]")
 
 
 def _safe(value: str | None) -> str | None:
     return _UNSAFE.sub("_", value) if value is not None else None
-
-
-def _get_fs():
-    return get_fs(_CONN_ID)
 
 
 class XComOzoneBackend(XComObjectStorageBackend):
@@ -46,35 +43,33 @@ class XComOzoneBackend(XComObjectStorageBackend):
         run_id: str | None = None,
         map_index: int | None = None,
     ) -> bytes | str:
-        s_val_encoded = json.dumps(value).encode("utf-8")
+        s_val = json.dumps(value, cls=XComEncoder)
+        s_val_encoded = s_val.encode("utf-8")
 
-        path = "/".join([
-            _BASE_PATH,
-            _safe(dag_id) or "NO_DAG_ID",
-            _safe(run_id) or "NO_RUN_ID",
-            _safe(task_id) or "NO_TASK_ID",
-            str(uuid.uuid4()),
-        ])
+        if compression := _get_compression():
+            suffix = f".{_get_compression_suffix(compression)}"
+        else:
+            suffix = ""
 
-        log.info("XComOzoneBackend: writing to %s", path)
-        fs = _get_fs()
-        with fs.open(path, mode="wb") as f:
+        threshold = _get_threshold()
+        if threshold < 0 or len(s_val_encoded) < threshold:
+            if AIRFLOW_V_3_0_PLUS:
+                return BaseXCom.serialize_value(value)
+            return s_val_encoded
+
+        base_path = _get_base_path()
+        log.info("XComOzoneBackend v2: writing to %s", base_path)
+        while True:
+            p = base_path.joinpath(
+                _safe(dag_id) or "NO_DAG_ID",
+                _safe(run_id) or "NO_RUN_ID",
+                _safe(task_id) or "NO_TASK_ID",
+                f"{uuid.uuid4()}{suffix}",
+            )
+            if not p.exists():
+                break
+        p.parent.mkdir(parents=True, exist_ok=True)
+
+        with p.open(mode="wb", compression=compression) as f:
             f.write(s_val_encoded)
-
-        return BaseXCom.serialize_value(f"{_XCOM_PATH_PREFIX}/{path[len(_BASE_PATH):].lstrip('/')}")
-
-    @staticmethod
-    def deserialize_value(result) -> Any:
-        base_xcom_deser_result = BaseXCom.deserialize_value(result)
-        if not isinstance(base_xcom_deser_result, str) or not base_xcom_deser_result.startswith("webhdfs://"):
-            return XComObjectStorageBackend.deserialize_value(result)
-        try:
-            from urllib.parse import urlsplit
-            url = urlsplit(base_xcom_deser_result)
-            hdfs_path = url.path
-            fs = _get_fs()
-            with fs.open(hdfs_path, mode="rb") as f:
-                return json.load(f, cls=XComDecoder)
-        except Exception:
-            log.exception("XComOzoneBackend: failed to deserialize %s", base_xcom_deser_result)
-            return base_xcom_deser_result
+        return BaseXCom.serialize_value(str(p))

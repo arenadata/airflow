@@ -20,8 +20,6 @@ def test_xcom_webhdfs():
 
     @task
     def verify_ozone(**context):
-        time.sleep(5)
-
         run_id = context["run_id"].replace(":", "_").replace("+", "_")
         conn = BaseHook.get_connection("ozone_webhdfs_default")
         fs = WebHDFS(host=conn.host, port=conn.port, user=conn.login or None)
