@@ -70,6 +70,8 @@ transfers:
 filesystems:
   - scheme: webhdfs
     fs: airflow.providers.arenadata.ozone.fs.webhdfs.get_fs
+  - scheme: ozone
+    fs: airflow.providers.arenadata.ozone.fs.ozone_s3.get_fs
 
 connection-types:
   - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliHook

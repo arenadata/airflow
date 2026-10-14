@@ -53,7 +53,7 @@ class _OzoneWebHDFile:
         # Single PUT with data=true as required by Ozone HttpFS
         log.info("_OzoneWebHDFile._upload_chunk: writing to %s", self.path)
         data = self.buffer.getvalue()
-        params = {"op": "CREATE", "data": "true", "overwrite": "true"}
+        params = {"op": "CREATE", "data": "true", "overwrite": "true", "replication": "1"}
         params.update(self.fs.pars)
         out = self.fs.session.put(
             self.fs.url + self.path,

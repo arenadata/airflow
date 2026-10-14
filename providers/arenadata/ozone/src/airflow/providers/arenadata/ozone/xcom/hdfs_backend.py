@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+import airflow.providers.arenadata.ozone.fs.ozone_s3  # noqa: F401 — registers ozone scheme in upath+fsspec
 from airflow.providers.common.io.xcom.backend import XComObjectStorageBackend
 
 _UNSAFE = re.compile(r"[^\w.\-]")
