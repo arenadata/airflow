@@ -56,39 +56,8 @@ class OzoneFsFileSystem(AbstractFileSystem):
         p = self._strip_uri(path)
         return f"ofs://{self._om_address}{p}"
 
-    def info(self, path: str, **kwargs) -> dict:
-        path = self._strip_uri(path)
-        out = self._run("-stat", "%F %s", self._uri(path))
-        ftype_str, size_str = out.split(" ", 1)
-        ftype = "directory" if ftype_str == "directory" else "file"
-        return {"name": path, "type": ftype, "size": int(size_str) if ftype == "file" else 0}
-
-    def exists(self, path: str, **kwargs) -> bool:
-        path = self._strip_uri(path)
-        r = subprocess.run(
-            ["ozone", "--config", self._conf_dir, "fs", "-test", "-e", self._uri(path)],
-            capture_output=True, env=self._env,
-        )
-        return r.returncode == 0
-
-    def isdir(self, path: str) -> bool:
-        path = self._strip_uri(path)
-        r = subprocess.run(
-            ["ozone", "--config", self._conf_dir, "fs", "-test", "-d", self._uri(path)],
-            capture_output=True, env=self._env,
-        )
-        return r.returncode == 0
-
-    def isfile(self, path: str) -> bool:
-        path = self._strip_uri(path)
-        r = subprocess.run(
-            ["ozone", "--config", self._conf_dir, "fs", "-test", "-f", self._uri(path)],
-            capture_output=True, env=self._env,
-        )
-        return r.returncode == 0
-
     def ls(self, path: str, detail: bool = True, **kwargs):
-        raise NotImplementedError("PoC: ls not implemented")
+        raise NotImplementedError
 
     def open(self, path: str, mode: str = "rb", **kwargs):
         path = self._strip_uri(path)

@@ -162,3 +162,45 @@ PUT с `data=true` наравне со стандартным двухшагов
 
 Минимальный backend решает проблему санитизации `run_id`,  вся остальная логика (fsspec, ObjectStoragePath, threshold, compression) наследуется
 из `XComObjectStorageBackend` без изменений
+
+## Реализация поддержки Ozone через нативный OFS (RootedOzoneFileSystem)
+
+### Контекст
+
+Apache Ozone поддерживает нативный файловый протокол `ofs://` через `RootedOzoneFileSystem`
+OFS может работать через Ozone CLI (`ozone fs`), который использует
+Java-клиент напрямую без HTTP-прослойки. Схема `ofs://` позволяет адресовать несколько
+volume и bucket в одном пути: `ofs://om-address/volume/bucket/key`
+
+### Конфигурация
+
+```ini
+[core]
+xcom_backend = airflow.providers.arenadata.ozone.xcom.hdfs_backend.XComHdfsBackend
+
+[common.io]
+xcom_objectstorage_path = ozoneofs://ozoneofs_default@s3v/ofs-bucket/xcom
+xcom_objectstorage_threshold = 1
+```
+
+Connection `ozoneofs_default`, тип `generic`, `host=ozone`, `port=9862` (Ozone Manager)
+
+### Плюсы подхода
+
+- Нет зависимости от Java/Hadoop в Python-коде, только `subprocess`
+- Работает с любой версией Ozone без привязки к версии клиентских библиотек
+- `ofs://` даёт доступ к нескольким volume/bucket в одном пути
+- Простота реализации, минимум кода
+
+### Минусы подхода
+
+- JVM на каждый subprocess это 300–800 мс только на инициализацию процесса
+- Tempfile на диске это двойное копирование данных при каждой операции
+- Нет стриминга — весь файл читается/пишется целиком в память
+- Нет connection pooling — каждый вызов устанавливает новое соединение с OM
+- Хрупкость — зависимость от формата вывода CLI и кодов возврата
+- `ozone` бинарник должен быть доступен в `PATH` на каждом worker-узле
+
+### Применимость
+
+Для XCom backend подход приемлем: операций мало (один `put` на serialize, один `get` на deserialize), файлы маленькие (десятки байт). JVM overhead незаметен на фоне времени выполнения тасков. Для general-purpose filesystem с частыми или большими операциями подход неприемлем
