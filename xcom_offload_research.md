@@ -238,3 +238,31 @@ Ozone Manager реализует `OzoneManagerProtocol`, а не `ClientNamenode
 
 Оба `hdfs-native` и `snakebite-py3` реализуют `ClientNamenodeProtocol` и несовместимы с Ozone OM
 Для работы с Ozone через RPC нужна реализация `OzoneManagerProtocol`, которой в Python-экосистеме нет
+
+## Реализация поддержки Ozone через PyArrow HadoopFileSystem
+
+`OzoneArrowFileSystem(AbstractFileSystem)` в `fs/ofs_arrow.py`, схема `ozonearrow://`, делегирует в `ArrowFSWrapper(HadoopFileSystem("default"))`
+
+### Конфигурация
+
+```ini
+[core]
+xcom_backend = airflow.providers.arenadata.ozone.xcom.hdfs_backend.XComHdfsBackend
+
+[common.io]
+xcom_objectstorage_path = ozonearrow://ozonearrow_default@s3v/ofs-bucket/xcom
+xcom_objectstorage_threshold = 1
+```
+
+Connection `ozonearrow_default`, тип `generic`, `host=ozone`, `port=9862`
+
+### Итог
+
+Лучший из реализованных подходов: нативный протокол Ozone, JVM инициализируется один раз на процесс, стриминг без tempfile. Требует Java и `core-site.xml` на каждом worker-узле
+
+| Подход | Протокол | JVM overhead | Стриминг |
+|---|---|---|---|
+| WebHDFS (HttpFS) | HTTP | нет | нет |
+| subprocess (ozone fs) | OzoneManagerProtocol | на каждый вызов | нет |
+| PyArrow + libhdfs | OzoneManagerProtocol | один раз на процесс | да |
+| hdfs-native / snakebite | ClientNamenodeProtocol | — | несовместимо |
