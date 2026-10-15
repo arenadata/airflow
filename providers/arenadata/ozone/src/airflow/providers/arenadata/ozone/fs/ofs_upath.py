@@ -30,11 +30,3 @@ register_implementation("ozoneofs", _OzoneOfsPath, clobber=True)
 def get_fs(conn_id: str | None, storage_options: dict | None = None) -> OzoneFsFileSystem:
     return OzoneFsFileSystem(conn_id=conn_id, **(storage_options or {}))
 
-
-try:
-    from airflow.sdk.io.store import attach
-    _fs = OzoneFsFileSystem()
-    attach(protocol="ozoneofs", conn_id=None, fs=_fs)
-    attach(protocol="ozoneofs", conn_id="ozoneofs_default", fs=_fs)
-except Exception:
-    pass
