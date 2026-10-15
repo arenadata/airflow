@@ -204,3 +204,37 @@ Connection `ozoneofs_default`, тип `generic`, `host=ozone`, `port=9862` (Ozon
 ### Применимость
 
 Для XCom backend подход приемлем: операций мало (один `put` на serialize, один `get` на deserialize), файлы маленькие (десятки байт). JVM overhead незаметен на фоне времени выполнения тасков. Для general-purpose filesystem с частыми или большими операциями подход неприемлем
+
+## Исследование Python-клиентов для Ozone через HDFS-протокол
+
+### Контекст
+
+Ozone Manager слушает порт 9862 и принимает Hadoop RPC. Возникла гипотеза: раз Ozone
+поддерживает HDFS-совместимый интерфейс, возможно Python-клиенты для HDFS смогут с ним работать.
+
+### hdfs-native (Rust)
+
+Библиотека на Rust, реализует Hadoop RPC клиент. Подключается к порту 9862, но получает:
+
+```
+RpcNoSuchProtocolException: Unknown protocol: org.apache.hadoop.hdfs.protocol.ClientNamenodeProtocol
+```
+
+### snakebite-py3
+
+Pure Python реализация HDFS клиента. Та же ошибка:
+
+```
+RpcNoSuchProtocolException: Unknown protocol: org.apache.hadoop.hdfs.protocol.ClientNamenodeProtocol
+```
+
+### Причина несовместимости
+
+Ozone Manager реализует `OzoneManagerProtocol`, а не `ClientNamenodeProtocol`.
+Это принципиально разные протоколы, подтверждено через `unzip -l` на jar-файлах в контейнере:
+
+- `ClientNamenodeProtocol` — в `hadoop-hdfs-client-3.4.3.jar` и `hadoop-hdfs-3.4.3.jar` (HDFS NameNode)
+- `OzoneManagerProtocol` — в `ozone-interface-client-2.2.1.jar` (Ozone Manager)
+
+Оба `hdfs-native` и `snakebite-py3` реализуют `ClientNamenodeProtocol` и несовместимы с Ozone OM
+Для работы с Ozone через RPC нужна реализация `OzoneManagerProtocol`, которой в Python-экосистеме нет
