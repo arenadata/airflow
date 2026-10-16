@@ -69,4 +69,11 @@ def get_provider_info():
                 "connection-type": "ozone",
             }
         ],
+        "filesystems": [
+            "airflow.providers.arenadata.ozone.fs.webhdfs",
+            "airflow.providers.arenadata.ozone.fs.ozone_s3",
+            "airflow.providers.arenadata.ozone.fs.ofs_upath",
+            "airflow.providers.arenadata.ozone.fs.ofs_arrow",
+            "airflow.providers.arenadata.ozone.fs.hdfs_arrow",
+        ],
     }

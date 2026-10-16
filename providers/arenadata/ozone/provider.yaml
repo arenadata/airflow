@@ -67,6 +67,11 @@ transfers:
     target-integration-name: Apache Ozone
     python-module: airflow.providers.arenadata.ozone.transfers.ozone_backup
 
+filesystems:
+  - airflow.providers.arenadata.ozone.fs.webhdfs
+  - airflow.providers.arenadata.ozone.fs.ozone_s3
+  - airflow.providers.arenadata.ozone.fs.ofs_upath
+
 connection-types:
   - hook-class-name: airflow.providers.arenadata.ozone.hooks.ozone.OzoneCliHook
     connection-type: ozone
