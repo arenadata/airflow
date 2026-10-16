@@ -6,6 +6,9 @@ from upath.implementations.cloud import CloudPath
 from upath.registry import register_implementation
 from urllib.parse import urlsplit
 
+import pyarrow.fs as pafs
+from fsspec.implementations.arrow import ArrowFSWrapper
+
 schemes = ["ozonearrow"]
 
 
@@ -15,8 +18,6 @@ class OzoneArrowFileSystem(AbstractFileSystem):
     def __init__(self, conn_id: str | None = None, **kwargs):
         kwargs.pop("conn_id", None)
         super().__init__(**kwargs)
-        import pyarrow.fs as pafs
-        from fsspec.implementations.arrow import ArrowFSWrapper
         self._arrow_fs = ArrowFSWrapper(pafs.HadoopFileSystem("default"))
 
     @classmethod
