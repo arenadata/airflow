@@ -266,3 +266,47 @@ Connection `ozonearrow_default`, тип `generic`, `host=ozone`, `port=9862`
 | subprocess (ozone fs) | OzoneManagerProtocol | на каждый вызов | нет |
 | PyArrow + libhdfs | OzoneManagerProtocol | один раз на процесс | да |
 | hdfs-native / snakebite | ClientNamenodeProtocol | — | несовместимо |
+
+## Верификация записи в HDFS через PyArrow
+
+DAG `test_xcom_hdfs_arrow` проверяет полный round-trip XCom через HDFS:
+`produce`, `verify_hdfs`, `consume`
+
+`verify_hdfs` использует `pyarrow.fs.HadoopFileSystem` напрямую:
+
+```python
+fs = pafs.HadoopFileSystem(conn.host, port=conn.port or 8020)
+run_id = context["run_id"].replace(":", "_").replace("+", "_")
+selector = pafs.FileSelector("/xcom", recursive=True)
+files = [f for f in fs.get_file_info(selector)
+         if f.type == pafs.FileType.File and run_id in f.path and f.size > 0]
+```
+
+Санитизация `run_id` обязательна, в HDFS путях `:` и `+` невалидны, `XComHdfsBackend` заменяет их на `_` при записи, поэтому при поиске нужно применять ту же замену
+
+Airflow 3 Task SDK разбивает возвращаемый словарь на отдельные XCom-записи по ключам плюс `return_value` целиком. Для `LARGE_PAYLOAD = {"id": [...], "value": [...]}` в HDFS создаётся 3 файла: `id`, `value`, `return_value`
+
+## Поведение purge: удаление файлов из хранилища
+
+### Когда purge вызывается
+
+`purge()` определён в `XComObjectStorageBackend` и удаляет файл из хранилища по URL из `xcom.value`
+Вызывается **только** из `BaseXCom.delete()` в `airflow-core/src/airflow/models/xcom.py`
+
+### Верификация
+
+DAG `test_xcom_hdfs_purge` проверяет это поведение:
+`produce`, `verify_file_exists`, `delete_xcom`, `verify_file_deleted`
+
+`delete_xcom` явно вызывает `XCom.delete()` для каждого ключа:
+
+```python
+for key in ("return_value", "id", "value"):
+    XCom.delete(key=key, task_id="produce", dag_id=dag_id, run_id=run_id)
+```
+
+Только после этого `verify_file_deleted` подтверждает что файлы исчезли из HDFS
+
+### Вывод
+
+При использовании XCom offload необходима явная стратегия очистки хранилища
