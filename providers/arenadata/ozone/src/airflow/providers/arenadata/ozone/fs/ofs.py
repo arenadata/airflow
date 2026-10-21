@@ -51,7 +51,6 @@ class OzoneFsFileSystem(AbstractFileSystem):
         # Strip leading slashes before checking for URI (handles //ozoneofs://... case)
         stripped = path.lstrip("/")
         if "://" in stripped:
-            from urllib.parse import urlsplit
             p = urlsplit(stripped)
             _, _, host = p.netloc.rpartition("@")
             return f"/{host}{p.path}"
@@ -73,15 +72,7 @@ class OzoneFsFileSystem(AbstractFileSystem):
             # ozone fs -ls output: permissions links owner group size date time name
             if len(parts) < 8:
                 continue
-            name_uri = parts[-1]
-            # convert ofs://host/vol/bucket/key -> vol/bucket/key
-            if "://" in name_uri:
-                from urllib.parse import urlsplit
-                p = urlsplit(name_uri)
-                _, _, host = p.netloc.rpartition("@")
-                name = (host + p.path).lstrip("/")
-            else:
-                name = name_uri.lstrip("/")
+            name = self._strip_uri(parts[-1]).lstrip("/")
             is_dir = parts[0].startswith("d")
             info = {
                 "name": name,
@@ -109,16 +100,28 @@ class OzoneFsFileSystem(AbstractFileSystem):
 
 
 class _OfsWriteBuffer(io.RawIOBase):
+    """
+    Write buffer for Ozone CLI
+
+    Unlike a regular file, data is NOT sent to Ozone on write() calls
+    write() only accumulates bytes in an in-memory BytesIO buffer
+    The actual upload happens in close(), because the Ozone CLI (`ozone fs -put`)
+    only accepts a local file path, it cannot stream from stdin
+    So close() is the commit point: write a temp file, put, cleanup
+    """
+
     def __init__(self, path: str, fs: OzoneFsFileSystem):
         self._path = path
         self._fs = fs
         self._buf = io.BytesIO()
 
     def write(self, data):
+        # Accumulates in memory; nothing is sent to Ozone yet.
         return self._buf.write(data)
 
     def close(self):
         if not self.closed:
+            # Actual upload: dump buffer to a temp file, then push to Ozone via CLI
             with tempfile.NamedTemporaryFile(delete=False) as tmp:
                 tmp.write(self._buf.getvalue())
                 tmp_path = tmp.name
