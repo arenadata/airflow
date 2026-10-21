@@ -29,4 +29,3 @@ register_implementation("ozoneofs", _OzoneOfsPath, clobber=True)
 
 def get_fs(conn_id: str | None, storage_options: dict | None = None) -> OzoneFsFileSystem:
     return OzoneFsFileSystem(conn_id=conn_id, **(storage_options or {}))
-

@@ -5,11 +5,8 @@ import os
 import subprocess
 import tempfile
 
-import fsspec
 from fsspec import AbstractFileSystem
 from airflow.sdk.bases.hook import BaseHook
-
-schemes = ["ofs"]
 
 
 class OzoneFsFileSystem(AbstractFileSystem):
@@ -57,7 +54,37 @@ class OzoneFsFileSystem(AbstractFileSystem):
         return f"ofs://{self._om_address}{p}"
 
     def ls(self, path: str, detail: bool = True, **kwargs):
-        raise NotImplementedError
+        uri = self._uri(path)
+        try:
+            out = self._run("-ls", "-R", uri)
+        except FileNotFoundError:
+            return []
+        results = []
+        for line in out.splitlines():
+            parts = line.split()
+            # ozone fs -ls output: permissions links owner group size date time name
+            if len(parts) < 8:
+                continue
+            name_uri = parts[-1]
+            # convert ofs://host/vol/bucket/key -> vol/bucket/key
+            if "://" in name_uri:
+                from urllib.parse import urlsplit
+                p = urlsplit(name_uri)
+                _, _, host = p.netloc.rpartition("@")
+                name = (host + p.path).lstrip("/")
+            else:
+                name = name_uri.lstrip("/")
+            is_dir = parts[0].startswith("d")
+            info = {
+                "name": name,
+                "size": 0 if is_dir else int(parts[4]),
+                "type": "directory" if is_dir else "file",
+            }
+            if detail:
+                results.append(info)
+            else:
+                results.append(name)
+        return results
 
     def open(self, path: str, mode: str = "rb", **kwargs):
         path = self._strip_uri(path)
@@ -97,9 +124,3 @@ class _OfsWriteBuffer(io.RawIOBase):
     def writable(self): return True
     def seekable(self): return False
 
-
-fsspec.register_implementation("ofs", OzoneFsFileSystem, clobber=True)
-
-
-def get_fs(conn_id: str | None, storage_options: dict | None = None) -> AbstractFileSystem:
-    return OzoneFsFileSystem(conn_id=conn_id, **(storage_options or {}))
