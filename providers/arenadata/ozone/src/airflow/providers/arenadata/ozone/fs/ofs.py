@@ -4,9 +4,16 @@ import io
 import os
 import subprocess
 import tempfile
+from urllib.parse import urlsplit
 
+import fsspec
 from fsspec import AbstractFileSystem
+from upath.implementations.cloud import CloudPath
+from upath.registry import register_implementation
+
 from airflow.sdk.bases.hook import BaseHook
+
+schemes = ["ozoneofs"]
 
 
 class OzoneFsFileSystem(AbstractFileSystem):
@@ -17,9 +24,10 @@ class OzoneFsFileSystem(AbstractFileSystem):
 
     protocol = "ofs"
 
-    def __init__(self, conn_id: str | None = None, conf_dir: str = "/opt/ozone-conf", **kwargs):
+    def __init__(self, conn_id: str | None = None, conf_dir: str = "/opt/ozone-conf", timeout: int = 60, **kwargs):
         super().__init__(**kwargs)
         self._conf_dir = conf_dir
+        self._timeout = timeout
         self._om_address = "ozone"
         self._env = os.environ.copy()
         if conn_id is not None:
@@ -32,7 +40,7 @@ class OzoneFsFileSystem(AbstractFileSystem):
             ["ozone", "--config", self._conf_dir, "fs",
              "-D", "ozone.replication=ONE", "-D", "ozone.replication.type=RATIS",
              *args],
-            capture_output=True, text=True, env=self._env,
+            capture_output=True, text=True, env=self._env, timeout=self._timeout,
         )
         if result.returncode != 0:
             raise FileNotFoundError(result.stderr.strip())
@@ -123,4 +131,24 @@ class _OfsWriteBuffer(io.RawIOBase):
     def readable(self): return False
     def writable(self): return True
     def seekable(self): return False
+
+
+fsspec.register_implementation("ozoneofs", OzoneFsFileSystem, clobber=True)
+
+
+class _OzoneOfsPath(CloudPath):
+    __slots__ = ()
+
+    @property
+    def path(self) -> str:
+        url = urlsplit(str(self))
+        _, _, host = url.netloc.rpartition("@")
+        return f"/{host}{url.path}" if host else url.path or "/"
+
+
+register_implementation("ozoneofs", _OzoneOfsPath, clobber=True)
+
+
+def get_fs(conn_id: str | None, storage_options: dict | None = None) -> OzoneFsFileSystem:
+    return OzoneFsFileSystem(conn_id=conn_id, **(storage_options or {}))
 
