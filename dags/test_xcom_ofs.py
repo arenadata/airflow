@@ -1,5 +1,5 @@
 from airflow.sdk import dag, task
-import fsspec
+import pyarrow.fs as pafs
 
 LARGE_PAYLOAD = {"id": [1, 2, 3], "value": ["foo", "bar", "baz"], "extra": "y" * 100}
 
@@ -14,14 +14,15 @@ def test_pyarrow_ofs():
     @task
     def verify_ofs(**context):
         run_id = context["run_id"].replace(":", "_").replace("+", "_")
-        fs = fsspec.filesystem("ozonearrow")
-        files = fs.find("s3v/ofs-bucket/xcom", detail=True)
+        fs = pafs.HadoopFileSystem("default")
+        selector = pafs.FileSelector("s3v/ofs-bucket/xcom", recursive=True)
+        files = fs.get_file_info(selector)
         current_run_files = [
-            (name, info) for name, info in files.items()
-            if run_id in name and info.get("size", 0) > 0
+            f for f in files
+            if run_id in f.path and (f.size or 0) > 0
         ]
-        for name, info in current_run_files:
-            print(f"XCom file: {name}  size={info['size']}")
+        for f in current_run_files:
+            print(f"XCom file: {f.path}  size={f.size}")
         assert current_run_files, f"No XCom files found in OFS for run_id={run_id}"
 
     @task
