@@ -13,8 +13,6 @@ schemes = ["ozonearrow"]
 
 
 class OzoneArrowFileSystem(AbstractFileSystem):
-    protocol = "ozonearrow"
-
     def __init__(self, conn_id: str | None = None, **kwargs):
         kwargs.pop("conn_id", None)
         super().__init__(**kwargs)

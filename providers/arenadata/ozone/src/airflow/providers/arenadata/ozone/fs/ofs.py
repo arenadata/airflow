@@ -22,8 +22,6 @@ class OzoneFsFileSystem(AbstractFileSystem):
     In PoC only read/write via PyFileSystem(FSSpecHandler(...)) is supported
     """
 
-    protocol = "ofs"
-
     def __init__(self, conn_id: str | None = None, conf_dir: str = "/opt/ozone-conf", timeout: int = 60, **kwargs):
         super().__init__(**kwargs)
         self._conf_dir = conf_dir

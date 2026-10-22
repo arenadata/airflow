@@ -14,8 +14,6 @@ schemes = ["hdfsarrow"]
 
 
 class HdfsArrowFileSystem(AbstractFileSystem):
-    protocol = "hdfsarrow"
-
     def __init__(self, host: str = "default", port: int = 8020, **kwargs):
         kwargs.pop("conn_id", None)
         super().__init__(**kwargs)
