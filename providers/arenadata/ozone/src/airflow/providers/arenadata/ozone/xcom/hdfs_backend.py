@@ -9,7 +9,6 @@ log = logging.getLogger(__name__)
 import airflow.providers.arenadata.ozone.fs.ozone_s3  # noqa: F401 — registers ozone:// scheme
 import airflow.providers.arenadata.ozone.fs.ofs  # noqa: F401 — registers ozoneofs:// scheme
 import airflow.providers.arenadata.ozone.fs.ofs_arrow  # noqa: F401 — registers ozonearrow:// scheme
-import airflow.providers.arenadata.ozone.fs.hdfs_arrow  # noqa: F401 — registers hdfsarrow:// scheme
 from airflow.providers.common.io.xcom.backend import XComObjectStorageBackend
 from airflow.utils.json import XComDecoder
 from airflow.providers.common.io.xcom.backend import _get_base_path
