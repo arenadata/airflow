@@ -439,6 +439,34 @@ class TestHBaseCLIHook:
         assert "/backup dir/my backup" in tokens
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_java_home_from_extra_overrides_constructor(self, mock_run, mock_get_conn):
+        """Test that java_home from connection Extra overrides constructor/env value."""
+        mock_get_conn.return_value = MagicMock(
+            extra_dejson={"java_home": "/usr/lib/jvm/java-17", "hbase_home": "/opt/hbase"}
+        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="OK")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default", java_home="/usr/lib/jvm/java-8")
+        hook.list_backup_sets()
+
+        env = mock_run.call_args[1]["env"]
+        assert env["JAVA_HOME"] == "/usr/lib/jvm/java-17"
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_java_home_fallback_to_constructor_when_not_in_extra(self, mock_run, mock_get_conn):
+        """Test that java_home falls back to constructor value when not in Extra."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.return_value = MagicMock(returncode=0, stdout="OK")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default", java_home="/usr/lib/jvm/java-8")
+        hook.list_backup_sets()
+
+        env = mock_run.call_args[1]["env"]
+        assert env["JAVA_HOME"] == "/usr/lib/jvm/java-8"
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @pytest.mark.parametrize("command", ["", "   ", []])
     def test_execute_command_empty_input(self, mock_get_conn, command):
         """Test that empty or whitespace-only commands raise ValueError."""
