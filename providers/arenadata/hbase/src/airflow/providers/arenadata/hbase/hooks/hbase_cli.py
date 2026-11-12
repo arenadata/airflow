@@ -136,7 +136,10 @@ class HBaseCLIHook(BaseHook):
         conn = self.get_conn()
         extra = conn.extra_dejson if conn.extra else {}
 
-        hbase_cmd = self._build_hbase_command(args)
+        java_home = extra.get("java_home") or self.java_home
+        hbase_home = extra.get("hbase_home") or self.hbase_home
+        hbase_bin = f"{hbase_home}/bin/{self.hbase_cmd}"
+        hbase_cmd = [hbase_bin, *args]
 
         kerberos_keytab = extra.get("kerberos_keytab")
         if kerberos_keytab:
@@ -152,7 +155,7 @@ class HBaseCLIHook(BaseHook):
             full_command = hbase_cmd
 
         env = os.environ.copy()
-        env["JAVA_HOME"] = self.java_home
+        env["JAVA_HOME"] = java_home
         env["HBASE_OPTS"] = env.get("HBASE_OPTS", "") + " -Dslf4j.internal.verbosity=warn"
 
         logger.info("Executing HBase command: %s", " ".join(self._mask_cmd(full_command)))
