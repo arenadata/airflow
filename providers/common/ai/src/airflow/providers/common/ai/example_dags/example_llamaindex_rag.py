@@ -109,7 +109,7 @@ example_llamaindex_rag_pipeline()
 
 
 # [START howto_llamaindex_index_dag]
-@dag(schedule="@weekly", tags=["example"])
+@dag(schedule="@weekly", catchup=False, tags=["example"])
 def example_llamaindex_index_pdf():
     """Weekly indexing DAG -- keep the vector index fresh as PDFs arrive.
 

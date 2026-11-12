@@ -55,6 +55,7 @@ combined_player_stats = Asset(uri="file://curated/player-stats/combined.csv", na
 with DAG(
     dag_id="ingest_team_a_player_stats",
     schedule=CronPartitionTimetable("0 * * * *", timezone="UTC"),
+    catchup=False,
     tags=["example", "player-stats", "ingestion"],
 ):
     """Produce hourly partitioned stats for Team A."""
