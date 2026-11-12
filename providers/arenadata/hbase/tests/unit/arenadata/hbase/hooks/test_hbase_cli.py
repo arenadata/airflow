@@ -467,6 +467,38 @@ class TestHBaseCLIHook:
         assert env["JAVA_HOME"] == "/usr/lib/jvm/java-8"
 
     @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_hbase_home_from_extra_overrides_constructor(self, mock_run, mock_get_conn):
+        """Test that hbase_home from connection Extra overrides constructor value."""
+        mock_get_conn.return_value = MagicMock(
+            extra_dejson={"hbase_home": "/custom/hbase"}
+        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="OK")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default", hbase_home="/fallback/hbase")
+        hook.list_backup_sets()
+
+        env = mock_run.call_args[1]["env"]
+        call_args = mock_run.call_args[0][0]
+        assert env["HBASE_HOME"] == "/custom/hbase"
+        assert call_args[0] == "/custom/hbase/bin/hbase"
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.subprocess.run")
+    def test_hbase_home_fallback_to_constructor_when_not_in_extra(self, mock_run, mock_get_conn):
+        """Test that hbase_home falls back to constructor value when not in Extra."""
+        mock_get_conn.return_value = MagicMock(extra_dejson={})
+        mock_run.return_value = MagicMock(returncode=0, stdout="OK")
+
+        hook = HBaseCLIHook(hbase_conn_id="hbase_default", hbase_home="/fallback/hbase")
+        hook.list_backup_sets()
+
+        env = mock_run.call_args[1]["env"]
+        call_args = mock_run.call_args[0][0]
+        assert env["HBASE_HOME"] == "/fallback/hbase"
+        assert call_args[0] == "/fallback/hbase/bin/hbase"
+
+    @patch("airflow.providers.arenadata.hbase.hooks.hbase_cli.HBaseCLIHook.get_connection")
     @pytest.mark.parametrize("command", ["", "   ", []])
     def test_execute_command_empty_input(self, mock_get_conn, command):
         """Test that empty or whitespace-only commands raise ValueError."""
